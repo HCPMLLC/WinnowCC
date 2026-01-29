@@ -1,0 +1,26 @@
+# Python
+**/.venv/
+**/__pycache__/
+**/*.pyc
+**/.pytest_cache/
+
+# Node / Next
+**/node_modules/
+**/.next/
+**/dist/
+
+# Environment / secrets
+**/.env
+**/.env.*
+!**/.env.example
+
+# Local uploads & data
+services/api/data/uploads/
+services/api/data/*.sqlite*
+**/*.log
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

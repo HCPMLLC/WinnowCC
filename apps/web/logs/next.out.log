@@ -1,0 +1,48 @@
+
+> dev
+> next dev -p 3001
+
+  ▲ Next.js 14.2.5
+  - Local:        http://localhost:3001
+  - Environments: .env.local
+
+ ✓ Starting...
+ ✓ Ready in 1715ms
+ ○ Compiling /signup ...
+ ✓ Compiled /signup in 3.6s (460 modules)
+ GET /signup 200 in 3863ms
+ ○ Compiling /onboarding ...
+ ✓ Compiled /onboarding in 1802ms (466 modules)
+ ✓ Compiled /upload in 225ms (460 modules)
+ ✓ Compiled in 729ms (242 modules)
+ ✓ Compiled in 141ms (242 modules)
+ ✓ Compiled /login in 378ms (467 modules)
+ GET /login 200 in 565ms
+ ✓ Compiled /onboarding in 53ms (227 modules)
+ ✓ Compiled /matches in 230ms (464 modules)
+ GET /matches 200 in 336ms
+ ○ Compiling / ...
+ ✓ Compiled / in 854ms (514 modules)
+ GET / 200 in 1067ms
+ ✓ Compiled /_not-found in 218ms (503 modules)
+ GET /_next/static/css/app/layout.css?v=1769698343780 404 in 339ms
+ GET /_next/static/chunks/main-app.js?v=1769698343780 404 in 40ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 37ms
+ ✓ Compiled /dashboard in 308ms (509 modules)
+ GET /dashboard 200 in 392ms
+ GET /_next/static/css/app/layout.css?v=1769698350910 404 in 53ms
+ GET /_next/static/chunks/main-app.js?v=1769698350910 404 in 36ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 33ms
+ ✓ Compiled /profile in 323ms (515 modules)
+ GET /profile 200 in 428ms
+ GET /_next/static/css/app/layout.css?v=1769698369927 404 in 50ms
+ GET /_next/static/chunks/main-app.js?v=1769698369927 404 in 35ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 32ms
+ GET /signin 404 in 48ms
+ GET /_next/static/css/app/layout.css?v=1769698384434 404 in 48ms
+ GET /_next/static/chunks/main-app.js?v=1769698384434 404 in 50ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 50ms
+ GET /health 404 in 47ms
+ GET /_next/static/css/app/layout.css?v=1769698393687 404 in 23ms
+ GET /_next/static/chunks/app-pages-internals.js 404 in 27ms
+ GET /_next/static/chunks/main-app.js?v=1769698393687 404 in 32ms
