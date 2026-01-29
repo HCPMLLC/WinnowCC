@@ -1,0 +1,29 @@
+<w> [webpack.cache.PackFileCacheStrategy] Caching failed for pack: Error: ENOENT: no such file or directory, lstat 'C:\Users\ronle\Documents\resumematch\apps\web\.next\server\app\upload\page.js'
+<w> [webpack.cache.PackFileCacheStrategy/webpack.FileSystemInfo] Resolving '../../../../.next/server/app/upload/page' in C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server for build dependencies doesn't lead to expected result 'C:\Users\ronle\Documents\resumematch\apps\web\.next\server\app\upload\page.js', but to 'Error: Can't resolve '../../../../.next/server/app/upload/page' in 'C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server'' instead. Resolving dependencies are ignored for this path.
+<w>  at resolve commonjs file ../../../../.next/server/app/upload/page (expected C:\Users\ronle\Documents\resumematch\apps\web\.next\server\app\upload\page.js)
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server\require.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server\require.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server\load-components.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\server\load-components.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\utils.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\utils.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\loaders\next-app-loader.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\loaders\next-app-loader.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\loader-runner\LoaderRunner.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\loader-runner\LoaderRunner.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\webpack\bundle5.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\webpack\bundle5.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\webpack\webpack.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\compiled\webpack\webpack.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\plugins\define-env-plugin.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\plugins\define-env-plugin.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\swc\index.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\swc\index.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\analysis\parse-module.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\analysis\get-page-static-info.js
+<w>  at file dependencies C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\loaders\next-flight-client-module-loader.js
+<w>  at file C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\loaders\next-flight-client-module-loader.js
+<w>  at resolve commonjs C:\Users\ronle\Documents\resumematch\apps\web\node_modules\next\dist\build\webpack\loaders\next-flight-client-module-loader.js
+^C

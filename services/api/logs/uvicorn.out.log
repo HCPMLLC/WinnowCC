@@ -1,0 +1,13 @@
+INFO:     127.0.0.1:53483 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60499 - "POST /api/matches/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60512 - "GET /api/matches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53100 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53101 - "POST /api/matches/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53102 - "GET /api/matches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57642 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57643 - "POST /api/matches/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58187 - "GET /api/matches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60437 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64370 - "POST /api/matches/refresh HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64373 - "GET /api/matches HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63032 - "GET /health HTTP/1.1" 200 OK

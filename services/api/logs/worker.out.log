@@ -1,0 +1,21 @@
+07:54:02 Worker 84a5e59429594d1f90a90fee3ac9092e: started with PID 45588, version 2.6.1
+07:54:02 Worker 84a5e59429594d1f90a90fee3ac9092e: subscribing to channel rq:pubsub:84a5e59429594d1f90a90fee3ac9092e
+07:54:02 *** Listening on default...
+07:54:02 Worker 84a5e59429594d1f90a90fee3ac9092e: cleaning registries for queue: default
+07:54:02 default: app.services.job_pipeline.ingest_jobs_job({'search': '', 'location': ''}) (867a0016-3f89-4bbc-8d5c-828b6bf5865c)
+07:54:07 Successfully completed app.services.job_pipeline.ingest_jobs_job({'search': '', 'location': ''}) job in 0:00:05.343679s on worker 84a5e59429594d1f90a90fee3ac9092e
+07:54:07 default: Job OK (867a0016-3f89-4bbc-8d5c-828b6bf5865c)
+07:54:07 Result is kept for 500 seconds
+07:54:07 default: app.services.job_pipeline.match_jobs_job(3, 3) (23c74454-79da-46f8-9e35-bd6e4e78f0c7)
+07:54:08 Successfully completed app.services.job_pipeline.match_jobs_job(3, 3) job in 0:00:00.175940s on worker 84a5e59429594d1f90a90fee3ac9092e
+07:54:08 default: Job OK (23c74454-79da-46f8-9e35-bd6e4e78f0c7)
+07:54:08 Result is kept for 500 seconds
+08:05:24 default: app.services.job_pipeline.ingest_jobs_job({'search': '', 'location': ''}) (b758cc7b-5bfe-4200-ba30-e028c204988f)
+08:05:29 Successfully completed app.services.job_pipeline.ingest_jobs_job({'search': '', 'location': ''}) job in 0:00:05.282209s on worker 84a5e59429594d1f90a90fee3ac9092e
+08:05:29 default: Job OK (b758cc7b-5bfe-4200-ba30-e028c204988f)
+08:05:29 Result is kept for 500 seconds
+08:05:29 Worker 84a5e59429594d1f90a90fee3ac9092e: cleaning registries for queue: default
+08:05:29 default: app.services.job_pipeline.match_jobs_job(3, 3) (a7ded7a7-b0b0-4871-934f-ff6566b92091)
+08:05:29 Successfully completed app.services.job_pipeline.match_jobs_job(3, 3) job in 0:00:00.181727s on worker 84a5e59429594d1f90a90fee3ac9092e
+08:05:29 default: Job OK (a7ded7a7-b0b0-4871-934f-ff6566b92091)
+08:05:29 Result is kept for 500 seconds
