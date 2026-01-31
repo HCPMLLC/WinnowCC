@@ -1,33 +1,25 @@
-import os
-
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.candidate_trust import CandidateTrust
 from app.models.trust_audit_log import TrustAuditLog
+from app.models.user import User
 from app.schemas.trust import (
     AdminTrustRecordResponse,
     AdminTrustUpdateRequest,
     AdminTrustUpdateResponse,
 )
+from app.services.auth import require_admin_user
 
 router = APIRouter(prefix="/api/admin/trust", tags=["admin-trust"])
-
-
-def require_admin_token(
-    x_admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
-) -> None:
-    expected = os.getenv("ADMIN_TOKEN", "").strip()
-    if not expected or (x_admin_token or "").strip() != expected:
-        raise HTTPException(status_code=401, detail="Admin token invalid.")
 
 
 @router.get("/queue", response_model=list[AdminTrustRecordResponse])
 def get_trust_queue(
     session: Session = Depends(get_session),
-    _: None = Depends(require_admin_token),
+    admin: User = Depends(require_admin_user),
 ) -> list[AdminTrustRecordResponse]:
     stmt = (
         select(CandidateTrust)
@@ -55,7 +47,7 @@ def set_trust_status(
     trust_id: int,
     payload: AdminTrustUpdateRequest,
     session: Session = Depends(get_session),
-    _: None = Depends(require_admin_token),
+    admin: User = Depends(require_admin_user),
 ) -> AdminTrustUpdateResponse:
     trust = session.get(CandidateTrust, trust_id)
     if trust is None:
@@ -85,7 +77,7 @@ def set_trust_status(
             action="admin_set_status",
             prev_status=prev_status,
             new_status=trust.status,
-            details={"internal_notes": payload.internal_notes},
+            details={"internal_notes": payload.internal_notes, "admin_user_id": admin.id},
         )
     )
     session.commit()

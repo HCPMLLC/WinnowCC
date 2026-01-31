@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 
 type TrustRecord = {
   id: number;
@@ -20,6 +21,7 @@ type TrustUpdateResponse = {
 };
 
 export default function AdminTrustPage() {
+  const router = useRouter();
   const [records, setRecords] = useState<TrustRecord[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -30,16 +32,18 @@ export default function AdminTrustPage() {
     const loadQueue = async () => {
       const apiBase =
         process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-      const adminToken = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
-      if (!adminToken) {
-        setError("Missing admin token.");
-        return;
-      }
       try {
         const response = await fetch(`${apiBase}/api/admin/trust/queue`, {
-          headers: { "X-Admin-Token": adminToken },
           credentials: "include",
         });
+        if (response.status === 401) {
+          router.push("/login");
+          return;
+        }
+        if (response.status === 403) {
+          setError("Admin access required.");
+          return;
+        }
         if (!response.ok) {
           throw new Error("Failed to load trust queue.");
         }
@@ -56,16 +60,11 @@ export default function AdminTrustPage() {
     };
 
     void loadQueue();
-  }, []);
+  }, [router]);
 
   const handleUpdate = async (trustId: number, newStatus: TrustRecord["status"]) => {
     const apiBase =
       process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-    const adminToken = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
-    if (!adminToken) {
-      setError("Missing admin token.");
-      return;
-    }
     setPendingId(trustId);
     setError(null);
     setStatusMessage(null);
@@ -74,7 +73,6 @@ export default function AdminTrustPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "X-Admin-Token": adminToken,
         },
         credentials: "include",
         body: JSON.stringify({
@@ -82,6 +80,14 @@ export default function AdminTrustPage() {
           internal_notes: notes[trustId] ?? null,
         }),
       });
+      if (response.status === 401) {
+        router.push("/login");
+        return;
+      }
+      if (response.status === 403) {
+        setError("Admin access required.");
+        return;
+      }
       if (!response.ok) {
         throw new Error("Failed to update trust status.");
       }

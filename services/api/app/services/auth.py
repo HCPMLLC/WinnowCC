@@ -16,11 +16,9 @@ from app.models.user import User
 # -----------------------
 JWT_ALG = "HS256"
 # Support legacy env names used in .env.example/README.
-JWT_SECRET = (
-    os.getenv("AUTH_JWT_SECRET")
-    or os.getenv("AUTH_SECRET")
-    or "dev-secret-change-me"
-).strip()
+JWT_SECRET = (os.getenv("AUTH_JWT_SECRET") or os.getenv("AUTH_SECRET") or "").strip()
+if not JWT_SECRET:
+    raise RuntimeError("AUTH_SECRET environment variable must be set")
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "rm_session").strip()
 COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
 SESSION_DAYS = int(
@@ -115,4 +113,10 @@ def get_current_user(
 def require_onboarded_user(user: User = Depends(get_current_user)) -> User:
     if not user.onboarding_completed_at:
         raise HTTPException(status_code=403, detail="Complete onboarding first.")
+    return user
+
+
+def require_admin_user(user: User = Depends(get_current_user)) -> User:
+    if not user.is_admin:
+        raise HTTPException(status_code=403, detail="Admin access required.")
     return user
