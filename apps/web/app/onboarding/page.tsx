@@ -1,249 +1,484 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+
+import { fetchAuthMe } from "../lib/auth";
+import { normalizeRedirect, withRedirectParam } from "../lib/redirects";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
-const parseCommaList = (value: string) =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
+type OnboardingStatus = {
+  completed: boolean;
+  current_step: string;
+  missing: string[];
+};
+
+type LocationEntry = {
+  city: string;
+  state: string;
+  country: string;
+  radius_miles: number;
+};
 
 export default function OnboardingPage() {
   const router = useRouter();
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [locationCity, setLocationCity] = useState("");
-  const [state, setState] = useState("");
-  const [country, setCountry] = useState("");
-  const [workAuthorization, setWorkAuthorization] = useState("");
-  const [yearsExperience, setYearsExperience] = useState("");
-  const [desiredJobTypes, setDesiredJobTypes] = useState("");
-  const [desiredLocations, setDesiredLocations] = useState("");
-  const [desiredSalaryMin, setDesiredSalaryMin] = useState("");
-  const [desiredSalaryMax, setDesiredSalaryMax] = useState("");
-  const [remotePreference, setRemotePreference] = useState("no_preference");
+  const searchParams = useSearchParams();
+  const redirectParam = searchParams.get("redirect");
+  const redirectTarget = normalizeRedirect(redirectParam, "/matches");
+
+  // UI state
+  const [step, setStep] = useState<"loading" | "preferences" | "consent">("loading");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  // Preferences state
+  const [roles, setRoles] = useState("");
+  const [locationCity, setLocationCity] = useState("");
+  const [locationState, setLocationState] = useState("");
+  const [locationCountry, setLocationCountry] = useState("US");
+  const [workMode, setWorkMode] = useState("any");
+  const [salaryMin, setSalaryMin] = useState("");
+  const [salaryMax, setSalaryMax] = useState("");
+  const [employmentTypes, setEmploymentTypes] = useState<string[]>(["full_time"]);
+  const [travelPercent, setTravelPercent] = useState("");
+
+  // Consent state
+  const [acceptTerms, setAcceptTerms] = useState(false);
+  const [mjassConsent, setMjassConsent] = useState(false);
+  const [dataProcessingConsent, setDataProcessingConsent] = useState(false);
+  const [applicationMode, setApplicationMode] = useState<"review_required" | "auto_apply_limited">("review_required");
+
+  useEffect(() => {
+    const checkStatus = async () => {
+      const me = await fetchAuthMe();
+      if (!me) {
+        router.replace(withRedirectParam("/login", "/onboarding"));
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_BASE}/api/onboarding/status`, {
+          credentials: "include",
+        });
+        if (!response.ok) {
+          throw new Error("Failed to check onboarding status");
+        }
+        const status = (await response.json()) as OnboardingStatus;
+
+        if (status.completed) {
+          router.replace(redirectTarget);
+          return;
+        }
+
+        if (status.missing.includes("preferences")) {
+          setStep("preferences");
+        } else if (status.missing.includes("consent")) {
+          setStep("consent");
+        } else {
+          setStep("preferences");
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Failed to load status");
+        setStep("preferences");
+      }
+    };
+    void checkStatus();
+  }, [redirectTarget, router]);
+
+  const toggleEmploymentType = (type: string) => {
+    setEmploymentTypes((current) =>
+      current.includes(type)
+        ? current.filter((t) => t !== type)
+        : [...current, type]
+    );
+  };
+
+  const handlePreferencesSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
     setError(null);
     setIsSubmitting(true);
 
+    const rolesList = roles
+      .split(",")
+      .map((r) => r.trim())
+      .filter(Boolean);
+
+    if (rolesList.length === 0) {
+      setError("Please enter at least one target role");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const locations: LocationEntry[] = [
+      {
+        city: locationCity || "Any",
+        state: locationState || "",
+        country: locationCountry || "US",
+        radius_miles: 50,
+      },
+    ];
+
     try {
-      const response = await fetch(`${API_BASE}/api/onboarding/complete`, {
-        method: "POST",
+      const response = await fetch(`${API_BASE}/api/onboarding/preferences`, {
+        method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          first_name: firstName || null,
-          last_name: lastName || null,
-          phone: phone || null,
-          location_city: locationCity || null,
-          state: state || null,
-          country: country || null,
-          work_authorization: workAuthorization || null,
-          years_experience: yearsExperience ? Number(yearsExperience) : null,
-          desired_job_types: parseCommaList(desiredJobTypes),
-          desired_locations: parseCommaList(desiredLocations),
-          desired_salary_min: desiredSalaryMin ? Number(desiredSalaryMin) : null,
-          desired_salary_max: desiredSalaryMax ? Number(desiredSalaryMax) : null,
-          remote_preference: remotePreference || null,
+          roles: rolesList,
+          locations,
+          work_mode: workMode,
+          salary_min: salaryMin ? Number(salaryMin) : null,
+          salary_max: salaryMax ? Number(salaryMax) : null,
+          salary_currency: "USD",
+          employment_types: employmentTypes,
+          travel_percent_max: travelPercent ? Number(travelPercent) : null,
         }),
       });
 
       if (!response.ok) {
-        let message = "Failed to save onboarding details.";
-        try {
-          const payload = (await response.json()) as { detail?: string };
-          if (payload?.detail) {
-            message = payload.detail;
-          }
-        } catch {
-          // Keep default message.
-        }
-        throw new Error(message);
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to save preferences");
       }
 
-      router.push("/upload");
-    } catch (caught) {
-      const message =
-        caught instanceof Error
-          ? caught.message
-          : "Failed to save onboarding details.";
-      setError(message);
+      setStep("consent");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save preferences");
     } finally {
       setIsSubmitting(false);
     }
   };
 
+  const handleConsentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
+
+    if (!acceptTerms || !mjassConsent || !dataProcessingConsent) {
+      setError("All consents are required to continue");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/onboarding/consent`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          terms_version: "2026-01-31-v1",
+          accept_terms: true,
+          mjass_consent: true,
+          data_processing_consent: true,
+          application_mode: applicationMode,
+        }),
+      });
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.detail || "Failed to save consent");
+      }
+
+      router.push(redirectTarget);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save consent");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (step === "loading") {
+    return (
+      <main className="mx-auto flex min-h-screen max-w-4xl flex-col items-center justify-center px-6 py-16">
+        <p className="text-sm text-slate-600">Loading...</p>
+      </main>
+    );
+  }
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-6 px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-6 py-16">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">Onboarding</h1>
+        <h1 className="text-3xl font-semibold">
+          {step === "preferences" ? "Job Preferences" : "Consent & Application Mode"}
+        </h1>
         <p className="text-sm text-slate-600">
-          Tell us a bit about your preferences so we can personalize matching.
+          {step === "preferences"
+            ? "Tell us what you're looking for so we can find the best matches."
+            : "Review and accept to enable MJASS job matching."}
         </p>
+        <div className="mt-2 flex gap-2">
+          <div
+            className={`h-2 w-24 rounded-full ${
+              step === "preferences" ? "bg-slate-900" : "bg-slate-300"
+            }`}
+          />
+          <div
+            className={`h-2 w-24 rounded-full ${
+              step === "consent" ? "bg-slate-900" : "bg-slate-300"
+            }`}
+          />
+        </div>
       </header>
 
-      <form
-        onSubmit={handleSubmit}
-        className="flex flex-col gap-5 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm"
-      >
-        <div className="grid gap-4 md:grid-cols-2">
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            First name
-            <input
-              type="text"
-              value={firstName}
-              onChange={(event) => setFirstName(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Last name
-            <input
-              type="text"
-              value={lastName}
-              onChange={(event) => setLastName(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Phone
-            <input
-              type="tel"
-              value={phone}
-              onChange={(event) => setPhone(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            City
-            <input
-              type="text"
-              value={locationCity}
-              onChange={(event) => setLocationCity(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            State
-            <input
-              type="text"
-              value={state}
-              onChange={(event) => setState(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Country
-            <input
-              type="text"
-              value={country}
-              onChange={(event) => setCountry(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Work authorization
-            <input
-              type="text"
-              value={workAuthorization}
-              onChange={(event) => setWorkAuthorization(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="US Citizen, H1B, etc."
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Years of experience
-            <input
-              type="number"
-              min={0}
-              value={yearsExperience}
-              onChange={(event) => setYearsExperience(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            />
-          </label>
+      {error && (
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {error}
         </div>
+      )}
 
-        <div className="grid gap-4 md:grid-cols-2">
+      {step === "preferences" && (
+        <form
+          onSubmit={handlePreferencesSubmit}
+          className="flex flex-col gap-5 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm"
+        >
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Desired job types (comma-separated)
+            Target Roles (comma-separated) *
             <input
               type="text"
-              value={desiredJobTypes}
-              onChange={(event) => setDesiredJobTypes(event.target.value)}
+              value={roles}
+              onChange={(e) => setRoles(e.target.value)}
+              placeholder="Software Engineer, DevOps Engineer, SRE"
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Full-time, Contract"
+              required
             />
           </label>
+
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+              City
+              <input
+                type="text"
+                value={locationCity}
+                onChange={(e) => setLocationCity(e.target.value)}
+                placeholder="Chicago"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+              State
+              <input
+                type="text"
+                value={locationState}
+                onChange={(e) => setLocationState(e.target.value)}
+                placeholder="IL"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+              Country
+              <input
+                type="text"
+                value={locationCountry}
+                onChange={(e) => setLocationCountry(e.target.value)}
+                placeholder="US"
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+          </div>
+
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Desired locations (comma-separated)
-            <input
-              type="text"
-              value={desiredLocations}
-              onChange={(event) => setDesiredLocations(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="New York, Remote"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Desired salary minimum
-            <input
-              type="number"
-              min={0}
-              value={desiredSalaryMin}
-              onChange={(event) => setDesiredSalaryMin(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="80000"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Desired salary maximum
-            <input
-              type="number"
-              min={0}
-              value={desiredSalaryMax}
-              onChange={(event) => setDesiredSalaryMax(event.target.value)}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="120000"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Remote preference
+            Work Mode
             <select
-              value={remotePreference}
-              onChange={(event) => setRemotePreference(event.target.value)}
+              value={workMode}
+              onChange={(e) => setWorkMode(e.target.value)}
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
             >
-              <option value="no_preference">No preference</option>
-              <option value="remote">Remote</option>
+              <option value="any">Any (Remote, Hybrid, or On-site)</option>
+              <option value="remote">Remote Only</option>
               <option value="hybrid">Hybrid</option>
-              <option value="onsite">On-site</option>
+              <option value="onsite">On-site Only</option>
             </select>
           </label>
-        </div>
 
-        {error ? (
-          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+              Minimum Salary (USD)
+              <input
+                type="number"
+                value={salaryMin}
+                onChange={(e) => setSalaryMin(e.target.value)}
+                placeholder="100000"
+                min={0}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+              Maximum Salary (USD)
+              <input
+                type="number"
+                value={salaryMax}
+                onChange={(e) => setSalaryMax(e.target.value)}
+                placeholder="180000"
+                min={0}
+                className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+              />
+            </label>
           </div>
-        ) : null}
 
-        <button
-          type="submit"
-          disabled={isSubmitting}
-          className="w-fit rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+            Employment Type *
+            <div className="flex flex-wrap gap-4">
+              {["full_time", "part_time", "contract", "internship"].map((type) => (
+                <label key={type} className="flex items-center gap-2 font-normal">
+                  <input
+                    type="checkbox"
+                    checked={employmentTypes.includes(type)}
+                    onChange={() => toggleEmploymentType(type)}
+                  />
+                  {type.replace("_", "-")}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+            Max Travel (% of time)
+            <input
+              type="number"
+              value={travelPercent}
+              onChange={(e) => setTravelPercent(e.target.value)}
+              placeholder="10"
+              min={0}
+              max={100}
+              className="w-32 rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-fit rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+          >
+            {isSubmitting ? "Saving..." : "Continue"}
+          </button>
+        </form>
+      )}
+
+      {step === "consent" && (
+        <form
+          onSubmit={handleConsentSubmit}
+          className="flex flex-col gap-5 rounded-3xl border border-slate-200 bg-white p-8 shadow-sm"
         >
-          {isSubmitting ? "Saving..." : "Continue"}
-        </button>
-      </form>
+          <section className="rounded-2xl border border-blue-100 bg-blue-50 p-6">
+            <h2 className="text-lg font-semibold text-slate-900">
+              MJASS - Matched Jobs & Application Staging
+            </h2>
+            <p className="mt-2 text-sm text-slate-700">
+              MJASS analyzes your resume against job listings to find the best matches,
+              explains why each job is a good fit, and helps you prepare tailored
+              application materials.
+            </p>
+            <ul className="mt-4 list-inside list-disc text-sm text-slate-600">
+              <li>AI-powered job matching with explainability</li>
+              <li>Tailored resume and cover letter generation</li>
+              <li>Application draft review before submission</li>
+              <li>Full audit trail of your decisions</li>
+            </ul>
+          </section>
+
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+            Application Mode
+            <p className="font-normal text-slate-500">
+              Choose how you want to review matched jobs before applying.
+            </p>
+            <div className="mt-2 flex flex-col gap-3">
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  name="applicationMode"
+                  value="review_required"
+                  checked={applicationMode === "review_required"}
+                  onChange={() => setApplicationMode("review_required")}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="font-semibold">Review Required (Recommended)</div>
+                  <p className="font-normal text-slate-500">
+                    You manually approve each application draft before any action is taken.
+                  </p>
+                </div>
+              </label>
+              <label className="flex items-start gap-3 rounded-xl border border-slate-200 p-4 hover:bg-slate-50">
+                <input
+                  type="radio"
+                  name="applicationMode"
+                  value="auto_apply_limited"
+                  checked={applicationMode === "auto_apply_limited"}
+                  onChange={() => setApplicationMode("auto_apply_limited")}
+                  className="mt-1"
+                />
+                <div>
+                  <div className="font-semibold">Auto-Apply (Limited)</div>
+                  <p className="font-normal text-slate-500">
+                    Low-friction applications may be submitted automatically for high-confidence matches.
+                  </p>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Consents</h2>
+            <div className="mt-4 flex flex-col gap-3 text-sm text-slate-700">
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={acceptTerms}
+                  onChange={(e) => setAcceptTerms(e.target.checked)}
+                  className="mt-1"
+                  required
+                />
+                <span>
+                  I accept the <span className="font-semibold">Terms of Service</span> and{" "}
+                  <span className="font-semibold">Privacy Policy</span>. *
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={dataProcessingConsent}
+                  onChange={(e) => setDataProcessingConsent(e.target.checked)}
+                  className="mt-1"
+                  required
+                />
+                <span>
+                  I consent to processing my resume and profile data for job matching. *
+                </span>
+              </label>
+              <label className="flex items-start gap-3">
+                <input
+                  type="checkbox"
+                  checked={mjassConsent}
+                  onChange={(e) => setMjassConsent(e.target.checked)}
+                  className="mt-1"
+                  required
+                />
+                <span>
+                  I consent to MJASS creating application drafts and tracking my decisions. *
+                </span>
+              </label>
+            </div>
+          </section>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setStep("preferences")}
+              className="rounded-full border border-slate-300 px-6 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+            >
+              Back
+            </button>
+            <button
+              type="submit"
+              disabled={isSubmitting || !acceptTerms || !mjassConsent || !dataProcessingConsent}
+              className="rounded-full bg-slate-900 px-6 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+            >
+              {isSubmitting ? "Completing..." : "Complete Setup"}
+            </button>
+          </div>
+        </form>
+      )}
     </main>
   );
 }
