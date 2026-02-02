@@ -21,6 +21,14 @@ alembic revision --autogenerate -m "init"
 alembic upgrade head
 ```
 
+## Tests (local)
+```powershell
+cd services\api
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements-dev.txt
+.\scripts\test.ps1
+```
+
 Auth notes:
 - Cookies are HttpOnly and SameSite=Lax.
 - Use a stable `AUTH_SECRET` locally so sessions persist across restarts.

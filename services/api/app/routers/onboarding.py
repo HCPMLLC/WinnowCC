@@ -34,6 +34,12 @@ def complete_onboarding(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> CandidateResponse:
+    # Required consents for onboarding (billing consents are NOT required here)
+    if not payload.consent_terms:
+        raise HTTPException(status_code=400, detail="Terms consent is required.")
+    if not payload.consent_privacy:
+        raise HTTPException(status_code=400, detail="Privacy consent is required.")
+
     record = session.execute(
         select(Candidate).where(Candidate.user_id == user.id)
     ).scalar_one_or_none()
@@ -41,6 +47,7 @@ def complete_onboarding(
     data = payload.model_dump()
     data["desired_job_types"] = data.get("desired_job_types") or []
     data["desired_locations"] = data.get("desired_locations") or []
+    data["communication_channels"] = data.get("communication_channels") or []
 
     if record is None:
         record = Candidate(user_id=user.id, **data)

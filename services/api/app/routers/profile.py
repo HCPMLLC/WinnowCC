@@ -5,11 +5,20 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
 from app.models.user import User
-from app.schemas.profile import CandidateProfileResponse, CandidateProfileUpdateRequest
-from app.services.auth import get_current_user
+from app.schemas.profile import (
+    CandidateProfileResponse,
+    CandidateProfileUpdateRequest,
+    ProfileCompletenessResponse,
+)
+from app.services.auth import get_current_user, require_onboarded_user
 from app.services.profile_parser import default_profile_json
+from app.services.profile_scoring import compute_profile_completeness
 
-router = APIRouter(prefix="/api/profile", tags=["profile"])
+router = APIRouter(
+    prefix="/api/profile",
+    tags=["profile"],
+    dependencies=[Depends(require_onboarded_user)],
+)
 
 
 @router.get("", response_model=CandidateProfileResponse)
@@ -55,3 +64,23 @@ def update_profile(
     return CandidateProfileResponse(
         version=profile.version, profile_json=profile.profile_json
     )
+
+
+@router.get("/completeness", response_model=ProfileCompletenessResponse)
+def get_profile_completeness(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ProfileCompletenessResponse:
+    stmt = (
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user.id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    profile = session.execute(stmt).scalars().first()
+    if profile is None:
+        profile_json = default_profile_json()
+    else:
+        profile_json = profile.profile_json
+
+    return compute_profile_completeness(profile_json)

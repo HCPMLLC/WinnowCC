@@ -1,10 +1,14 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Integer, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
+
+
+# Application status values: saved, applied, interviewing, rejected, offer
+APPLICATION_STATUS_VALUES = ["saved", "applied", "interviewing", "rejected", "offer"]
 
 
 class Match(Base):
@@ -21,3 +25,13 @@ class Match(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+
+    # Interview Probability fields
+    resume_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cover_letter_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    application_logistics_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    referred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    interview_probability: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Application tracking status: saved, applied, interviewing, rejected, offer
+    application_status: Mapped[str | None] = mapped_column(String(20), nullable=True)

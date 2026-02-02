@@ -17,12 +17,16 @@ from app.schemas.resume import (
     ResumeDocumentResponse,
     ResumeUploadResponse,
 )
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, require_onboarded_user
 from app.services.queue import get_queue
 from app.services.resume_parse_job import parse_resume_job
 from app.services.trust_scoring import evaluate_trust_for_resume
 
-router = APIRouter(prefix="/api/resume", tags=["resume"])
+router = APIRouter(
+    prefix="/api/resume",
+    tags=["resume"],
+    dependencies=[Depends(require_onboarded_user)],
+)
 
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024

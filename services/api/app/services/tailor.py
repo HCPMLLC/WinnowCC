@@ -10,7 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
+from app.models.match import Match
 from app.models.tailored_resume import TailoredResume
+from app.services.cover_letter_scoring import compute_cover_letter_score
+from app.services.matching import recalculate_interview_probability
 
 TAILORED_DIR = Path(__file__).resolve().parents[2] / "data" / "tailored"
 
@@ -35,6 +38,26 @@ def create_tailored_docs(
     _build_resume_doc(resume_path, job, profile.profile_json)
     _build_cover_letter_doc(cover_path, job, profile.profile_json)
 
+    # Compute cover letter score
+    cover_letter_score = compute_cover_letter_score(
+        cover_letter_path=cover_path,
+        job_description=job.description_text,
+        company_name=job.company,
+        hiring_manager_name=job.hiring_manager_name,
+    )
+
+    # Update match with cover letter score if exists
+    match = session.execute(
+        select(Match).where(
+            Match.user_id == user_id,
+            Match.job_id == job_id,
+            Match.profile_version == profile.version,
+        )
+    ).scalar_one_or_none()
+    if match:
+        match.cover_letter_score = cover_letter_score
+        match.interview_probability = recalculate_interview_probability(match)
+
     tailored = TailoredResume(
         user_id=user_id,
         job_id=job_id,
@@ -44,6 +67,7 @@ def create_tailored_docs(
         change_log={
             "job_title": job.title,
             "matched_skills": profile.profile_json.get("skills", []),
+            "cover_letter_score": cover_letter_score,
         },
     )
     session.add(tailored)

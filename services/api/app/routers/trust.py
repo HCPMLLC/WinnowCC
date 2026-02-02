@@ -4,10 +4,14 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.models.user import User
 from app.schemas.trust import TrustReviewRequestResponse, TrustStatusResponse
-from app.services.auth import get_current_user
+from app.services.auth import get_current_user, require_onboarded_user
 from app.services.trust_scoring import create_audit_entry, get_latest_trust
 
-router = APIRouter(prefix="/api/trust", tags=["trust"])
+router = APIRouter(
+    prefix="/api/trust",
+    tags=["trust"],
+    dependencies=[Depends(require_onboarded_user)],
+)
 
 
 @router.get("/me", response_model=TrustStatusResponse)

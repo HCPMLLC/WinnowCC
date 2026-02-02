@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
+import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 
 type UploadResult = {
   resume_document_id: number;
@@ -26,6 +27,8 @@ const MAX_UPLOAD_MB = 10;
 
 export default function UploadPage() {
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [result, setResult] = useState<UploadResult | null>(null);
@@ -42,15 +45,17 @@ export default function UploadPage() {
     const guard = async () => {
       const me = await fetchAuthMe();
       if (!me) {
-        router.replace("/login");
+        const redirectValue = buildRedirectValue(pathname, searchParams);
+        router.replace(withRedirectParam("/login", redirectValue));
         return;
       }
       if (!me.onboarding_complete) {
-        router.replace("/onboarding");
+        const redirectValue = buildRedirectValue(pathname, searchParams);
+        router.replace(withRedirectParam("/onboarding", redirectValue));
       }
     };
     void guard();
-  }, [router]);
+  }, [pathname, router, searchParams]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

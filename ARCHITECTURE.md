@@ -1,4 +1,4 @@
-# ARCHITECTURE.md — ResumeMatch (Web + Mobile + Cloud)
+# ARCHITECTURE.md — Winnow (Web + Mobile + Cloud)
 
 ## 0) Goals (what this architecture optimizes for)
 - Beginner-friendly development and deployment
@@ -84,11 +84,11 @@ All heavy operations are async:
 ## 3) Cloud deployment on Google Cloud (recommended)
 
 ### 3.1 Services
-- Cloud Run (API) — `resumematch-api`
-- Cloud Run (worker service) OR Cloud Run Jobs — `resumematch-worker`
-- Cloud SQL (Postgres) — `resumematch-db`
+- Cloud Run (API) — `winnow-api`
+- Cloud Run (worker service) OR Cloud Run Jobs — `winnow-worker`
+- Cloud SQL (Postgres) — `winnow-db`
 - Memorystore Redis (optional early) OR managed Redis later
-- Cloud Storage bucket — `resumematch-resumes`
+- Cloud Storage bucket — `winnow-resumes`
 - Secret Manager — store API keys, DB URL, Stripe keys
 - Cloud Scheduler — triggers ingestion jobs
 
