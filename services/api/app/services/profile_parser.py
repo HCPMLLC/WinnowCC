@@ -12,10 +12,26 @@ SECTION_HEADINGS = {
     "experience",
     "work experience",
     "professional experience",
+    "employment history",
+    "work history",
+    "employment",
+    "career history",
+    "relevant experience",
     "education",
     "projects",
     "certifications",
     "skills",
+}
+
+EXPERIENCE_HEADINGS = {
+    "experience",
+    "work experience",
+    "professional experience",
+    "employment history",
+    "work history",
+    "employment",
+    "career history",
+    "relevant experience",
 }
 
 SKILL_KEYWORDS = [
@@ -190,9 +206,7 @@ def _extract_skills(lines: list[str], text: str) -> list[str]:
 
 
 def _extract_experience(lines: list[str]) -> list[dict]:
-    section = _extract_section(
-        lines, {"experience", "work experience", "professional experience"}
-    )
+    section = _extract_section(lines, EXPERIENCE_HEADINGS)
     return _parse_role_section(section)
 
 
@@ -244,17 +258,43 @@ def _extract_section(lines: list[str], headings: set[str]) -> list[str]:
 
 
 def _split_chunks(lines: list[str]) -> list[list[str]]:
+    """Split lines into chunks, separated by blank lines or date range patterns.
+
+    Many resumes don't have blank lines between experience entries, so we also
+    look for lines containing date ranges as potential chunk boundaries.
+    """
     chunks = []
     current = []
-    for line in lines:
-        if not line.strip():
+
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            # Blank line - end current chunk
             if current:
                 chunks.append(current)
                 current = []
             continue
+
+        # Check if this line starts a new chunk (contains a date range and isn't a bullet)
+        is_bullet = stripped.startswith(("-", "*", "•", "○", "►", "▪"))
+        has_date = DATE_RANGE_RE.search(line) is not None
+
+        # If line has a date range and isn't a bullet, it might be a new entry
+        if has_date and not is_bullet and current:
+            # Check if current chunk has at least one bullet or multiple lines
+            # to avoid splitting too aggressively
+            has_content = len(current) > 1 or any(
+                l.strip().startswith(("-", "*", "•", "○", "►", "▪")) for l in current
+            )
+            if has_content:
+                chunks.append(current)
+                current = []
+
         current.append(line)
+
     if current:
         chunks.append(current)
+
     return chunks
 
 
@@ -263,22 +303,82 @@ def _parse_role_section(lines: list[str]) -> list[dict]:
     for chunk in _split_chunks(lines):
         if not chunk:
             continue
-        headline = chunk[0]
+
         company = None
         title = None
+        headline = chunk[0]
+
+        # Try "Title at Company" format
         if " at " in headline.lower():
             parts = re.split(r"\s+at\s+", headline, maxsplit=1, flags=re.IGNORECASE)
             if len(parts) == 2:
                 title = parts[0].strip()
                 company = parts[1].strip()
+        # Try "Company - Title" or "Title - Company" format
         elif " - " in headline:
             left, right = [part.strip() for part in headline.split(" - ", 1)]
             if left and right:
-                company = left
-                title = right
+                # Heuristic: if right contains common title words, it's probably the title
+                title_words = {"engineer", "manager", "developer", "analyst", "director",
+                               "specialist", "consultant", "lead", "senior", "junior",
+                               "associate", "coordinator", "administrator", "designer",
+                               "architect", "scientist", "intern", "executive", "officer",
+                               "president", "vp", "head"}
+                right_lower = right.lower()
+                if any(word in right_lower for word in title_words):
+                    company = left
+                    title = right
+                else:
+                    # Default: assume left is company, right is title
+                    company = left
+                    title = right
+        # Try to extract from separate lines (common format)
+        elif len(chunk) >= 2:
+            # First line might be company, second might be title (or vice versa)
+            line1 = chunk[0].strip()
+            line2 = chunk[1].strip() if not chunk[1].startswith(("-", "*", "•")) else None
+
+            if line2:
+                # Check if line2 looks like a title
+                title_words = {"engineer", "manager", "developer", "analyst", "director",
+                               "specialist", "consultant", "lead", "senior", "junior",
+                               "associate", "coordinator", "administrator", "designer",
+                               "architect", "scientist", "intern", "executive", "officer",
+                               "president", "vp", "head"}
+                line2_lower = line2.lower()
+
+                # Remove date patterns from lines for cleaner extraction
+                clean_line1 = DATE_RANGE_RE.sub("", line1).strip()
+                clean_line2 = DATE_RANGE_RE.sub("", line2).strip()
+
+                if any(word in line2_lower for word in title_words):
+                    company = clean_line1 if clean_line1 else None
+                    title = clean_line2 if clean_line2 else None
+                elif any(word in line1.lower() for word in title_words):
+                    title = clean_line1 if clean_line1 else None
+                    company = clean_line2 if clean_line2 else None
+                else:
+                    # Default: line1 is company, line2 is title
+                    company = clean_line1 if clean_line1 else None
+                    title = clean_line2 if clean_line2 else None
+
+        # If still no company/title, use headline as company (fallback)
+        if not company and not title and headline:
+            # Remove dates from headline
+            clean_headline = DATE_RANGE_RE.sub("", headline).strip()
+            if clean_headline:
+                company = clean_headline
 
         start_date, end_date = _extract_dates(chunk)
-        bullets = [line.lstrip("-* ").strip() for line in chunk[1:] if line.startswith(("-", "*"))]
+        # Extract bullets from any line starting with bullet characters
+        bullets = []
+        for line in chunk[1:]:
+            stripped = line.strip()
+            if stripped.startswith(("-", "*", "•", "○", "►", "▪")):
+                bullet_text = stripped.lstrip("-*•○►▪ ").strip()
+                if bullet_text:
+                    bullets.append(bullet_text)
+
         if company or title or bullets or start_date or end_date:
             items.append(
                 {

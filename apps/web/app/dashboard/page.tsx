@@ -338,6 +338,227 @@ export default function DashboardPage() {
         </div>
       )}
 
+      {/* Recommendations to improve scores */}
+      {!loading && metrics && (
+        <div className="mt-8">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Recommendations to Improve Your Scores
+          </h2>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {/* Profile Completeness recommendations */}
+            {metrics.profile_completeness_score < 100 && (
+              <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-blue-100 p-2">
+                    <svg
+                      className="h-4 w-4 text-blue-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-blue-900">Complete Your Profile</h3>
+                    <p className="mt-1 text-sm text-blue-700">
+                      {metrics.profile_completeness_score < 50
+                        ? "Add your skills, work history, and education to unlock better job matches."
+                        : metrics.profile_completeness_score < 80
+                          ? "Add more details to your experience and skills for higher match scores."
+                          : "You're almost there! Fill in the remaining sections to reach 100%."}
+                    </p>
+                    <a
+                      href="/profile"
+                      className="mt-2 inline-block text-sm font-medium text-blue-600 hover:text-blue-800"
+                    >
+                      Edit profile &rarr;
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Qualified Jobs recommendations */}
+            {metrics.qualified_jobs_count < 10 && (
+              <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-purple-100 p-2">
+                    <svg
+                      className="h-4 w-4 text-purple-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-purple-900">Expand Your Opportunities</h3>
+                    <p className="mt-1 text-sm text-purple-700">
+                      {metrics.qualified_jobs_count === 0
+                        ? "Upload your resume and complete your profile to start seeing job matches."
+                        : "Add more skills to your profile or consider related job titles to see more matches."}
+                    </p>
+                    <a
+                      href="/profile"
+                      className="mt-2 inline-block text-sm font-medium text-purple-600 hover:text-purple-800"
+                    >
+                      Update skills &rarr;
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Applications recommendations */}
+            {metrics.qualified_jobs_count > 0 && metrics.submitted_applications_count < 5 && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-full bg-amber-100 p-2">
+                    <svg
+                      className="h-4 w-4 text-amber-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                      />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 className="font-medium text-amber-900">Apply to More Jobs</h3>
+                    <p className="mt-1 text-sm text-amber-700">
+                      You have {metrics.qualified_jobs_count} qualified matches. Apply within the first 10 days of posting for up to 8x better interview odds.
+                    </p>
+                    <a
+                      href="/matches"
+                      className="mt-2 inline-block text-sm font-medium text-amber-600 hover:text-amber-800"
+                    >
+                      View matches &rarr;
+                    </a>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Interview rate recommendations */}
+            {metrics.submitted_applications_count > 0 &&
+              metrics.interviews_requested_count / metrics.submitted_applications_count < 0.1 && (
+                <div className="rounded-xl border border-cyan-200 bg-cyan-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-cyan-100 p-2">
+                      <svg
+                        className="h-4 w-4 text-cyan-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-cyan-900">Boost Your Interview Rate</h3>
+                      <p className="mt-1 text-sm text-cyan-700">
+                        Referrals increase interview odds by 8x. Mark jobs where you have a connection and use tailored resumes for each application.
+                      </p>
+                      <a
+                        href="/matches"
+                        className="mt-2 inline-block text-sm font-medium text-cyan-600 hover:text-cyan-800"
+                      >
+                        Add referrals &rarr;
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* Offer conversion recommendations */}
+            {metrics.interviews_requested_count > 0 &&
+              metrics.offers_received_count === 0 && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-green-100 p-2">
+                      <svg
+                        className="h-4 w-4 text-green-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-green-900">Convert Interviews to Offers</h3>
+                      <p className="mt-1 text-sm text-green-700">
+                        You&apos;re getting interviews! Research each company thoroughly, prepare STAR stories, and follow up within 24 hours.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+            {/* All metrics looking good */}
+            {metrics.profile_completeness_score >= 100 &&
+              metrics.qualified_jobs_count >= 10 &&
+              metrics.submitted_applications_count >= 5 &&
+              (metrics.submitted_applications_count === 0 ||
+                metrics.interviews_requested_count / metrics.submitted_applications_count >= 0.1) &&
+              (metrics.interviews_requested_count === 0 || metrics.offers_received_count > 0) && (
+                <div className="rounded-xl border border-green-200 bg-green-50 p-4 md:col-span-2 lg:col-span-3">
+                  <div className="flex items-start gap-3">
+                    <div className="rounded-full bg-green-100 p-2">
+                      <svg
+                        className="h-4 w-4 text-green-600"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth={2}
+                          d="M5 13l4 4L19 7"
+                        />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-green-900">You&apos;re On Track!</h3>
+                      <p className="mt-1 text-sm text-green-700">
+                        Your job search is progressing well. Keep applying to high-match jobs and leveraging your referral network.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+          </div>
+        </div>
+      )}
+
       {/* Pipeline visualization placeholder */}
       {!loading && metrics && (
         <div className="mt-8 rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center">
