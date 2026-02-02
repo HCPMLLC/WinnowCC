@@ -1,6 +1,6 @@
 # SPEC.md — Resume-to-Jobs Consumer SaaS (Web + Mobile) v1
 
-**Project Name (working):** ResumeMatch  
+**Project Name (working):** Winnow  
 **Audience:** Consumer (any job seeker)  
 **Timeline Target:** 6 months to public launch  
 **Platforms:** Web app (desktop-first), Mobile app (iOS/Android via Expo), Cloud-hosted backend  

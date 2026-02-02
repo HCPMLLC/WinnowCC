@@ -1,8 +1,13 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel
 
 from app.schemas.jobs import JobResponse
+
+
+# Valid application status values
+ApplicationStatus = Literal["saved", "applied", "interviewing", "rejected", "offer"]
 
 
 class MatchResponse(BaseModel):
@@ -13,8 +18,35 @@ class MatchResponse(BaseModel):
     offer_probability: int
     reasons: dict
     created_at: datetime
+    # Interview Probability fields
+    resume_score: int | None = None
+    cover_letter_score: int | None = None
+    application_logistics_score: int | None = None
+    referred: bool = False
+    interview_probability: int | None = None
+    # Application tracking
+    application_status: str | None = None
 
 
 class MatchesRefreshResponse(BaseModel):
     status: str
     job_id: str
+
+
+class ReferralUpdateRequest(BaseModel):
+    referred: bool
+
+
+class ReferralUpdateResponse(BaseModel):
+    id: int
+    referred: bool
+    interview_probability: int | None
+
+
+class ApplicationStatusUpdateRequest(BaseModel):
+    status: ApplicationStatus
+
+
+class ApplicationStatusUpdateResponse(BaseModel):
+    id: int
+    application_status: str | None

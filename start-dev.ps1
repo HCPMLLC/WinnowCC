@@ -1,5 +1,5 @@
 # start-dev.ps1
-# One-command dev startup for ResumeMatch (Windows)
+# One-command dev startup for Winnow (Windows)
 
 $ErrorActionPreference = "Stop"
 
@@ -29,7 +29,7 @@ $infra = Join-Path $root "infra"
 $api = Join-Path $root "services\api"
 $web = Join-Path $root "apps\web"
 
-Write-Host "== ResumeMatch dev startup ==" -ForegroundColor Cyan
+Write-Host "== Winnow dev startup ==" -ForegroundColor Cyan
 Write-Host "Root:  $root"
 Write-Host "Infra: $infra"
 Write-Host "API:   $api"
@@ -45,24 +45,24 @@ Pop-Location
 # --- Start API (uvicorn) ---
 Write-Host "[2/4] Starting API (uvicorn)..." -ForegroundColor Yellow
 Start-NewPSWindow `
-  -title "ResumeMatch API" `
+  -title "Winnow API" `
   -workingDir $api `
   -command ".\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload"
 
 # --- Start Worker (RQ) ---
 Write-Host "[3/4] Starting Worker (RQ)..." -ForegroundColor Yellow
 Start-NewPSWindow `
-  -title "ResumeMatch Worker" `
+  -title "Winnow Worker" `
   -workingDir $api `
   -command ".\.venv\Scripts\Activate.ps1; python -m app.worker"
 
 # --- Start Web (Next.js) ---
 Write-Host "[4/4] Starting Web (Next.js)..." -ForegroundColor Yellow
 Start-NewPSWindow `
-  -title "ResumeMatch Web" `
+  -title "Winnow Web" `
   -workingDir $web `
   -command "npm run dev"
 
 Write-Host ""
-Write-Host "Done. Open the web app URL shown in the 'ResumeMatch Web' window (usually http://localhost:3000 or :3001)." -ForegroundColor Green
-Write-Host "API should be at http://127.0.0.1:8000 (see the 'ResumeMatch API' window)." -ForegroundColor Green
+Write-Host "Done. Open the web app URL shown in the 'Winnow Web' window (usually http://localhost:3000 or :3001)." -ForegroundColor Green
+Write-Host "API should be at http://127.0.0.1:8000 (see the 'Winnow API' window)." -ForegroundColor Green

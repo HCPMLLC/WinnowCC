@@ -15,6 +15,14 @@ class CandidateUpsertRequest(BaseModel):
     desired_salary_min: int | None = None
     desired_salary_max: int | None = None
     remote_preference: str | None = None
+    plan_tier: str | None = None
+    plan_billing_cycle: str | None = None
+    alert_frequency: str | None = None
+    communication_channels: list[str] = Field(default_factory=list)
+    consent_terms: bool = False
+    consent_privacy: bool = False
+    consent_auto_renewal: bool = False
+    consent_marketing: bool = False
 
 
 class CandidateResponse(BaseModel):
@@ -34,3 +42,11 @@ class CandidateResponse(BaseModel):
     desired_salary_min: int | None = None
     desired_salary_max: int | None = None
     remote_preference: str | None = None
+    plan_tier: str | None = None
+    plan_billing_cycle: str | None = None
+    alert_frequency: str | None = None
+    communication_channels: list[str] = Field(default_factory=list)
+    consent_terms: bool = False
+    consent_privacy: bool = False
+    consent_auto_renewal: bool = False
+    consent_marketing: bool = False

@@ -13,11 +13,19 @@ from app.models.job import Job
 from app.models.match import Match
 from app.models.user import User
 from app.schemas.jobs import JobResponse
-from app.schemas.matches import MatchResponse, MatchesRefreshResponse
+from app.schemas.matches import (
+    ApplicationStatusUpdateRequest,
+    ApplicationStatusUpdateResponse,
+    MatchResponse,
+    MatchesRefreshResponse,
+    ReferralUpdateRequest,
+    ReferralUpdateResponse,
+)
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.queue import get_queue
 from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
 from app.services.trust_gate import require_allowed_trust
+from app.services.matching import recalculate_interview_probability
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
@@ -125,6 +133,12 @@ def list_matches(
             offer_probability=match.offer_probability,
             reasons=match.reasons,
             created_at=match.created_at,
+            resume_score=match.resume_score,
+            cover_letter_score=match.cover_letter_score,
+            application_logistics_score=match.application_logistics_score,
+            referred=match.referred,
+            interview_probability=match.interview_probability,
+            application_status=match.application_status,
         )
         for match, job in rows
     ]
@@ -163,4 +177,69 @@ def get_match(
         offer_probability=match.offer_probability,
         reasons=match.reasons,
         created_at=match.created_at,
+        resume_score=match.resume_score,
+        cover_letter_score=match.cover_letter_score,
+        application_logistics_score=match.application_logistics_score,
+        referred=match.referred,
+        interview_probability=match.interview_probability,
+        application_status=match.application_status,
+    )
+
+
+@router.patch(
+    "/{match_id}/referred",
+    response_model=ReferralUpdateResponse,
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def update_referral(
+    match_id: int,
+    body: ReferralUpdateRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ReferralUpdateResponse:
+    """Toggle referral status for a match and recalculate interview probability."""
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    match.referred = body.referred
+    match.interview_probability = recalculate_interview_probability(match)
+    session.commit()
+
+    return ReferralUpdateResponse(
+        id=match.id,
+        referred=match.referred,
+        interview_probability=match.interview_probability,
+    )
+
+
+@router.patch(
+    "/{match_id}/status",
+    response_model=ApplicationStatusUpdateResponse,
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def update_application_status(
+    match_id: int,
+    body: ApplicationStatusUpdateRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ApplicationStatusUpdateResponse:
+    """Update application tracking status for a match.
+
+    Valid statuses: saved, applied, interviewing, rejected, offer
+    """
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    match.application_status = body.status
+    session.commit()
+
+    return ApplicationStatusUpdateResponse(
+        id=match.id,
+        application_status=match.application_status,
     )

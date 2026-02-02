@@ -2,8 +2,11 @@ import "./globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "ResumeMatch",
+  title: "Winnow",
   description: "Match resumes to roles with confidence.",
+  icons: {
+    icon: "/Winnow Favico.ico",
+  },
 };
 
 export default function RootLayout({

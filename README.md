@@ -1,4 +1,4 @@
-# ResumeMatch Monorepo
+# Winnow Monorepo
 
 Package manager: npm (pnpm not available in this environment).
 

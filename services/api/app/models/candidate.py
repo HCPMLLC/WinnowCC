@@ -31,6 +31,28 @@ class Candidate(Base):
     desired_salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
     desired_salary_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
     remote_preference: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    plan_tier: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    plan_billing_cycle: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    alert_frequency: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    communication_channels: Mapped[list[str]] = mapped_column(
+        JSONB, nullable=False, default=list
+    )
+    consent_terms: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
+    consent_privacy: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
+    consent_auto_renewal: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
+    consent_marketing: Mapped[bool] = mapped_column(
+        nullable=False,
+        default=False,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
