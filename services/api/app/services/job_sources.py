@@ -254,6 +254,81 @@ def _parse_dt(value: object) -> datetime | None:
     return None
 
 
+def _is_remote_job(title: str, location: str) -> bool:
+    """Detect if a job is remote based on title and location keywords."""
+    text = f"{title} {location}".lower()
+    remote_keywords = [
+        "remote", "virtual", "work from home", "wfh", "telecommute",
+        "telework", "anywhere", "distributed", "home-based", "home based"
+    ]
+    return any(kw in text for kw in remote_keywords)
+
+
+def _parse_salary_text(text: str) -> tuple[int | None, int | None, str | None]:
+    """
+    Parse salary information from text.
+
+    Handles formats like:
+    - "$50,000 - $70,000"
+    - "$50k - $70k"
+    - "Between $119-$239 an hour"
+    - "$100,000/year"
+    - "USD 80,000 - 120,000"
+
+    Returns (salary_min, salary_max, currency)
+    """
+    if not text:
+        return None, None, None
+
+    text_lower = text.lower()
+
+    # Detect currency
+    currency = None
+    if "$" in text or "usd" in text_lower:
+        currency = "USD"
+    elif "€" in text or "eur" in text_lower:
+        currency = "EUR"
+    elif "£" in text or "gbp" in text_lower:
+        currency = "GBP"
+
+    # Extract salary amounts with optional 'k' suffix
+    # Pattern matches: $100k, $100,000, 100k, 100000, etc.
+    amount_pattern = r'[\$€£]?\s*(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*([kK])?'
+
+    # Find all potential salary amounts
+    amounts = []
+    for match in re.finditer(amount_pattern, text):
+        amount_str = match.group(1).replace(",", "")
+        k_suffix = match.group(2)
+        try:
+            amount = float(amount_str)
+            # Apply 'k' multiplier if present
+            if k_suffix:
+                amount *= 1000
+            # If amount is very small (< 500), might be hourly rate
+            if amount < 500:
+                # Check if it's an hourly rate
+                if "hour" in text_lower or "/hr" in text_lower or "per hr" in text_lower:
+                    # Convert to annual (2080 work hours/year)
+                    amount = amount * 2080
+            # Filter out unreasonably small amounts (likely not salaries)
+            if amount >= 1000:
+                amounts.append(int(amount))
+        except ValueError:
+            continue
+
+    if not amounts:
+        return None, None, currency
+
+    # Sort amounts and take min/max
+    amounts = sorted(set(amounts))
+
+    if len(amounts) == 1:
+        return amounts[0], amounts[0], currency
+    else:
+        return amounts[0], amounts[-1], currency
+
+
 class RemoteOkSource(JobSource):
     name = "remoteok"
     base_url = "https://remoteok.com/api"
@@ -292,10 +367,10 @@ class RemoteOkSource(JobSource):
 
 class ArbeitnowSource(JobSource):
     name = "arbeitnow"
-    base_url = "https://arbeitnow.com/api/job-board-api"
+    base_url = "https://www.arbeitnow.com/api/job-board-api"
 
     def fetch_jobs(self, query: dict) -> list[JobPosting]:
-        response = httpx.get(self.base_url, timeout=30)
+        response = httpx.get(self.base_url, timeout=30, follow_redirects=True)
         if response.status_code != 200:
             return []
         payload = response.json()
@@ -344,15 +419,17 @@ class AdzunaSource(JobSource):
         payload = response.json()
         jobs = []
         for item in payload.get("results", []):
+            title = item.get("title") or "Untitled"
+            location = (item.get("location") or {}).get("display_name") or "Unknown"
             jobs.append(
                 JobPosting(
                     source=self.name,
                     source_job_id=str(item.get("id")),
                     url=item.get("redirect_url") or "",
-                    title=item.get("title") or "Untitled",
+                    title=title,
                     company=(item.get("company") or {}).get("display_name") or "Unknown",
-                    location=(item.get("location") or {}).get("display_name") or "Unknown",
-                    remote_flag=False,
+                    location=location,
+                    remote_flag=_is_remote_job(title, location),
                     salary_min=item.get("salary_min"),
                     salary_max=item.get("salary_max"),
                     currency=item.get("salary_currency"),
@@ -382,19 +459,34 @@ class JoobleSource(JobSource):
         data = response.json()
         jobs = []
         for item in data.get("jobs", []):
+            title = item.get("title") or "Untitled"
+            location = item.get("location") or "Unknown"
+            salary_text = item.get("salary") or ""
+
+            # Detect remote jobs from title or location
+            remote_flag = _is_remote_job(title, location)
+
+            # Parse salary from text (e.g., "$50,000 - $70,000", "Between $119-$239 an hour")
+            salary_min, salary_max, currency = _parse_salary_text(salary_text)
+
+            # Also try to extract salary from snippet if not in salary field
+            snippet = item.get("snippet") or ""
+            if salary_min is None and salary_max is None:
+                salary_min, salary_max, currency = _parse_salary_text(snippet)
+
             jobs.append(
                 JobPosting(
                     source=self.name,
                     source_job_id=str(item.get("id") or item.get("link") or ""),
                     url=item.get("link") or "",
-                    title=item.get("title") or "Untitled",
+                    title=title,
                     company=item.get("company") or "Unknown",
-                    location=item.get("location") or "Unknown",
-                    remote_flag=False,
-                    salary_min=None,
-                    salary_max=None,
-                    currency=None,
-                    description_text=item.get("snippet") or "",
+                    location=location,
+                    remote_flag=remote_flag,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=snippet,
                     posted_at=_parse_dt(item.get("updated") or item.get("date")),
                     application_deadline=None,
                     hiring_manager_name=None,
@@ -424,19 +516,35 @@ class USAJobsSource(JobSource):
         jobs = []
         for item in data.get("SearchResult", {}).get("SearchResultItems", []):
             matched = item.get("MatchedObjectDescriptor", {})
+            title = matched.get("PositionTitle") or "Untitled"
+            location = (matched.get("PositionLocation") or [{}])[0].get("LocationName", "Unknown")
+
+            # Parse salary from USAJobs remuneration fields
+            remuneration = (matched.get("PositionRemuneration") or [{}])[0]
+            salary_min = None
+            salary_max = None
+            if remuneration.get("MinimumRange"):
+                try:
+                    salary_min = int(float(remuneration["MinimumRange"]))
+                except (ValueError, TypeError):
+                    pass
+            if remuneration.get("MaximumRange"):
+                try:
+                    salary_max = int(float(remuneration["MaximumRange"]))
+                except (ValueError, TypeError):
+                    pass
+
             jobs.append(
                 JobPosting(
                     source=self.name,
                     source_job_id=str(matched.get("PositionID") or ""),
                     url=matched.get("PositionURI", [""])[0],
-                    title=matched.get("PositionTitle") or "Untitled",
+                    title=title,
                     company=matched.get("OrganizationName") or "US Government",
-                    location=(matched.get("PositionLocation") or [{}])[0].get(
-                        "LocationName", "Unknown"
-                    ),
-                    remote_flag=False,
-                    salary_min=None,
-                    salary_max=None,
+                    location=location,
+                    remote_flag=_is_remote_job(title, location),
+                    salary_min=salary_min,
+                    salary_max=salary_max,
                     currency="USD",
                     description_text=matched.get("UserArea", {}).get("Details", {}).get(
                         "JobSummary", ""
@@ -469,20 +577,140 @@ class ZipRecruiterSource(JobSource):
         data = response.json()
         jobs = []
         for item in data.get("jobs", []):
+            title = item.get("name") or "Untitled"
+            location = item.get("location") or "Unknown"
+            snippet = item.get("snippet") or ""
+
+            # Parse salary from ZipRecruiter fields or snippet
+            salary_min = item.get("salary_min_annual")
+            salary_max = item.get("salary_max_annual")
+            currency = item.get("salary_currency") or "USD"
+
+            # If no structured salary, try to parse from snippet
+            if salary_min is None and salary_max is None:
+                salary_min, salary_max, parsed_currency = _parse_salary_text(snippet)
+                if parsed_currency:
+                    currency = parsed_currency
+
             jobs.append(
                 JobPosting(
                     source=self.name,
                     source_job_id=str(item.get("id") or ""),
                     url=item.get("url") or "",
-                    title=item.get("name") or "Untitled",
+                    title=title,
                     company=item.get("hiring_company", {}).get("name") or "Unknown",
-                    location=item.get("location") or "Unknown",
-                    remote_flag=False,
-                    salary_min=None,
-                    salary_max=None,
-                    currency=item.get("salary_currency"),
-                    description_text=item.get("snippet") or "",
+                    location=location,
+                    remote_flag=_is_remote_job(title, location),
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=snippet,
                     posted_at=_parse_dt(item.get("posted_time") or item.get("posted_at")),
+                    application_deadline=None,
+                    hiring_manager_name=None,
+                    hiring_manager_email=None,
+                    hiring_manager_phone=None,
+                )
+            )
+        return jobs
+
+
+class JSearchSource(JobSource):
+    """JSearch API via RapidAPI - aggregates jobs from LinkedIn, Indeed, Glassdoor, etc."""
+    name = "jsearch"
+    base_url = "https://jsearch.p.rapidapi.com/search"
+
+    def _build_html_from_highlights(self, highlights: dict, description: str) -> str:
+        """Convert job_highlights structured data to formatted HTML."""
+        html_parts = []
+
+        # Add plain description as intro paragraph if short, else skip
+        if description and len(description) < 500:
+            html_parts.append(f"<p>{description}</p>")
+
+        for section_name, items in highlights.items():
+            if not items:
+                continue
+            # Convert section name to title case (e.g., "Qualifications" -> "Qualifications")
+            title = section_name.replace("_", " ").title()
+            html_parts.append(f"<h3>{title}</h3>")
+            html_parts.append("<ul>")
+            for item in items:
+                html_parts.append(f"<li>{item}</li>")
+            html_parts.append("</ul>")
+
+        return "\n".join(html_parts) if html_parts else ""
+
+    def fetch_jobs(self, query: dict) -> list[JobPosting]:
+        api_key = os.getenv("RAPIDAPI_KEY")
+        if not api_key:
+            return []
+
+        headers = {
+            "X-RapidAPI-Key": api_key,
+            "X-RapidAPI-Host": "jsearch.p.rapidapi.com",
+        }
+
+        params = {
+            "query": query.get("search") or "project manager",
+            "page": "1",
+            "num_pages": "1",
+            "date_posted": "week",
+        }
+        if query.get("location"):
+            params["query"] = f"{params['query']} in {query['location']}"
+
+        response = httpx.get(self.base_url, headers=headers, params=params, timeout=30)
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        jobs = []
+        for item in data.get("data", []):
+            # Build location string
+            city = item.get("job_city") or ""
+            state = item.get("job_state") or ""
+            country = item.get("job_country") or ""
+            location_parts = [p for p in [city, state, country] if p]
+            location = ", ".join(location_parts) or "Unknown"
+
+            # Parse salary
+            salary_min = None
+            salary_max = None
+            if item.get("job_min_salary"):
+                try:
+                    salary_min = int(float(item["job_min_salary"]))
+                except (ValueError, TypeError):
+                    pass
+            if item.get("job_max_salary"):
+                try:
+                    salary_max = int(float(item["job_max_salary"]))
+                except (ValueError, TypeError):
+                    pass
+
+            # Build description - use job_highlights if available for formatted HTML
+            raw_description = item.get("job_description") or ""
+            highlights = item.get("job_highlights")
+            if highlights and isinstance(highlights, dict):
+                # Use structured highlights to build formatted HTML
+                description_text = self._build_html_from_highlights(highlights, raw_description)
+            else:
+                description_text = raw_description
+
+            jobs.append(
+                JobPosting(
+                    source=self.name,
+                    source_job_id=str(item.get("job_id") or ""),
+                    url=item.get("job_apply_link") or "",
+                    title=item.get("job_title") or "Untitled",
+                    company=item.get("employer_name") or "Unknown",
+                    location=location,
+                    remote_flag=bool(item.get("job_is_remote")),
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency="USD" if salary_min or salary_max else None,
+                    description_text=description_text,
+                    posted_at=_parse_dt(item.get("job_posted_at_datetime_utc")),
                     application_deadline=None,
                     hiring_manager_name=None,
                     hiring_manager_email=None,
@@ -520,6 +748,7 @@ def get_job_sources() -> list[JobSource]:
         JoobleSource.name: JoobleSource(),
         USAJobsSource.name: USAJobsSource(),
         ZipRecruiterSource.name: ZipRecruiterSource(),
+        JSearchSource.name: JSearchSource(),
         BuiltInSource.name: BuiltInSource(),
         ManualListSource.name: ManualListSource(),
     }
