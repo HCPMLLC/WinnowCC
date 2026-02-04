@@ -24,6 +24,7 @@ def ingest_jobs(session: Session, query: dict) -> int:
             if not _is_recent_posting(posting.posted_at, now):
                 continue
             description = _clean_text(posting.description_text)
+            description_html = _get_description_html(posting.description_text)
             content_hash = _hash_posting(posting, description)
             exists = session.execute(
                 select(Job.id).where(Job.content_hash == content_hash)
@@ -36,6 +37,7 @@ def ingest_jobs(session: Session, query: dict) -> int:
             ).scalar_one_or_none()
             if legacy:
                 legacy.description_text = description
+                legacy.description_html = description_html
                 legacy.content_hash = content_hash
                 session.add(legacy)
                 continue
@@ -51,6 +53,7 @@ def ingest_jobs(session: Session, query: dict) -> int:
                 salary_max=posting.salary_max,
                 currency=posting.currency,
                 description_text=description,
+                description_html=description_html,
                 content_hash=content_hash,
                 posted_at=posting.posted_at,
                 application_deadline=posting.application_deadline,
@@ -77,12 +80,28 @@ def _hash_posting(posting: JobPosting, description_text: str) -> str:
 
 
 def _clean_text(value: str) -> str:
+    """Strip HTML tags and normalize whitespace for plain text storage."""
     if not value:
         return ""
     text = html.unescape(value)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"\s+", " ", text).strip()
     return text
+
+
+def _contains_html(value: str) -> bool:
+    """Check if text contains HTML tags."""
+    if not value:
+        return False
+    html_pattern = re.compile(r"<(?:p|div|ul|ol|li|br|h[1-6]|strong|em|span|a)\b", re.I)
+    return bool(html_pattern.search(value))
+
+
+def _get_description_html(raw_description: str) -> str | None:
+    """Return HTML if the raw description contains HTML tags, else None."""
+    if _contains_html(raw_description):
+        return raw_description
+    return None
 
 
 def _is_recent_posting(posted_at: datetime | None, now: datetime) -> bool:
