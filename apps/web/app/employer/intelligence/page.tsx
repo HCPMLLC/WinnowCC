@@ -78,8 +78,14 @@ export default function IntelligenceDashboard() {
       ...options,
     });
     if (!res.ok) {
-      const body = await res.text();
-      throw new Error(`${res.status}: ${body}`);
+      let message = `Request failed (${res.status})`;
+      try {
+        const body = await res.json();
+        if (body.detail) message = String(body.detail);
+      } catch {
+        // body wasn't JSON — use default message
+      }
+      throw new Error(message);
     }
     return res.json();
   }

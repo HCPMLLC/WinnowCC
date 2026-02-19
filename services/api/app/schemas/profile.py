@@ -72,6 +72,12 @@ class CandidateProfileUpdateRequest(BaseModel):
     profile_json: dict
 
 
+class SkillCategoriesPayload(BaseModel):
+    core_technical: list[str] = Field(default_factory=list)
+    environmental_adjacent: list[str] = Field(default_factory=list)
+    leadership_soft: list[str] = Field(default_factory=list)
+
+
 class ParseJobResponse(BaseModel):
     job_id: str
     job_run_id: int
