@@ -34,6 +34,15 @@ export default function DashboardPage() {
         router.replace(withRedirectParam("/login", redirectValue));
         return;
       }
+      // Redirect non-candidate roles to their own dashboard
+      if (me.role === "employer") {
+        router.replace("/employer/dashboard");
+        return;
+      }
+      if (me.role === "recruiter") {
+        router.replace("/recruiter/dashboard");
+        return;
+      }
       if (!me.onboarding_complete) {
         const redirectValue = buildRedirectValue(pathname, searchParams);
         router.replace(withRedirectParam("/onboarding", redirectValue));
