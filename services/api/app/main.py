@@ -1,5 +1,7 @@
 ## services/api/app/main.py
 
+import logging
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -10,34 +12,148 @@ from fastapi.middleware.cors import CORSMiddleware
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=False)
 
+# --- PII-safe logging (before any log calls) ---
+from app.middleware.log_filter import configure_safe_logging  # noqa: E402
+
+configure_safe_logging()
+
+# --- Sentry (must be initialized before FastAPI app is created) ---
+from app.services.sentry_init import init_sentry  # noqa: E402
+
+init_sentry()
+
+# --- Structured logging (after PII filter + Sentry, before any other imports) ---
+from app.middleware.structured_logging import (  # noqa: E402
+    RequestLoggingMiddleware,
+    configure_structured_logging,
+)
+
+configure_structured_logging()
+
+logger = logging.getLogger(__name__)
+
 # IMPORTANT: import routers only AFTER env is loaded
+# --- Rate limiting ---
+from slowapi import _rate_limit_exceeded_handler  # noqa: E402
+from slowapi.errors import RateLimitExceeded  # noqa: E402
+
+from app.middleware.rate_limit import limiter  # noqa: E402
+
+# --- Security headers middleware ---
+from app.middleware.security_headers import SecurityHeadersMiddleware  # noqa: E402
+from app.routers.account import router as account_router  # noqa: E402
+from app.routers.admin_candidates import router as admin_candidates_router  # noqa: E402
+from app.routers.admin_jobs import router as admin_jobs_router  # noqa: E402
 from app.routers.admin_profile import router as admin_profile_router  # noqa: E402
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
+from app.routers.billing import router as billing_router  # noqa: E402
+from app.routers.candidate_insights import router as candidate_insights_router  # noqa: E402
+from app.routers.career_intelligence import (  # noqa: E402
+    router as career_intelligence_router,
+)
+from app.routers.dashboard import router as dashboard_router  # noqa: E402
+from app.routers.distribution import router as distribution_router  # noqa: E402
+from app.routers.employer import router as employer_router  # noqa: E402
+from app.routers.employer_analytics import (  # noqa: E402
+    router as employer_analytics_router,
+)
+from app.routers.employer_billing import router as employer_billing_router  # noqa: E402
+from app.routers.employer_compliance import (  # noqa: E402
+    router as employer_compliance_router,
+)
+from app.routers.employer_introductions import (  # noqa: E402
+    router as employer_introductions_router,
+)
 from app.routers.health import router as health_router  # noqa: E402
+from app.routers.hiring_workspace import router as hiring_workspace_router  # noqa: E402
+from app.routers.job_forms import router as job_forms_router  # noqa: E402
+from app.routers.jobs import router as jobs_router  # noqa: E402
+from app.routers.market_intelligence import (  # noqa: E402
+    router as market_intelligence_router,
+)
 from app.routers.match import router as match_router  # noqa: E402
 from app.routers.matches import router as matches_router  # noqa: E402
+from app.routers.migration import router as migration_router  # noqa: E402
+from app.routers.mjass import router as mjass_router  # noqa: E402
+from app.routers.observability import router as observability_router  # noqa: E402
 from app.routers.onboarding import router as onboarding_router  # noqa: E402
-from app.routers.onboarding_v1 import router as onboarding_v1_router
+from app.routers.onboarding_v1 import router as onboarding_v1_router  # noqa: E402
 from app.routers.profile import router as profile_router  # noqa: E402
 from app.routers.ready import router as ready_router  # noqa: E402
+from app.routers.recruiter import router as recruiter_router  # noqa: E402
+from app.routers.recruiter_actions import (  # noqa: E402
+    router as recruiter_actions_router,
+)
+from app.routers.recruiter_migration import (  # noqa: E402
+    router as recruiter_migration_router,
+)
+from app.routers.references import router as references_router  # noqa: E402
 from app.routers.resume import router as resume_router  # noqa: E402
+from app.routers.scheduler import router as scheduler_router  # noqa: E402
+from app.routers.security_check import router as security_check_router  # noqa: E402
+from app.routers.sieve import router as sieve_router  # noqa: E402
 from app.routers.tailor import router as tailor_router  # noqa: E402
+from app.routers.talent_pipeline import router as talent_pipeline_router  # noqa: E402
 from app.routers.trust import router as trust_router  # noqa: E402
-from app.routers.mjass import router as mjass_router
-from app.routers.dashboard import router as dashboard_router
+from app.routers.webhooks import router as webhooks_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
 
-# CORS for local dev (Next.js usually runs on 3000/3001)
+# Rate limiter state + exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+# Global unhandled-exception handler — ensures all errors return a proper
+# JSONResponse so CORS middleware can add headers (BaseHTTPMiddleware can
+# otherwise swallow CORS headers on raw 500s).
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request, exc):  # noqa: ARG001
+    import logging as _logging
+    import traceback
+
+    _logging.getLogger("winnow.errors").error(
+        "Unhandled %s: %s\n%s", type(exc).__name__, exc, traceback.format_exc(),
+    )
+    from starlette.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
+
+
+# Security headers middleware (applied BEFORE CORS so headers are added after CORS)
+app.add_middleware(SecurityHeadersMiddleware)
+
+# Sentry user context middleware (sets user ID on each request for error grouping)
+from app.middleware.sentry_context import SentryUserContextMiddleware  # noqa: E402
+
+app.add_middleware(SentryUserContextMiddleware)
+
+# Request logging middleware (structured access logs)
+app.add_middleware(RequestLoggingMiddleware)
+
+# CORS — local dev origins plus optional production origin
+ALLOWED_ORIGINS = [
+    "http://localhost:3000",  # Local dev
+    "http://127.0.0.1:3000",  # Local dev alt
+    "http://localhost:8081",  # Expo dev server
+    "http://localhost:19006",  # Expo web
+    "https://winnowcc.ai",  # Production — primary
+    "https://www.winnowcc.ai",  # Production — www
+]
+
+# Also keep the dynamic CORS_ORIGIN env var for flexibility
+PROD_WEB_URL = os.environ.get("CORS_ORIGIN")
+if PROD_WEB_URL and PROD_WEB_URL not in ALLOWED_ORIGINS:
+    ALLOWED_ORIGINS.append(PROD_WEB_URL)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origins=ALLOWED_ORIGINS,
+    allow_origin_regex=r"^chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,12 +167,64 @@ app.include_router(onboarding_router)
 app.include_router(onboarding_v1_router)
 app.include_router(resume_router)
 app.include_router(profile_router)
+app.include_router(references_router)
 app.include_router(trust_router)
 app.include_router(admin_trust_router)
 app.include_router(admin_profile_router)
+app.include_router(admin_candidates_router)
 app.include_router(match_router)
 app.include_router(matches_router)
 app.include_router(tailor_router)
 app.include_router(mjass_router)
-app.include_router(dashboard_router)  # Dashboard metrics
+app.include_router(dashboard_router)
+app.include_router(employer_router)
+app.include_router(employer_billing_router)
+app.include_router(distribution_router)
+app.include_router(scheduler_router)
+app.include_router(admin_jobs_router)
+app.include_router(job_forms_router)
+app.include_router(jobs_router)
+app.include_router(billing_router)
+app.include_router(sieve_router)
+app.include_router(account_router)
+app.include_router(security_check_router)
+app.include_router(observability_router)
+app.include_router(webhooks_router)
+app.include_router(employer_analytics_router)
+app.include_router(employer_compliance_router)
+app.include_router(employer_introductions_router)
+app.include_router(talent_pipeline_router)
+app.include_router(recruiter_router)
+app.include_router(recruiter_actions_router)
+app.include_router(recruiter_migration_router)
+app.include_router(hiring_workspace_router)
+app.include_router(market_intelligence_router)
+app.include_router(career_intelligence_router)
+app.include_router(candidate_insights_router)
+app.include_router(migration_router)
 
+
+@app.on_event("startup")
+async def _validate_security_config():
+    """Validate critical security configuration on startup."""
+    auth_secret = os.environ.get("AUTH_SECRET", "")
+    env = os.environ.get("ENV", "dev")
+
+    if env != "dev":
+        # In production, require a strong secret
+        if len(auth_secret) < 32:
+            raise RuntimeError(
+                "AUTH_SECRET must be at least 32 characters in production. "
+                'Generate one with: python -c "import secrets; '
+                'print(secrets.token_hex(32))"'
+            )
+        if auth_secret in (
+            "dev-secret-change-me",
+            "secret",
+            "changeme",
+        ):
+            raise RuntimeError(
+                "AUTH_SECRET is using a default value. Set a real secret."
+            )
+
+    logger.info("Security config validated (env=%s)", env)
