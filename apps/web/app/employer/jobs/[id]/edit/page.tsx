@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import JobForm, { type JobFormData } from "../../_components/JobForm";
-import Spinner from "../../../../components/Spinner";
+import { useProgress } from "../../../../hooks/useProgress";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -23,7 +23,7 @@ export default function EditJobPage() {
   const [parsingConfidence, setParsingConfidence] = useState<number | null>(
     null,
   );
-  const [isReparsing, setIsReparsing] = useState(false);
+  const reparse = useProgress();
   const [reparseMessage, setReparseMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ export default function EditJobPage() {
   async function handleReparse(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsReparsing(true);
+    reparse.start();
     setReparseMessage(null);
     setError(null);
 
@@ -119,7 +119,7 @@ export default function EditJobPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Re-parse failed");
     } finally {
-      setIsReparsing(false);
+      reparse.complete();
       e.target.value = "";
     }
   }
@@ -175,13 +175,21 @@ export default function EditJobPage() {
                 ` (${(parsingConfidence * 100).toFixed(0)}% confidence)`}
               . Please review and correct all fields before publishing.
             </span>
-            <label className="ml-4 inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-md border border-blue-300 bg-white px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50">
-              {isReparsing ? <><Spinner className="h-3 w-3" /> Re-parsing...</> : "Re-parse Document"}
+            <label className="relative ml-4 inline-flex shrink-0 cursor-pointer overflow-hidden rounded-md border border-blue-300 bg-white px-3 py-1 text-xs font-medium text-blue-700 hover:bg-blue-50">
+              {reparse.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-blue-100 transition-all duration-200"
+                  style={{ width: `${reparse.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {reparse.isActive ? `Re-parsing... ${reparse.pct}%` : "Re-parse Document"}
+              </span>
               <input
                 type="file"
                 accept=".doc,.docx,.pdf,.txt"
                 onChange={handleReparse}
-                disabled={isReparsing}
+                disabled={reparse.isActive}
                 className="hidden"
               />
             </label>

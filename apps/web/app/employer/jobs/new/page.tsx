@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import JobForm from "../_components/JobForm";
-import Spinner from "../../../components/Spinner";
+import { useProgress } from "../../../hooks/useProgress";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -31,18 +31,18 @@ export default function CreateJobPage() {
 
   // Single upload state
   const [file, setFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const uploadProg = useProgress();
 
   // Bulk upload state
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
-  const [isBulkUploading, setIsBulkUploading] = useState(false);
+  const bulkProg = useProgress();
   const [bulkResults, setBulkResults] = useState<BulkUploadResponse | null>(
     null,
   );
 
   async function handleUpload() {
     if (!file) return;
-    setIsUploading(true);
+    uploadProg.start();
     setError("");
 
     try {
@@ -68,13 +68,13 @@ export default function CreateJobPage() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
-      setIsUploading(false);
+      uploadProg.complete();
     }
   }
 
   async function handleBulkUpload() {
     if (bulkFiles.length === 0) return;
-    setIsBulkUploading(true);
+    bulkProg.start();
     setError("");
     setBulkResults(null);
 
@@ -103,7 +103,7 @@ export default function CreateJobPage() {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Bulk upload failed");
     } finally {
-      setIsBulkUploading(false);
+      bulkProg.complete();
     }
   }
 
@@ -212,12 +212,20 @@ export default function CreateJobPage() {
           {!bulkResults && (
             <button
               onClick={handleBulkUpload}
-              disabled={bulkFiles.length === 0 || isBulkUploading}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+              disabled={bulkFiles.length === 0 || bulkProg.isActive}
+              className="relative w-full overflow-hidden rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed"
             >
-              {isBulkUploading
-                ? <><Spinner /> Parsing {bulkFiles.length} file(s)...</>
-                : `Upload & Parse ${bulkFiles.length} File(s)`}
+              {bulkProg.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200"
+                  style={{ width: `${bulkProg.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {bulkProg.isActive
+                  ? `Parsing ${bulkFiles.length} file(s)... ${bulkProg.pct}%`
+                  : `Upload & Parse ${bulkFiles.length} File(s)`}
+              </span>
             </button>
           )}
 
@@ -337,10 +345,20 @@ export default function CreateJobPage() {
 
           <button
             onClick={handleUpload}
-            disabled={!file || isUploading}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+            disabled={!file || uploadProg.isActive}
+            className="relative w-full overflow-hidden rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed"
           >
-            {isUploading ? <><Spinner /> Parsing document...</> : "Upload & Parse"}
+            {uploadProg.isActive && (
+              <span
+                className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200"
+                style={{ width: `${uploadProg.progress}%` }}
+              />
+            )}
+            <span className="relative">
+              {uploadProg.isActive
+                ? `Parsing document... ${uploadProg.pct}%`
+                : "Upload & Parse"}
+            </span>
           </button>
 
           <div className="text-xs text-slate-500">
