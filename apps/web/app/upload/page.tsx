@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import Spinner from "../components/Spinner";
 
 type UploadResult = {
   resume_document_id: number;
@@ -196,9 +197,9 @@ export default function UploadPage() {
         <button
           type="submit"
           disabled={isUploading}
-          className="rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+          className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
         >
-          {isUploading ? "Uploading..." : "Upload resume"}
+          {isUploading ? <><Spinner /> Uploading...</> : "Upload resume"}
         </button>
       </form>
 
@@ -218,9 +219,9 @@ export default function UploadPage() {
             type="button"
             onClick={handleParse}
             disabled={isParsing}
-            className="w-fit rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-emerald-500"
+            className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-emerald-500"
           >
-            {isParsing ? "Building profile..." : "Build my profile"}
+            {isParsing ? <><Spinner /> Building profile...</> : "Build my profile"}
           </button>
           {parseStatus ? (
             <div className="text-sm text-emerald-900">{parseStatus}</div>
