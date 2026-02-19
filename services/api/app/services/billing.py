@@ -77,6 +77,7 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "cross_board_analytics": False,
         "salary_intelligence": False,
         "bias_detection": False,
+        "sieve_messages_per_day": 10,
     },
     "starter": {
         "active_jobs": 5,
@@ -87,6 +88,7 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "cross_board_analytics": "basic",
         "salary_intelligence": False,
         "bias_detection": "basic",
+        "sieve_messages_per_day": 30,
     },
     "pro": {
         "active_jobs": 25,
@@ -97,6 +99,7 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "cross_board_analytics": "full",
         "salary_intelligence": True,
         "bias_detection": "full",
+        "sieve_messages_per_day": 100,
     },
     "enterprise": {
         "active_jobs": 999,
@@ -107,6 +110,7 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "cross_board_analytics": "full",
         "salary_intelligence": True,
         "bias_detection": "full",
+        "sieve_messages_per_day": 999,
     },
 }
 
@@ -288,10 +292,14 @@ def get_plan_tier(candidate: Candidate | None) -> str:
 
 
 def get_tier_limit(tier: str, key: str) -> int | bool | str:
-    """Look up a specific limit for a candidate or recruiter tier."""
-    # Check candidate limits first, then recruiter limits
+    """Look up a specific limit for a candidate, employer, or recruiter tier."""
+    # Check candidate limits first, then employer, then recruiter limits
     if tier in CANDIDATE_PLAN_LIMITS:
         limits = CANDIDATE_PLAN_LIMITS[tier]
+        if key in limits:
+            return limits[key]
+    if tier in EMPLOYER_PLAN_LIMITS:
+        limits = EMPLOYER_PLAN_LIMITS[tier]
         if key in limits:
             return limits[key]
     if tier in RECRUITER_PLAN_LIMITS:
