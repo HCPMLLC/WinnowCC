@@ -27,6 +27,8 @@ class MeResponse(BaseModel):
     user_id: int
     email: EmailStr
     onboarding_complete: bool
+    is_admin: bool = False
+    role: str = "candidate"
 
 
 def _validate_password(password: str) -> None:
@@ -58,7 +60,7 @@ def signup(payload: AuthRequest, response: Response, session: Session = Depends(
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
 
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at))
+    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)
 
 
 @router.post("/login", response_model=MeResponse)
@@ -76,7 +78,7 @@ def login(payload: AuthRequest, response: Response, session: Session = Depends(g
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
 
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at))
+    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)
 
 
 @router.post("/logout")
@@ -87,4 +89,4 @@ def logout(response: Response) -> dict:
 
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)) -> MeResponse:
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at))
+    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)

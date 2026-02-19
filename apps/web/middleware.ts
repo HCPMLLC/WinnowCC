@@ -6,8 +6,11 @@ const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
   "/onboarding",
+  "/privacy",
+  "/terms",
   "/_next",
   "/favicon.ico",
+  "/api/",
 ];
 
 const PUBLIC_EXACT = ["/"];
@@ -55,5 +58,5 @@ export async function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/((?!_next/static|_next/image|favicon.ico).*)"],
+  matcher: ["/((?!_next/static|_next/image|favicon\\.ico|.*\\.png$|.*\\.jpg$|.*\\.jpeg$|.*\\.svg$|.*\\.mp4$|.*\\.ico$|.*\\.webp$).*)"],
 };
