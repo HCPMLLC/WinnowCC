@@ -4,21 +4,16 @@ import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import { useEffect, Suspense } from "react";
 
-import { withRedirectParam } from "../lib/redirects";
-
 function SignupRedirect() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
 
   useEffect(() => {
-    // Redirect to landing page signup section
-    const baseUrl = "/#signup-section";
-    if (redirectParam) {
-      router.replace(`/?redirect=${encodeURIComponent(redirectParam)}#signup-section`);
-    } else {
-      router.replace(baseUrl);
-    }
+    const url = redirectParam
+      ? `/login?mode=signup&redirect=${encodeURIComponent(redirectParam)}`
+      : "/login?mode=signup";
+    router.replace(url);
   }, [router, redirectParam]);
 
   return (
