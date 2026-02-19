@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import Spinner from "../../../components/Spinner";
+import { useProgress } from "../../../hooks/useProgress";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -118,9 +118,11 @@ export default function JobDetailPage() {
   const [job, setJob] = useState<JobDetail | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [actionLoading, setActionLoading] = useState(false);
+  const action = useProgress();
+  const [activeAction, setActiveAction] = useState<string | null>(null);
   const [distributions, setDistributions] = useState<Distribution[]>([]);
-  const [distLoading, setDistLoading] = useState(false);
+  const dist = useProgress();
+  const [activeDist, setActiveDist] = useState<string | null>(null);
   const [topCandidates, setTopCandidates] = useState<TopCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [totalEvaluated, setTotalEvaluated] = useState(0);
@@ -186,7 +188,8 @@ export default function JobDetailPage() {
 
   async function updateStatus(newStatus: string) {
     if (!job) return;
-    setActionLoading(true);
+    setActiveAction(newStatus);
+    action.start();
     try {
       const res = await fetch(`${API_BASE}/api/employer/jobs/${job.id}`, {
         method: "PATCH",
@@ -202,13 +205,15 @@ export default function JobDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
-      setActionLoading(false);
+      action.complete();
+      setTimeout(() => setActiveAction(null), 400);
     }
   }
 
   async function archiveJob() {
     if (!job) return;
-    setActionLoading(true);
+    setActiveAction("archive");
+    action.start();
     try {
       const res = await fetch(
         `${API_BASE}/api/employer/jobs/${job.id}/archive`,
@@ -218,7 +223,6 @@ export default function JobDetailPage() {
         const data = await res.json().catch(() => null);
         throw new Error(data?.detail || "Failed to archive");
       }
-      // Re-fetch to get updated state
       const updated = await fetch(
         `${API_BASE}/api/employer/jobs/${job.id}`,
         { credentials: "include" },
@@ -227,13 +231,15 @@ export default function JobDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Archive failed");
     } finally {
-      setActionLoading(false);
+      action.complete();
+      setTimeout(() => setActiveAction(null), 400);
     }
   }
 
   async function unarchiveJob() {
     if (!job) return;
-    setActionLoading(true);
+    setActiveAction("unarchive");
+    action.start();
     try {
       const res = await fetch(
         `${API_BASE}/api/employer/jobs/${job.id}/unarchive`,
@@ -251,13 +257,15 @@ export default function JobDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Unarchive failed");
     } finally {
-      setActionLoading(false);
+      action.complete();
+      setTimeout(() => setActiveAction(null), 400);
     }
   }
 
   async function distributeJob() {
     if (!job) return;
-    setDistLoading(true);
+    setActiveDist("distribute");
+    dist.start();
     try {
       const res = await fetch(
         `${API_BASE}/api/distribution/jobs/${job.id}/distribute`,
@@ -276,13 +284,15 @@ export default function JobDetailPage() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Distribution failed");
     } finally {
-      setDistLoading(false);
+      dist.complete();
+      setTimeout(() => setActiveDist(null), 400);
     }
   }
 
   async function removeFromBoards() {
     if (!job || !confirm("Remove this job from all boards?")) return;
-    setDistLoading(true);
+    setActiveDist("remove");
+    dist.start();
     try {
       const res = await fetch(
         `${API_BASE}/api/distribution/jobs/${job.id}/remove`,
@@ -294,13 +304,15 @@ export default function JobDetailPage() {
     } catch (err) {
       console.error("Remove failed:", err);
     } finally {
-      setDistLoading(false);
+      dist.complete();
+      setTimeout(() => setActiveDist(null), 400);
     }
   }
 
   async function deleteJob() {
     if (!job || !confirm("Are you sure you want to delete this job?")) return;
-    setActionLoading(true);
+    setActiveAction("delete");
+    action.start();
     try {
       const res = await fetch(`${API_BASE}/api/employer/jobs/${job.id}`, {
         method: "DELETE",
@@ -312,7 +324,8 @@ export default function JobDetailPage() {
       router.push("/employer/jobs");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Delete failed");
-      setActionLoading(false);
+      action.complete();
+      setTimeout(() => setActiveAction(null), 400);
     }
   }
 
@@ -355,11 +368,12 @@ export default function JobDetailPage() {
           .
           <button
             onClick={unarchiveJob}
-            disabled={actionLoading}
-            className="ml-2 inline-flex items-center gap-1 font-medium underline hover:text-amber-900"
+            disabled={action.isActive}
+            className="ml-2 font-medium underline hover:text-amber-900"
           >
-            {actionLoading && <Spinner className="h-3 w-3" />}
-            Unarchive
+            {activeAction === "unarchive"
+              ? `Unarchiving... ${action.pct}%`
+              : "Unarchive"}
           </button>
         </div>
       )}
@@ -426,63 +440,98 @@ export default function JobDetailPage() {
         {!job.archived && job.status === "draft" && (
           <button
             onClick={() => updateStatus("active")}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Publishing...</> : "Publish"}
+            {activeAction === "active" && (
+              <span className="absolute inset-y-0 left-0 bg-emerald-500 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "active" ? `Publishing... ${action.pct}%` : "Publish"}
+            </span>
           </button>
         )}
         {!job.archived && job.status === "active" && (
           <button
             onClick={() => updateStatus("paused")}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Pausing...</> : "Pause"}
+            {activeAction === "paused" && (
+              <span className="absolute inset-y-0 left-0 bg-amber-500 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "paused" ? `Pausing... ${action.pct}%` : "Pause"}
+            </span>
           </button>
         )}
         {!job.archived && job.status === "paused" && (
           <button
             onClick={() => updateStatus("active")}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Resuming...</> : "Resume"}
+            {activeAction === "active" && (
+              <span className="absolute inset-y-0 left-0 bg-emerald-500 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "active" ? `Resuming... ${action.pct}%` : "Resume"}
+            </span>
           </button>
         )}
         {!job.archived && job.status !== "closed" && (
           <button
             onClick={() => updateStatus("closed")}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Closing...</> : "Close"}
+            {activeAction === "closed" && (
+              <span className="absolute inset-y-0 left-0 bg-slate-100 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "closed" ? `Closing... ${action.pct}%` : "Close"}
+            </span>
           </button>
         )}
         {!job.archived && (
           <button
             onClick={archiveJob}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md border border-orange-300 px-4 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md border border-orange-300 px-4 py-2 text-sm font-medium text-orange-600 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Archiving...</> : "Archive"}
+            {activeAction === "archive" && (
+              <span className="absolute inset-y-0 left-0 bg-orange-100 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "archive" ? `Archiving... ${action.pct}%` : "Archive"}
+            </span>
           </button>
         )}
         {job.archived && (
           <button
             onClick={unarchiveJob}
-            disabled={actionLoading}
-            className="inline-flex items-center gap-2 rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:opacity-50"
+            disabled={action.isActive}
+            className="relative overflow-hidden rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-600 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {actionLoading ? <><Spinner /> Unarchiving...</> : "Unarchive"}
+            {activeAction === "unarchive" && (
+              <span className="absolute inset-y-0 left-0 bg-slate-600 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+            )}
+            <span className="relative">
+              {activeAction === "unarchive" ? `Unarchiving... ${action.pct}%` : "Unarchive"}
+            </span>
           </button>
         )}
         <button
           onClick={deleteJob}
-          disabled={actionLoading}
-          className="inline-flex items-center gap-2 rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+          disabled={action.isActive}
+          className="relative overflow-hidden rounded-md border border-red-300 px-4 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
         >
-          {actionLoading ? <><Spinner /> Deleting...</> : "Delete"}
+          {activeAction === "delete" && (
+            <span className="absolute inset-y-0 left-0 bg-red-100 transition-all duration-200" style={{ width: `${action.progress}%` }} />
+          )}
+          <span className="relative">
+            {activeAction === "delete" ? `Deleting... ${action.pct}%` : "Delete"}
+          </span>
         </button>
       </div>
 
@@ -524,10 +573,15 @@ export default function JobDetailPage() {
             {job.status === "active" && !job.archived && (
               <button
                 onClick={distributeJob}
-                disabled={distLoading}
-                className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                disabled={dist.isActive}
+                className="relative overflow-hidden rounded-md bg-slate-900 px-3 py-1.5 text-xs font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {distLoading ? <><Spinner className="h-3 w-3" /> Distributing...</> : "Distribute to Boards"}
+                {activeDist === "distribute" && (
+                  <span className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200" style={{ width: `${dist.progress}%` }} />
+                )}
+                <span className="relative">
+                  {activeDist === "distribute" ? `Distributing... ${dist.pct}%` : "Distribute to Boards"}
+                </span>
               </button>
             )}
             {distributions.some(
@@ -535,10 +589,15 @@ export default function JobDetailPage() {
             ) && (
               <button
                 onClick={removeFromBoards}
-                disabled={distLoading}
-                className="inline-flex items-center gap-1.5 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                disabled={dist.isActive}
+                className="relative overflow-hidden rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50"
               >
-                {distLoading ? <><Spinner className="h-3 w-3" /> Removing...</> : "Remove from All"}
+                {activeDist === "remove" && (
+                  <span className="absolute inset-y-0 left-0 bg-red-100 transition-all duration-200" style={{ width: `${dist.progress}%` }} />
+                )}
+                <span className="relative">
+                  {activeDist === "remove" ? `Removing... ${dist.pct}%` : "Remove from All"}
+                </span>
               </button>
             )}
           </div>

@@ -5,7 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
-import Spinner from "../components/Spinner";
+import { useProgress } from "../hooks/useProgress";
 
 type UploadResult = {
   resume_document_id: number;
@@ -31,11 +31,11 @@ export default function UploadPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [isUploading, setIsUploading] = useState(false);
+  const uploadProg = useProgress();
   const [result, setResult] = useState<UploadResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [parseStatus, setParseStatus] = useState<string | null>(null);
-  const [isParsing, setIsParsing] = useState(false);
+  const parseProg = useProgress();
 
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
@@ -65,7 +65,7 @@ export default function UploadPage() {
       return;
     }
 
-    setIsUploading(true);
+    uploadProg.start();
     setError(null);
     setResult(null);
 
@@ -102,7 +102,7 @@ export default function UploadPage() {
         caught instanceof Error ? caught.message : "Upload failed.";
       setError(message);
     } finally {
-      setIsUploading(false);
+      uploadProg.complete();
     }
   };
 
@@ -112,7 +112,7 @@ export default function UploadPage() {
     }
     const apiBase =
       process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
-    setIsParsing(true);
+    parseProg.start();
     setParseStatus(null);
     setError(null);
 
@@ -165,7 +165,7 @@ export default function UploadPage() {
         caught instanceof Error ? caught.message : "Failed to start parsing.";
       setError(message);
     } finally {
-      setIsParsing(false);
+      parseProg.complete();
     }
   };
 
@@ -196,10 +196,20 @@ export default function UploadPage() {
 
         <button
           type="submit"
-          disabled={isUploading}
-          className="inline-flex items-center justify-center gap-2 rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+          disabled={uploadProg.isActive}
+          className="relative overflow-hidden rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed"
         >
-          {isUploading ? <><Spinner /> Uploading...</> : "Upload resume"}
+          {uploadProg.isActive && (
+            <span
+              className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200"
+              style={{ width: `${uploadProg.progress}%` }}
+            />
+          )}
+          <span className="relative">
+            {uploadProg.isActive
+              ? `Uploading... ${uploadProg.pct}%`
+              : "Upload resume"}
+          </span>
         </button>
       </form>
 
@@ -218,10 +228,20 @@ export default function UploadPage() {
           <button
             type="button"
             onClick={handleParse}
-            disabled={isParsing}
-            className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-emerald-500"
+            disabled={parseProg.isActive}
+            className="relative w-fit overflow-hidden rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed"
           >
-            {isParsing ? <><Spinner /> Building profile...</> : "Build my profile"}
+            {parseProg.isActive && (
+              <span
+                className="absolute inset-y-0 left-0 bg-emerald-600 transition-all duration-200"
+                style={{ width: `${parseProg.progress}%` }}
+              />
+            )}
+            <span className="relative">
+              {parseProg.isActive
+                ? `Building profile... ${parseProg.pct}%`
+                : "Build my profile"}
+            </span>
           </button>
           {parseStatus ? (
             <div className="text-sm text-emerald-900">{parseStatus}</div>

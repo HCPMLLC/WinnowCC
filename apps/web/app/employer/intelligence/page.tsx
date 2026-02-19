@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
-import Spinner from "../../components/Spinner";
+import { useEffect, useState } from "react";
+import { useProgress } from "../../hooks/useProgress";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -25,35 +25,24 @@ export default function IntelligenceDashboard() {
   const [briefJobId, setBriefJobId] = useState("");
   const [briefType, setBriefType] = useState("general");
   const [briefResult, setBriefResult] = useState<Record<string, unknown> | null>(null);
-  const [briefProgress, setBriefProgress] = useState<number | null>(null);
-  const briefTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopBriefTimer = useCallback(() => {
-    if (briefTimerRef.current) {
-      clearInterval(briefTimerRef.current);
-      briefTimerRef.current = null;
-    }
-  }, []);
-
-  // Cleanup timer on unmount
-  useEffect(() => stopBriefTimer, [stopBriefTimer]);
+  const brief = useProgress();
 
   // Salary intelligence state
   const [salaryRole, setSalaryRole] = useState("");
   const [salaryLocation, setSalaryLocation] = useState("");
   const [salaryResult, setSalaryResult] = useState<Record<string, unknown> | null>(null);
-  const [salaryLoading, setSalaryLoading] = useState(false);
+  const salary = useProgress();
 
   // Time-to-fill state
   const [ttfJobId, setTtfJobId] = useState("");
   const [ttfResult, setTtfResult] = useState<Record<string, unknown> | null>(null);
-  const [ttfLoading, setTtfLoading] = useState(false);
+  const ttf = useProgress();
 
   // Market position state
   const [mpCandidateId, setMpCandidateId] = useState("");
   const [mpJobId, setMpJobId] = useState("");
   const [mpResult, setMpResult] = useState<Record<string, unknown> | null>(null);
-  const [mpLoading, setMpLoading] = useState(false);
+  const mp = useProgress();
 
   const [copied, setCopied] = useState(false);
 
@@ -104,20 +93,7 @@ export default function IntelligenceDashboard() {
 
   async function generateBrief() {
     setBriefResult(null);
-    setBriefProgress(0);
-    stopBriefTimer();
-
-    // Simulated progress: fast at first, slows as it approaches 90%
-    briefTimerRef.current = setInterval(() => {
-      setBriefProgress((prev) => {
-        if (prev === null) return null;
-        if (prev >= 90) return prev; // stall at 90 until response
-        // Increment decreases as we get higher
-        const increment = Math.max(0.5, (90 - prev) / 15);
-        return Math.min(90, prev + increment);
-      });
-    }, 200);
-
+    brief.start();
     try {
       const params = new URLSearchParams({ brief_type: briefType });
       if (briefJobId) params.set("job_id", briefJobId);
@@ -129,16 +105,12 @@ export default function IntelligenceDashboard() {
     } catch (e: unknown) {
       setBriefResult({ error: (e as Error).message });
     }
-
-    stopBriefTimer();
-    setBriefProgress(100);
-    // Brief flash of 100% then clear
-    setTimeout(() => setBriefProgress(null), 400);
+    brief.complete();
   }
 
   async function fetchSalary() {
-    setSalaryLoading(true);
     setSalaryResult(null);
+    salary.start();
     try {
       const params = new URLSearchParams({ role: salaryRole });
       if (salaryLocation) params.set("location", salaryLocation);
@@ -147,12 +119,12 @@ export default function IntelligenceDashboard() {
     } catch (e: unknown) {
       setSalaryResult({ error: (e as Error).message });
     }
-    setSalaryLoading(false);
+    salary.complete();
   }
 
   async function fetchTimeFill() {
-    setTtfLoading(true);
     setTtfResult(null);
+    ttf.start();
     try {
       const data = await apiFetch(
         `/api/career-intelligence/time-to-fill/${ttfJobId}`
@@ -161,12 +133,12 @@ export default function IntelligenceDashboard() {
     } catch (e: unknown) {
       setTtfResult({ error: (e as Error).message });
     }
-    setTtfLoading(false);
+    ttf.complete();
   }
 
   async function fetchMarketPosition() {
-    setMpLoading(true);
     setMpResult(null);
+    mp.start();
     try {
       const data = await apiFetch(
         `/api/career-intelligence/market-position/${mpCandidateId}/${mpJobId}`
@@ -175,7 +147,7 @@ export default function IntelligenceDashboard() {
     } catch (e: unknown) {
       setMpResult({ error: (e as Error).message });
     }
-    setMpLoading(false);
+    mp.complete();
   }
 
   function copyBrief() {
@@ -279,18 +251,18 @@ export default function IntelligenceDashboard() {
             </div>
             <button
               onClick={generateBrief}
-              disabled={briefProgress !== null || !briefCandidateId}
+              disabled={brief.isActive || !briefCandidateId}
               className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed"
             >
-              {briefProgress !== null && (
+              {brief.isActive && (
                 <span
                   className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-200"
-                  style={{ width: `${briefProgress}%` }}
+                  style={{ width: `${brief.progress}%` }}
                 />
               )}
               <span className="relative">
-                {briefProgress !== null
-                  ? `Generating... ${Math.round(briefProgress)}%`
+                {brief.isActive
+                  ? `Generating... ${brief.pct}%`
                   : "Generate Brief"}
               </span>
             </button>
@@ -526,10 +498,20 @@ export default function IntelligenceDashboard() {
             </div>
             <button
               onClick={fetchSalary}
-              disabled={salaryLoading || !salaryRole}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={salary.isActive || !salaryRole}
+              className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed"
             >
-              {salaryLoading ? <><Spinner /> Loading...</> : "Get Salary Data"}
+              {salary.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-200"
+                  style={{ width: `${salary.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {salary.isActive
+                  ? `Loading... ${salary.pct}%`
+                  : "Get Salary Data"}
+              </span>
             </button>
           </div>
           {salaryResult && (
@@ -605,10 +587,20 @@ export default function IntelligenceDashboard() {
             </div>
             <button
               onClick={fetchTimeFill}
-              disabled={ttfLoading || !ttfJobId}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={ttf.isActive || !ttfJobId}
+              className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed"
             >
-              {ttfLoading ? <><Spinner /> Predicting...</> : "Predict Time-to-Fill"}
+              {ttf.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-200"
+                  style={{ width: `${ttf.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {ttf.isActive
+                  ? `Predicting... ${ttf.pct}%`
+                  : "Predict Time-to-Fill"}
+              </span>
             </button>
           </div>
           {ttfResult && (
@@ -705,10 +697,20 @@ export default function IntelligenceDashboard() {
             </div>
             <button
               onClick={fetchMarketPosition}
-              disabled={mpLoading || !mpCandidateId || !mpJobId}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={mp.isActive || !mpCandidateId || !mpJobId}
+              className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed"
             >
-              {mpLoading ? <><Spinner /> Loading...</> : "Get Market Position"}
+              {mp.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-200"
+                  style={{ width: `${mp.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {mp.isActive
+                  ? `Loading... ${mp.pct}%`
+                  : "Get Market Position"}
+              </span>
             </button>
           </div>
           {mpResult && (
