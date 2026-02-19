@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import Spinner from "../components/Spinner";
 import ReferralToggle from "../components/ReferralToggle";
 import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
 import CollapsibleTip from "../components/CollapsibleTip";
@@ -114,6 +115,9 @@ export default function MatchesPage() {
     Record<number, { resume?: string; cover?: string }>
   >({});
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [preparingJobId, setPreparingJobId] = useState<number | null>(null);
+  const [creatingDraftId, setCreatingDraftId] = useState<number | null>(null);
 
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) || null;
 
@@ -157,6 +161,7 @@ export default function MatchesPage() {
   }, []);
 
   const handlePrepare = async (jobId: number) => {
+    setPreparingJobId(jobId);
     setStatusByJob((current) => ({ ...current, [jobId]: "Queued..." }));
     setLinksByJob((current) => ({ ...current, [jobId]: {} }));
 
@@ -211,10 +216,13 @@ export default function MatchesPage() {
       const message =
         caught instanceof Error ? caught.message : "Tailoring failed.";
       setStatusByJob((current) => ({ ...current, [jobId]: message }));
+    } finally {
+      setPreparingJobId(null);
     }
   };
 
   const handleCreateDraft = async (match: Match) => {
+    setCreatingDraftId(match.id);
     setDraftStatusByMatch((current) => ({ ...current, [match.id]: "Creating..." }));
 
     try {
@@ -259,10 +267,13 @@ export default function MatchesPage() {
       const message =
         caught instanceof Error ? caught.message : "Failed to create draft";
       setDraftStatusByMatch((current) => ({ ...current, [match.id]: message }));
+    } finally {
+      setCreatingDraftId(null);
     }
   };
 
   const handleRefresh = async () => {
+    setRefreshing(true);
     setRefreshStatus("Refreshing matches...");
     try {
       const response = await fetch(`${API_BASE}/api/matches/refresh`, {
@@ -277,6 +288,8 @@ export default function MatchesPage() {
       const message =
         caught instanceof Error ? caught.message : "Failed to refresh matches.";
       setRefreshStatus(message);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -317,12 +330,17 @@ export default function MatchesPage() {
             <button
               type="button"
               onClick={handleRefresh}
-              className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-green-700"
+              disabled={refreshing}
+              className="inline-flex items-center gap-1.5 rounded-md bg-green-600 px-3 py-1.5 text-sm font-medium text-white shadow-sm hover:bg-green-700 disabled:opacity-50"
             >
-              <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-              </svg>
-              Refresh
+              {refreshing ? (
+                <Spinner />
+              ) : (
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+              )}
+              {refreshing ? "Refreshing..." : "Refresh"}
             </button>
             <button
               type="button"
@@ -731,16 +749,18 @@ export default function MatchesPage() {
                   <button
                     type="button"
                     onClick={() => handlePrepare(selectedMatch.job.id)}
-                    className="rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800"
+                    disabled={preparingJobId === selectedMatch.job.id}
+                    className="inline-flex items-center gap-2 rounded-md bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50"
                   >
-                    Prepare Materials
+                    {preparingJobId === selectedMatch.job.id ? <><Spinner /> Preparing...</> : "Prepare Materials"}
                   </button>
                   <button
                     type="button"
                     onClick={() => handleCreateDraft(selectedMatch)}
-                    className="rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                    disabled={creatingDraftId === selectedMatch.id}
+                    className="inline-flex items-center gap-2 rounded-md bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
                   >
-                    Create Draft
+                    {creatingDraftId === selectedMatch.id ? <><Spinner /> Creating...</> : "Create Draft"}
                   </button>
 
                   {statusByJob[selectedMatch.job.id] && (

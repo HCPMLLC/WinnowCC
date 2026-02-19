@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Spinner from "../../components/Spinner";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -251,9 +252,9 @@ export default function IntelligenceDashboard() {
             <button
               onClick={generateBrief}
               disabled={briefLoading || !briefCandidateId}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {briefLoading ? "Generating..." : "Generate Brief"}
+              {briefLoading ? <><Spinner /> Generating...</> : "Generate Brief"}
             </button>
           </div>
           {briefResult && (
@@ -488,9 +489,9 @@ export default function IntelligenceDashboard() {
             <button
               onClick={fetchSalary}
               disabled={salaryLoading || !salaryRole}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {salaryLoading ? "Loading..." : "Get Salary Data"}
+              {salaryLoading ? <><Spinner /> Loading...</> : "Get Salary Data"}
             </button>
           </div>
           {salaryResult && (
@@ -567,9 +568,9 @@ export default function IntelligenceDashboard() {
             <button
               onClick={fetchTimeFill}
               disabled={ttfLoading || !ttfJobId}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {ttfLoading ? "Predicting..." : "Predict Time-to-Fill"}
+              {ttfLoading ? <><Spinner /> Predicting...</> : "Predict Time-to-Fill"}
             </button>
           </div>
           {ttfResult && (
@@ -667,9 +668,9 @@ export default function IntelligenceDashboard() {
             <button
               onClick={fetchMarketPosition}
               disabled={mpLoading || !mpCandidateId || !mpJobId}
-              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
             >
-              {mpLoading ? "Loading..." : "Get Market Position"}
+              {mpLoading ? <><Spinner /> Loading...</> : "Get Market Position"}
             </button>
           </div>
           {mpResult && (
