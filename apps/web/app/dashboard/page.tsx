@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import CollapsibleTip from "../components/CollapsibleTip";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -555,6 +556,38 @@ export default function DashboardPage() {
                   </div>
                 </div>
               )}
+          </div>
+        </div>
+      )}
+
+      {/* Pro Tips */}
+      {!loading && metrics && (
+        <div className="mt-8">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Pro Tips
+          </h2>
+          <div className="space-y-3">
+            <CollapsibleTip title="Maximize Your Match Score">
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Complete every section of your profile — skills, experience, education, and preferences all factor into your match score.</li>
+                <li>Use the skill categories widget to organize your skills by proficiency level. Winnow weighs expert-level skills more heavily.</li>
+                <li>Keep your job title preferences specific. &quot;Software Engineer&quot; matches better than &quot;Developer&quot; for engineering roles.</li>
+              </ul>
+            </CollapsibleTip>
+            <CollapsibleTip title="Application Timing Matters">
+              <ul className="list-disc space-y-1 pl-5">
+                <li>Applying within the first 3 days of a posting gives you up to 4x better odds than applying after 2 weeks.</li>
+                <li>Check your matches daily — new jobs are ingested every few hours from multiple sources.</li>
+                <li>Use &quot;Prepare Materials&quot; to generate a tailored resume and cover letter before applying.</li>
+              </ul>
+            </CollapsibleTip>
+            <CollapsibleTip title="Referrals Are Your Superpower">
+              <ul className="list-disc space-y-1 pl-5">
+                <li>A referral increases your interview probability by 8x — it&apos;s the single most impactful thing you can do.</li>
+                <li>Mark any match where you know someone at the company. Even a loose connection counts.</li>
+                <li>Ask your network proactively: &quot;I&apos;m interested in [Company]. Do you know anyone there?&quot;</li>
+              </ul>
+            </CollapsibleTip>
           </div>
         </div>
       )}
