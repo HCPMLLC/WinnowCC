@@ -375,7 +375,7 @@ function NavBar({ audience }: { audience: Audience }) {
           <img
             src="/Winnow CC Masthead TBGC.png"
             alt="Winnow"
-            className="h-12 w-auto"
+            className="h-[72px] w-auto"
           />
         </Link>
 

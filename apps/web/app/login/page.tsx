@@ -22,6 +22,7 @@ function LoginForm() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const [showResetOffer, setShowResetOffer] = useState(false);
   const [busy, setBusy] = useState(false);
   const [showForgotMessage, setShowForgotMessage] = useState(false);
 
@@ -38,7 +39,15 @@ function LoginForm() {
           credentials: "include",
           body: JSON.stringify({ email, password }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          const body = await res.text();
+          let detail = "Signup failed. Please try again.";
+          try { detail = JSON.parse(body).detail || detail; } catch {}
+          if (detail.toLowerCase().includes("already")) {
+            detail = "An account with this email already exists. Try signing in instead.";
+          }
+          throw new Error(detail);
+        }
         router.push(withRedirectParam("/onboarding", redirectTarget));
       } else {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -47,7 +56,16 @@ function LoginForm() {
           credentials: "include",
           body: JSON.stringify({ email, password }),
         });
-        if (!res.ok) throw new Error(await res.text());
+        if (!res.ok) {
+          const body = await res.text();
+          let detail = "";
+          try { detail = JSON.parse(body).detail || ""; } catch {}
+          if (res.status === 401) {
+            setShowResetOffer(true);
+            throw new Error("The email or password you entered is incorrect. Please try again or reset your password.");
+          }
+          throw new Error(detail || "Login failed. Please try again.");
+        }
 
         const me = await fetchAuthMe();
         if (me?.onboarding_complete) {
@@ -85,6 +103,7 @@ function LoginForm() {
   const toggleMode = () => {
     setIsSignUp(!isSignUp);
     setErr(null);
+    setShowResetOffer(false);
     setShowForgotMessage(false);
   };
 
@@ -208,7 +227,16 @@ function LoginForm() {
 
         {err && (
           <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
-            {err}
+            <p>{err}</p>
+            {showResetOffer && (
+              <button
+                type="button"
+                onClick={() => { setShowForgotMessage(true); setErr(null); setShowResetOffer(false); }}
+                className="mt-2 font-semibold text-red-800 underline hover:text-red-900"
+              >
+                Reset your password
+              </button>
+            )}
           </div>
         )}
 
