@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Spinner from "../../components/Spinner";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -25,7 +25,18 @@ export default function IntelligenceDashboard() {
   const [briefJobId, setBriefJobId] = useState("");
   const [briefType, setBriefType] = useState("general");
   const [briefResult, setBriefResult] = useState<Record<string, unknown> | null>(null);
-  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefProgress, setBriefProgress] = useState<number | null>(null);
+  const briefTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopBriefTimer = useCallback(() => {
+    if (briefTimerRef.current) {
+      clearInterval(briefTimerRef.current);
+      briefTimerRef.current = null;
+    }
+  }, []);
+
+  // Cleanup timer on unmount
+  useEffect(() => stopBriefTimer, [stopBriefTimer]);
 
   // Salary intelligence state
   const [salaryRole, setSalaryRole] = useState("");
@@ -92,8 +103,21 @@ export default function IntelligenceDashboard() {
   }
 
   async function generateBrief() {
-    setBriefLoading(true);
     setBriefResult(null);
+    setBriefProgress(0);
+    stopBriefTimer();
+
+    // Simulated progress: fast at first, slows as it approaches 90%
+    briefTimerRef.current = setInterval(() => {
+      setBriefProgress((prev) => {
+        if (prev === null) return null;
+        if (prev >= 90) return prev; // stall at 90 until response
+        // Increment decreases as we get higher
+        const increment = Math.max(0.5, (90 - prev) / 15);
+        return Math.min(90, prev + increment);
+      });
+    }, 200);
+
     try {
       const params = new URLSearchParams({ brief_type: briefType });
       if (briefJobId) params.set("job_id", briefJobId);
@@ -105,7 +129,11 @@ export default function IntelligenceDashboard() {
     } catch (e: unknown) {
       setBriefResult({ error: (e as Error).message });
     }
-    setBriefLoading(false);
+
+    stopBriefTimer();
+    setBriefProgress(100);
+    // Brief flash of 100% then clear
+    setTimeout(() => setBriefProgress(null), 400);
   }
 
   async function fetchSalary() {
@@ -251,10 +279,20 @@ export default function IntelligenceDashboard() {
             </div>
             <button
               onClick={generateBrief}
-              disabled={briefLoading || !briefCandidateId}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50"
+              disabled={briefProgress !== null || !briefCandidateId}
+              className="relative w-full overflow-hidden rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed"
             >
-              {briefLoading ? <><Spinner /> Generating...</> : "Generate Brief"}
+              {briefProgress !== null && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-blue-500 transition-all duration-200"
+                  style={{ width: `${briefProgress}%` }}
+                />
+              )}
+              <span className="relative">
+                {briefProgress !== null
+                  ? `Generating... ${Math.round(briefProgress)}%`
+                  : "Generate Brief"}
+              </span>
             </button>
           </div>
           {briefResult && (
