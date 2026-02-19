@@ -5,6 +5,9 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import ReferralToggle from "../components/ReferralToggle";
+import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
+import CollapsibleTip from "../components/CollapsibleTip";
 
 type Job = {
   id: number;
@@ -49,6 +52,7 @@ type Match = {
   application_logistics_score?: number | null;
   referred?: boolean;
   interview_probability?: number | null;
+  application_status?: string | null;
 };
 
 type TailorStatus = {
@@ -110,42 +114,8 @@ export default function MatchesPage() {
     Record<number, { resume?: string; cover?: string }>
   >({});
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
-  const [referralLoading, setReferralLoading] = useState<number | null>(null);
 
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) || null;
-
-  const handleReferralToggle = async (matchId: number, currentValue: boolean) => {
-    setReferralLoading(matchId);
-    try {
-      const response = await fetch(`${API_BASE}/api/matches/${matchId}/referred`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ referred: !currentValue }),
-      });
-      if (!response.ok) {
-        throw new Error("Failed to update referral status.");
-      }
-      const result = (await response.json()) as {
-        id: number;
-        referred: boolean;
-        interview_probability: number | null;
-      };
-      setMatches((current) =>
-        current.map((m) =>
-          m.id === matchId
-            ? { ...m, referred: result.referred, interview_probability: result.interview_probability }
-            : m
-        )
-      );
-    } catch (caught) {
-      const message =
-        caught instanceof Error ? caught.message : "Failed to update referral.";
-      console.error(message);
-    } finally {
-      setReferralLoading(null);
-    }
-  };
 
   useEffect(() => {
     const guard = async () => {
@@ -441,6 +411,22 @@ export default function MatchesPage() {
                   )}
                 </div>
 
+                {/* Application status badge */}
+                {match.application_status && (
+                  <div className="mt-1.5">
+                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      match.application_status === "applied" ? "bg-yellow-100 text-yellow-800" :
+                      match.application_status === "interviewing" ? "bg-purple-100 text-purple-800" :
+                      match.application_status === "offer" ? "bg-green-100 text-green-800" :
+                      match.application_status === "rejected" ? "bg-red-100 text-red-800" :
+                      match.application_status === "saved" ? "bg-blue-100 text-blue-800" :
+                      "bg-gray-100 text-gray-600"
+                    }`}>
+                      {match.application_status.charAt(0).toUpperCase() + match.application_status.slice(1)}
+                    </span>
+                  </div>
+                )}
+
                 {/* Skills tags */}
                 {reasons.matched_skills && reasons.matched_skills.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1">
@@ -507,18 +493,20 @@ export default function MatchesPage() {
                       </div>
 
                       {/* Referral Toggle */}
-                      <label className="flex cursor-pointer items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm hover:bg-gray-50">
-                        <input
-                          type="checkbox"
-                          checked={selectedMatch.referred ?? false}
-                          onChange={() => handleReferralToggle(selectedMatch.id, selectedMatch.referred ?? false)}
-                          disabled={referralLoading === selectedMatch.id}
-                          className="h-4 w-4 rounded border-gray-300 text-amber-500 focus:ring-amber-500"
-                        />
-                        <span className="text-sm font-medium text-gray-700">
-                          {referralLoading === selectedMatch.id ? "Updating..." : "I have a referral"}
-                        </span>
-                      </label>
+                      <ReferralToggle
+                        key={`referral-${selectedMatch.id}`}
+                        matchId={selectedMatch.id}
+                        referred={selectedMatch.referred ?? false}
+                        onReferralChange={(data) => {
+                          setMatches((current) =>
+                            current.map((m) =>
+                              m.id === selectedMatch.id
+                                ? { ...m, referred: data.referred, interview_probability: data.interview_probability }
+                                : m
+                            )
+                          );
+                        }}
+                      />
                     </div>
 
                     {/* Component Scores */}
@@ -546,6 +534,22 @@ export default function MatchesPage() {
                       *Interview Probability is a heuristic estimate based on resume fit, application materials, and timing. It is not a guarantee.
                     </p>
                   </div>
+
+                  {/* IPS Tip */}
+                  <CollapsibleTip title="How is Interview Probability calculated?">
+                    <p className="mb-2">
+                      Interview Probability (IPS) combines four signals to estimate your chances of landing an interview:
+                    </p>
+                    <ul className="list-disc space-y-1 pl-5">
+                      <li><strong>Resume Score</strong> — How well your tailored resume matches the job requirements</li>
+                      <li><strong>Cover Letter Score</strong> — Strength of your personalized cover letter</li>
+                      <li><strong>Timing Score</strong> — How early you apply relative to the posting date (earlier = better)</li>
+                      <li><strong>Match Score</strong> — Skills alignment, title fit, location, and salary compatibility</li>
+                    </ul>
+                    <p className="mt-2">
+                      Marking a referral adds an <strong>8x multiplier</strong> — referrals are the single biggest factor in getting interviews.
+                    </p>
+                  </CollapsibleTip>
 
                   {/* Job header */}
                   <div className="rounded-lg border border-gray-200 bg-white p-5">
@@ -591,8 +595,8 @@ export default function MatchesPage() {
                         </div>
                       </div>
 
-                      {/* Action button */}
-                      <div className="shrink-0">
+                      {/* Action button + status */}
+                      <div className="flex shrink-0 flex-col items-end gap-2">
                         <a
                           href={selectedMatch.job.url}
                           target="_blank"
@@ -601,6 +605,20 @@ export default function MatchesPage() {
                         >
                           Apply Now
                         </a>
+                        <ApplicationStatusSelect
+                          key={`status-${selectedMatch.id}`}
+                          matchId={selectedMatch.id}
+                          currentStatus={selectedMatch.application_status ?? null}
+                          onStatusChange={(newStatus) => {
+                            setMatches((current) =>
+                              current.map((m) =>
+                                m.id === selectedMatch.id
+                                  ? { ...m, application_status: newStatus || null }
+                                  : m
+                              )
+                            );
+                          }}
+                        />
                       </div>
                     </div>
 
