@@ -76,6 +76,62 @@ def _basics_location(profile: dict) -> str:
     return basics.get("location") or ""
 
 
+def _deduplicate_matches(
+    rows: list[tuple],
+) -> list[tuple]:
+    """Keep only the highest-scored match per job_id."""
+    best: dict[int, tuple] = {}
+    for match, job in rows:
+        existing = best.get(job.id)
+        if existing is None or (match.match_score or 0) > (existing[0].match_score or 0):
+            best[job.id] = (match, job)
+    return list(best.values())
+
+
+def _refresh_skill_analysis(
+    rows: list[tuple],
+    profile_json: dict,
+    jobs_by_id: dict,
+) -> list[MatchResponse]:
+    """Build MatchResponse list, refreshing skill analysis against current profile."""
+    import re as _re
+    from app.services.matching import _top_keywords, _tokenize
+
+    profile_skills = [
+        s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)
+    ]
+
+    results = []
+    for match, job in rows:
+        reasons = dict(match.reasons or {})
+
+        job_tokens = _tokenize(job.description_text)
+        matched = [s for s in profile_skills if s in job_tokens]
+        missing = [t for t in _top_keywords(job_tokens) if t not in profile_skills][:7]
+
+        reasons["matched_skills"] = matched[:7]
+        reasons["missing_skills"] = missing[:7]
+
+        results.append(
+            MatchResponse(
+                id=match.id,
+                job=JobResponse.model_validate(job),
+                match_score=match.match_score,
+                interview_readiness_score=match.interview_readiness_score,
+                offer_probability=match.offer_probability,
+                reasons=reasons,
+                created_at=match.created_at,
+                resume_score=match.resume_score,
+                cover_letter_score=match.cover_letter_score,
+                application_logistics_score=match.application_logistics_score,
+                referred=match.referred,
+                interview_probability=match.interview_probability,
+                application_status=match.application_status,
+            )
+        )
+    return results
+
+
 @router.post(
     "/refresh",
     response_model=MatchesRefreshResponse,

@@ -120,3 +120,47 @@ def require_admin_user(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required.")
     return user
+
+
+def require_employer(user: User = Depends(get_current_user)) -> User:
+    """Require the user to have employer role."""
+    if user.role not in ("employer", "both", "admin"):
+        raise HTTPException(status_code=403, detail="Employer role required.")
+    return user
+
+
+def get_employer_profile(
+    user: User = Depends(require_employer),
+    session: Session = Depends(get_session),
+):
+    """Get the EmployerProfile for the authenticated employer user."""
+    from app.models.employer import EmployerProfile
+
+    profile = session.execute(
+        select(EmployerProfile).where(EmployerProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Employer profile not found.")
+    return profile
+
+
+def require_recruiter(user: User = Depends(get_current_user)) -> User:
+    """Require the user to have recruiter role."""
+    if user.role not in ("recruiter", "both", "admin"):
+        raise HTTPException(status_code=403, detail="Recruiter role required.")
+    return user
+
+
+def get_recruiter_profile(
+    user: User = Depends(require_recruiter),
+    session: Session = Depends(get_session),
+):
+    """Get the RecruiterProfile for the authenticated recruiter user."""
+    from app.models.recruiter import RecruiterProfile
+
+    profile = session.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if profile is None:
+        raise HTTPException(status_code=404, detail="Recruiter profile not found.")
+    return profile

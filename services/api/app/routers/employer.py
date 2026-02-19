@@ -548,7 +548,17 @@ async def bulk_upload_job_documents(
             tmp_path = tmp.name
 
         try:
-            parsed = parse_job_document(tmp_path)
+            try:
+                parsed = parse_job_document(tmp_path)
+            except RuntimeError as e:
+                results.append(
+                    BulkUploadFileResult(
+                        filename=filename,
+                        success=False,
+                        error=str(e),
+                    )
+                )
+                continue
 
             if not parsed.get("title"):
                 results.append(
@@ -802,7 +812,13 @@ async def upload_job_document(
         tmp_path = tmp.name
 
     try:
-        parsed = parse_job_document(tmp_path)
+        try:
+            parsed = parse_job_document(tmp_path)
+        except RuntimeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(e),
+            ) from e
 
         if not parsed.get("title"):
             raise HTTPException(
@@ -911,7 +927,13 @@ async def reparse_job_document(
         tmp_path = tmp.name
 
     try:
-        parsed = parse_job_document(tmp_path)
+        try:
+            parsed = parse_job_document(tmp_path)
+        except RuntimeError as e:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=str(e),
+            ) from e
         if not parsed.get("title"):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,

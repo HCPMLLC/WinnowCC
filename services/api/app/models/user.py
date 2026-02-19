@@ -1,7 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, Integer, String, func, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
@@ -34,3 +34,7 @@ class User(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+    # Back-references for ORM relationships declared on other models
+    employer_profile = relationship("EmployerProfile", back_populates="user", uselist=False)
+    recruiter_profile = relationship("RecruiterProfile", back_populates="user", uselist=False)
