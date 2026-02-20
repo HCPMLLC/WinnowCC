@@ -57,7 +57,7 @@ function LoginForm() {
           }
           throw new Error(detail);
         }
-        router.push(withRedirectParam("/onboarding", redirectTarget));
+        window.location.href = withRedirectParam("/onboarding", redirectTarget);
       } else {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
@@ -88,9 +88,9 @@ function LoginForm() {
 
         const me = await fetchAuthMe();
         if (me?.onboarding_complete) {
-          router.push(redirectTarget);
+          window.location.href = redirectTarget;
         } else {
-          router.push(withRedirectParam("/onboarding", redirectTarget));
+          window.location.href = withRedirectParam("/onboarding", redirectTarget);
         }
       }
     } catch (e: any) {
@@ -117,12 +117,12 @@ function LoginForm() {
         try { detail = JSON.parse(body).detail || detail; } catch {}
         throw new Error(detail);
       }
-      // Cookie is set — redirect as normal
+      // Cookie is set — full reload so Navbar picks up auth state
       const me = await fetchAuthMe();
       if (me?.onboarding_complete) {
-        router.push(redirectTarget);
+        window.location.href = redirectTarget;
       } else {
-        router.push(withRedirectParam("/onboarding", redirectTarget));
+        window.location.href = withRedirectParam("/onboarding", redirectTarget);
       }
     } catch (e: any) {
       setErr(e?.message || "Verification failed");
