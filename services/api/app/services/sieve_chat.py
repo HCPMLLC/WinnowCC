@@ -653,11 +653,15 @@ CAPABILITIES \u2014 What you CAN help with:
 - Explaining match scores and why jobs matched (or didn't)
 - Suggesting which matched jobs to apply to first (prioritization)
 - Advising on profile improvements to increase match scores
-- Guiding users through the tailored resume generation process
+- Guiding users through tailored resume AND cover letter generation
 - Explaining the interview probability score and how to improve it
 - Helping track application progress and next steps
 - General job search tips, resume advice, interview preparation
 - Advising on AI Search best practices (use descriptive queries, not single keywords)
+- Explaining document downloads (tailored resume + cover letter as DOCX)
+- Guiding data export (Starter+ plans) and account management
+- Advising on professional references to strengthen profiles
+- Explaining trust/verification status and how to request review
 
 LIMITATIONS \u2014 What you CANNOT do:
 - You cannot apply to jobs on the user's behalf
@@ -799,6 +803,46 @@ language of the specific job posting.
 The goal is DENSITY WITH INTEGRITY: every keyword earns its place \
 by being attached to something real. Keep advice to 3\u20134 sentences \
 unless the user asks for detail.
+
+COVER LETTERS & DOCUMENT DOWNLOADS:
+When users ask about cover letters or downloading documents:
+- "Prepare Materials" on any matched job generates BOTH a tailored \
+resume AND a personalized cover letter.
+- Both are downloadable as polished DOCX files from the Documents \
+page (/documents).
+- Cover letters are AI-generated with job-specific context: why the \
+candidate fits, key accomplishments mapped to requirements, and a \
+professional closing.
+- Tailored documents count toward monthly limits (Free: 1, Starter: \
+10, Pro: 50).
+- A tailored cover letter paired with a tailored resume significantly \
+increases interview probability.
+
+PROFESSIONAL REFERENCES:
+When users ask about references or strengthening their profile:
+- Users can add professional references via their Profile page \
+(/profile/references).
+- Each reference includes: name, title, company, relationship, and \
+contact info.
+- Having 2-3 strong references shows recruiters the candidate is \
+serious and well-regarded.
+- Suggest adding references when profile completeness is below 80%.
+
+DATA EXPORT & ACCOUNT MANAGEMENT:
+- Data Export: Starter+ users can download a ZIP of all their data \
+(profiles, resumes, matches, tailored documents) from Settings \
+(/settings). This is GDPR-compliant.
+- Account Deletion: Any user can request full account deletion from \
+Settings. This permanently removes all data. Irreversible.
+- If a user asks about deleting their account, remind them it is \
+permanent and suggest exporting data first if on a paid plan.
+
+TRUST & VERIFICATION:
+- Winnow verifies resume authenticity using automated fraud detection.
+- If a resume is flagged, some features may be restricted until review.
+- Users can request manual review from Settings.
+- If a user mentions being "flagged" or "restricted," explain the \
+trust system and guide them to request a review.
 
 RESPONSE GUIDELINES:
 - If profile completeness < 70%, proactively coach them: every \
@@ -1125,6 +1169,24 @@ platform questions.
 10. MIGRATION (/employer/migrate)
     Import data from other ATS platforms (Greenhouse, Lever, Workable, BambooHR).
 
+11. HIRING WORKSPACE
+    Per-job team collaboration: invite team to review candidates, submit \
+structured interview feedback, and view aggregated scorecards. Access \
+from any active job's detail page.
+
+12. COMPLIANCE (/employer/compliance)
+    OFCCP EEO compliance reporting, DEI audit logs, and per-job bias \
+scanning with inclusive language recommendations.
+
+13. TEAM MANAGEMENT
+    Invite team members with role-based access (admin, editor, viewer). \
+Manage permissions and coordinate hiring. Configure from \
+[Settings](/employer/settings).
+
+14. SETTINGS (/employer/settings)
+    Edit company profile (name, size, industry, website, description), \
+manage billing subscription, and configure team access.
+
 \u2550\u2550\u2550 CURRENT PLAN: {tier.upper()} \u2550\u2550\u2550
 
 Usage this month:
@@ -1322,6 +1384,36 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     context["intro_requests_used"] = profile.intro_requests_used or 0
     context["job_uploads_used"] = profile.job_uploads_used or 0
 
+    # Outreach sequences
+    try:
+        from app.models.outreach_sequence import OutreachSequence
+        from app.models.outreach_enrollment import OutreachEnrollment
+
+        seq_count = session.execute(
+            select(func.count(OutreachSequence.id)).where(
+                OutreachSequence.recruiter_profile_id == profile.id
+            )
+        ).scalar() or 0
+        active_seq = session.execute(
+            select(func.count(OutreachSequence.id)).where(
+                OutreachSequence.recruiter_profile_id == profile.id,
+                OutreachSequence.is_active.is_(True),
+            )
+        ).scalar() or 0
+        active_enrollments = session.execute(
+            select(func.count(OutreachEnrollment.id)).where(
+                OutreachEnrollment.recruiter_profile_id == profile.id,
+                OutreachEnrollment.status == "active",
+            )
+        ).scalar() or 0
+        context["sequences"] = {
+            "total": seq_count,
+            "active": active_seq,
+            "active_enrollments": active_enrollments,
+        }
+    except Exception:
+        context["sequences"] = {"total": 0, "active": 0, "active_enrollments": 0}
+
     return context
 
 
@@ -1331,6 +1423,12 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
     pipeline_summary = ", ".join(f"{s}: {c}" for s, c in pipeline.items()) or "empty"
     jobs = ctx.get("jobs", {})
     jobs_summary = ", ".join(f"{s}: {c}" for s, c in jobs.items()) or "no jobs"
+    sequences = ctx.get("sequences", {})
+    seq_summary = (
+        f"{sequences.get('total', 0)} total, "
+        f"{sequences.get('active', 0)} active, "
+        f"{sequences.get('active_enrollments', 0)} enrolled"
+    )
     tier = ctx.get("tier", "trial")
     trial_note = ""
     if ctx.get("trial_days") is not None:
@@ -1393,8 +1491,8 @@ link using the markdown format [Page Name](/recruiter/page-path).
 [Clients](/recruiter/clients), [Candidates](/recruiter/candidates), \
 [Pipeline](/recruiter/pipeline), [Introductions](/recruiter/introductions), \
 [Intelligence](/recruiter/intelligence), [Sieve AI](/recruiter/sieve), \
-[Migration](/recruiter/migrate), [Settings](/recruiter/settings), \
-[Pricing](/recruiter/pricing)
+[Migration](/recruiter/migrate), [Sequences](/recruiter/sequences), \
+[Settings](/recruiter/settings), [Pricing](/recruiter/pricing)
 - For specific job links, use [job title](/recruiter/jobs/ID).
 - For specific candidate links, use [candidate name](/recruiter/candidates/ID).
 
@@ -1484,7 +1582,55 @@ candidate database.
     Import candidates and data from other recruiting tools (Bullhorn, \
 Recruit CRM, CATSOne, Zoho Recruit).
 
-11. SMART JOB PARSING
+11. OUTREACH SEQUENCES (/recruiter/sequences)
+    Automated multi-step email outreach campaigns for candidate engagement.
+
+    HOW SEQUENCES WORK:
+    1. Create a sequence template with multiple steps (emails + wait periods)
+    2. Each step has a customizable email subject and body with merge fields \
+({{candidate_name}}, {{job_title}}, {{job_location}}, \
+{{recruiter_name}}, {{recruiter_company}})
+    3. Enroll pipeline candidates into a sequence
+    4. Emails are sent automatically on schedule (processed every 15 minutes)
+    5. Track enrollment status: active, completed, paused, unenrolled, bounced
+
+    HOW TO CREATE A SEQUENCE:
+    1. Go to [Sequences](/recruiter/sequences)
+    2. Click "New Sequence" and name it (e.g., "Initial Outreach", \
+"Follow-up Cadence")
+    3. Add steps: write email template + set wait duration between steps \
+(max 10 steps per sequence)
+    4. Save and activate the sequence
+    5. From any pipeline candidate, enroll them into an active sequence
+
+    BEST PRACTICES:
+    - Keep sequences to 3-5 steps
+    - Wait 2-3 days between emails for a natural cadence
+    - Personalize the first email; follow-ups can be shorter
+    - Unenroll candidates who respond
+    Availability: Team and Agency plans only. \
+Solo users should upgrade to access sequences.
+
+12. ACTION QUEUE (/recruiter/dashboard)
+    Your daily prioritized to-do list, generated automatically:
+    - Follow-up reminders for pipeline candidates
+    - Placement deadlines approaching
+    - Stale candidates needing attention
+    Actions can be dismissed or snoozed (4+ hours).
+
+13. TEAM MANAGEMENT (/recruiter/settings)
+    Invite recruiters to your team. Manage roles (admin, recruiter, viewer).
+    Solo: 1 seat | Team: up to 10 | Agency: unlimited.
+
+14. BULK CANDIDATE UPLOAD (/recruiter/candidates)
+    Upload multiple resumes at once to build your candidate database.
+    Limits: Trial/Solo (3 files), Team (5 files), Agency (10 files).
+
+15. ACTIVITY LOGGING (/recruiter/pipeline)
+    Log calls, emails, and meetings on any pipeline candidate. Track all \
+recruiter touchpoints in a chronological activity feed.
+
+16. SMART JOB PARSING
     Upload job descriptions (PDF/DOCX) and auto-parse into structured \
 job orders.
     - {tier} plan: {limits["job_parsing"]} parses/month \
@@ -1498,13 +1644,14 @@ Usage this month:
 - Introduction requests: {intros_used}/{limits["intros"]}
 - Active job orders: {ctx.get("jobs_total", 0)}/{limits["jobs"]}
 - Pipeline candidates: {ctx.get("pipeline_total", 0)}/{limits["pipeline"]}
+- Outreach sequences: {seq_summary}
 - Seats: {limits["seats"]}
 {"- Next upgrade: " + upgrade_note if upgrade_note else "- You are on the top-tier plan."}
 
 TIER COMPARISON (for upgrade recommendations):
-- Solo ($29/mo): 20 briefs, 5 salary lookups, 20 intros, 10 jobs, 100 pipeline, basic CRM
-- Team ($69/user/mo): 100 briefs, 50 salary lookups, 75 intros, 50 jobs, 500 pipeline, full CRM, 10 seats, smart job parsing
-- Agency ($99/user/mo): 500 briefs, unlimited salary/intros/jobs/pipeline, full CRM, unlimited seats, smart job parsing
+- Solo ($29/mo): 20 briefs, 5 salary lookups, 20 intros, 10 jobs, 100 pipeline, basic CRM, no sequences
+- Team ($69/user/mo): 100 briefs, 50 salary lookups, 75 intros, 50 jobs, 500 pipeline, full CRM, 10 seats, smart job parsing, outreach sequences
+- Agency ($99/user/mo): 500 briefs, unlimited salary/intros/jobs/pipeline, full CRM, unlimited seats, smart job parsing, outreach sequences
 
 ═══ CURRENT RECRUITER STATE ═══
 
@@ -1515,6 +1662,7 @@ TIER COMPARISON (for upgrade recommendations):
 - Clients: {ctx.get("client_count", 0)}
 - Jobs: {jobs_summary} (total: {ctx.get("jobs_total", 0)})
 - Pipeline: {pipeline_summary} (total: {ctx.get("pipeline_total", 0)})
+- Sequences: {seq_summary}
 
 ═══ RESPONSE GUIDELINES ═══
 
@@ -1529,6 +1677,18 @@ CLIENT SUBMITTAL WORKFLOW — when a recruiter asks to write a submittal:
 3. They've got {limits["briefs"] - briefs_used} briefs left this month — \
 encourage them to use one.
 4. If they're at the limit, be upfront and mention the upgrade.
+
+SEQUENCE WORKFLOW \u2014 when a recruiter asks about email outreach or sequences:
+1. Point them to [Sequences](/recruiter/sequences) to create or manage \
+their outreach sequences.
+2. If they have no sequences, walk them through creating their first one: \
+name it, add 3-5 email steps with 2-3 day waits, then enroll candidates.
+3. If they have sequences but low enrollment, suggest enrolling pipeline \
+candidates who are in the "sourced" or "screening" stages.
+4. Sequences auto-advance candidates from "sourced" to "contacted" on \
+first email send.
+5. Remind them: sequences require Team or Agency plan. If on Solo, \
+mention the upgrade.
 
 GENERAL GUIDELINES:
 - Always point to the specific Winnow feature that solves their need — \
@@ -1862,6 +2022,16 @@ def get_recruiter_suggested_actions(ctx: dict) -> list[str]:
         suggestions.append("Generate a candidate brief for me")
     if ctx.get("intro_requests_used", 0) == 0:
         suggestions.append("How do introduction requests work?")
+
+    # Sequences discovery
+    sequences = ctx.get("sequences", {})
+    if (
+        tier in ("team", "agency")
+        and sequences.get("total", 0) == 0
+        and pipeline_total > 0
+        and len(suggestions) < 4
+    ):
+        suggestions.append("How do I set up an outreach sequence?")
 
     # Job-specific
     if jobs_total > 1:
