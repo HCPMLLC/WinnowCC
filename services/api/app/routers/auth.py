@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
+
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -9,15 +11,24 @@ from app.db.session import get_session
 from app.models.user import User
 from app.services.auth import (
     clear_auth_cookie,
+    generate_otp,
     get_current_user,
     hash_password,
     set_auth_cookie,
+    verify_otp,
     verify_password,
 )
+from app.services.email import send_mfa_otp_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
+MFA_OTP_TTL_MINUTES = 10
+MFA_MAX_ATTEMPTS = 5
 
+
+# ---------------------------------------------------------------------------
+# Request / response models
+# ---------------------------------------------------------------------------
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str
@@ -31,6 +42,28 @@ class MeResponse(BaseModel):
     role: str = "candidate"
 
 
+class LoginResponse(BaseModel):
+    requires_mfa: bool = False
+    user_id: int | None = None
+    email: str | None = None
+    onboarding_complete: bool | None = None
+    is_admin: bool | None = None
+    role: str | None = None
+
+
+class VerifyOtpRequest(BaseModel):
+    email: EmailStr
+    otp_code: str
+
+
+class ResendOtpRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 def _validate_password(password: str) -> None:
     # bcrypt only uses first 72 BYTES; passlib raises to prevent silent truncation
     if len(password.encode("utf-8")) > 72:
@@ -43,13 +76,44 @@ def _validate_password(password: str) -> None:
         )
 
 
+def _me_response(user: User) -> MeResponse:
+    return MeResponse(
+        user_id=user.id,
+        email=user.email,
+        onboarding_complete=bool(user.onboarding_completed_at),
+        is_admin=user.is_admin,
+        role=user.role,
+    )
+
+
+def _send_otp_to_user(user: User, session: Session) -> None:
+    """Generate an OTP, persist hash + expiry, and email the code."""
+    code, otp_hash = generate_otp()
+    user.mfa_otp_hash = otp_hash
+    user.mfa_otp_expires_at = datetime.now(timezone.utc) + timedelta(
+        minutes=MFA_OTP_TTL_MINUTES
+    )
+    user.mfa_otp_attempts = 0
+    session.commit()
+    send_mfa_otp_email(user.email, code)
+
+
+# ---------------------------------------------------------------------------
+# Endpoints
+# ---------------------------------------------------------------------------
 @router.post("/signup", response_model=MeResponse)
-def signup(payload: AuthRequest, response: Response, session: Session = Depends(get_session)) -> MeResponse:
+def signup(
+    payload: AuthRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> MeResponse:
     _validate_password(payload.password)
 
     email = payload.email.lower().strip()
 
-    existing = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    existing = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
     if existing is not None:
         raise HTTPException(status_code=400, detail="Email already registered.")
 
@@ -59,26 +123,106 @@ def signup(payload: AuthRequest, response: Response, session: Session = Depends(
     session.refresh(user)
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
+    return _me_response(user)
 
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)
 
-
-@router.post("/login", response_model=MeResponse)
-def login(payload: AuthRequest, response: Response, session: Session = Depends(get_session)) -> MeResponse:
+@router.post("/login", response_model=LoginResponse)
+def login(
+    payload: AuthRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> LoginResponse:
     _validate_password(payload.password)
 
     email = payload.email.lower().strip()
 
-    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
+    user = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
     if not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    set_auth_cookie(response, user_id=user.id, email=user.email)
+    # --- MFA gate ---
+    if user.mfa_required:
+        _send_otp_to_user(user, session)
+        return LoginResponse(requires_mfa=True, email=user.email)
 
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)
+    # No MFA — normal login
+    set_auth_cookie(response, user_id=user.id, email=user.email)
+    return LoginResponse(
+        requires_mfa=False,
+        user_id=user.id,
+        email=user.email,
+        onboarding_complete=bool(user.onboarding_completed_at),
+        is_admin=user.is_admin,
+        role=user.role,
+    )
+
+
+@router.post("/verify-otp", response_model=MeResponse)
+def verify_otp_endpoint(
+    payload: VerifyOtpRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> MeResponse:
+    email = payload.email.lower().strip()
+    user = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid request.")
+
+    # Check expiry
+    if (
+        user.mfa_otp_expires_at is None
+        or datetime.now(timezone.utc) > user.mfa_otp_expires_at
+    ):
+        raise HTTPException(status_code=401, detail="Code expired. Please request a new one.")
+
+    # Check attempt limit
+    if user.mfa_otp_attempts >= MFA_MAX_ATTEMPTS:
+        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+
+    # Increment attempts
+    user.mfa_otp_attempts += 1
+    session.commit()
+
+    # Verify
+    if not user.mfa_otp_hash or not verify_otp(payload.otp_code, user.mfa_otp_hash):
+        raise HTTPException(status_code=401, detail="Invalid code.")
+
+    # Success — clear OTP fields
+    user.mfa_otp_hash = None
+    user.mfa_otp_expires_at = None
+    user.mfa_otp_attempts = 0
+    session.commit()
+
+    set_auth_cookie(response, user_id=user.id, email=user.email)
+    return _me_response(user)
+
+
+@router.post("/resend-otp")
+def resend_otp(
+    payload: ResendOtpRequest,
+    session: Session = Depends(get_session),
+) -> dict:
+    _validate_password(payload.password)
+    email = payload.email.lower().strip()
+
+    user = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    if not verify_password(payload.password, user.password_hash):
+        raise HTTPException(status_code=401, detail="Invalid email or password.")
+
+    _send_otp_to_user(user, session)
+    return {"status": "sent"}
 
 
 @router.post("/logout")
@@ -89,4 +233,4 @@ def logout(response: Response) -> dict:
 
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)) -> MeResponse:
-    return MeResponse(user_id=user.id, email=user.email, onboarding_complete=bool(user.onboarding_completed_at), is_admin=user.is_admin, role=user.role)
+    return _me_response(user)

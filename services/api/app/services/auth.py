@@ -1,4 +1,5 @@
 import os
+import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
@@ -47,9 +48,25 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 # -----------------------
+# OTP helpers
+# -----------------------
+def generate_otp() -> tuple[str, str]:
+    """Return (plaintext_code, bcrypt_hash)."""
+    code = f"{secrets.randbelow(1_000_000):06d}"
+    return code, _PWD_CONTEXT.hash(code)
+
+
+def verify_otp(code: str, otp_hash: str) -> bool:
+    try:
+        return _PWD_CONTEXT.verify(code, otp_hash)
+    except Exception:
+        return False
+
+
+# -----------------------
 # JWT + cookie helpers
 # -----------------------
-def _make_token(*, user_id: int, email: str) -> str:
+def make_token(*, user_id: int, email: str) -> str:
     now = datetime.now(timezone.utc)
     exp = now + timedelta(days=SESSION_DAYS)
     payload = {
@@ -62,7 +79,7 @@ def _make_token(*, user_id: int, email: str) -> str:
 
 
 def set_auth_cookie(response: Response, *, user_id: int, email: str) -> None:
-    token = _make_token(user_id=user_id, email=email)
+    token = make_token(user_id=user_id, email=email)
     response.set_cookie(
         key=COOKIE_NAME,
         value=token,

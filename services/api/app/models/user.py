@@ -35,6 +35,18 @@ class User(Base):
         nullable=False,
     )
 
+    # MFA
+    mfa_otp_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    mfa_otp_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    mfa_otp_attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    mfa_required: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false")
+    )
+
     # Back-references for ORM relationships declared on other models
     employer_profile = relationship("EmployerProfile", back_populates="user", uselist=False)
     recruiter_profile = relationship("RecruiterProfile", back_populates="user", uselist=False)
