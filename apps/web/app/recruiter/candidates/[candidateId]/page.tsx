@@ -141,7 +141,7 @@ export default function CandidateDetailPage() {
     location: "",
     current_company: "",
     about: "",
-    open_to_work: false,
+    open_to_work: true,
     recommendations_count: 0,
     notes: "",
   });
@@ -162,7 +162,7 @@ export default function CandidateDetailPage() {
       location: pj.location || (basics.location as string) || "",
       current_company: pj.current_company || "",
       about: pj.about || pj.professional_summary || "",
-      open_to_work: pj.open_to_work || false,
+      open_to_work: pj.open_to_work ?? true,
       recommendations_count: pj.recommendations_count || 0,
       notes: pj.notes || "",
     });
