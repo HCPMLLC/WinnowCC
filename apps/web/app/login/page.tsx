@@ -36,6 +36,8 @@ function LoginForm() {
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErr(null);
+    setShowResetOffer(false);
+    setShowForgotMessage(false);
     setBusy(true);
 
     try {
