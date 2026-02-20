@@ -1,0 +1,237 @@
+import { useEffect, useState, useCallback } from "react";
+import { Stack, useRouter, useSegments } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { View, ActivityIndicator } from "react-native";
+import {
+  AuthContext,
+  AuthState,
+  saveToken,
+  getToken,
+  removeToken,
+} from "../lib/auth";
+import { colors } from "../lib/theme";
+
+const API_BASE =
+  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+export default function RootLayout() {
+  const [authState, setAuthState] = useState<AuthState>({
+    token: null,
+    userId: null,
+    email: null,
+    role: null,
+    isAuthenticated: false,
+    isLoading: true,
+  });
+
+  const router = useRouter();
+  const segments = useSegments();
+
+  // Check for stored token on app launch
+  useEffect(() => {
+    (async () => {
+      const token = await getToken();
+      if (token) {
+        try {
+          const res = await fetch(`${API_BASE}/api/auth/me`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          if (res.ok) {
+            const data = await res.json();
+            setAuthState({
+              token,
+              userId: data.user_id,
+              email: data.email,
+              role: data.role || "candidate",
+              isAuthenticated: true,
+              isLoading: false,
+            });
+            return;
+          }
+        } catch {
+          // Token invalid — clear it
+        }
+        await removeToken();
+      }
+      setAuthState((s) => ({ ...s, isLoading: false }));
+    })();
+  }, []);
+
+  // Redirect based on auth state and role
+  useEffect(() => {
+    if (authState.isLoading) return;
+
+    const inAuthGroup = segments[0] === "(auth)";
+
+    if (!authState.isAuthenticated && !inAuthGroup) {
+      router.replace("/(auth)/login");
+    } else if (authState.isAuthenticated && inAuthGroup) {
+      if (authState.role === "employer") {
+        router.replace("/(employer-tabs)/dashboard");
+      } else {
+        router.replace("/(tabs)/dashboard");
+      }
+    }
+  }, [authState.isAuthenticated, authState.isLoading, segments, router]);
+
+  const login = useCallback(async (email: string, password: string) => {
+    const res = await fetch(`${API_BASE}/api/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.detail || "Login failed");
+    }
+
+    const data = await res.json();
+    await saveToken(data.token);
+    setAuthState({
+      token: data.token,
+      userId: data.user_id,
+      email: data.email,
+      role: data.role || "candidate",
+      isAuthenticated: true,
+      isLoading: false,
+    });
+  }, []);
+
+  const signup = useCallback(
+    async (email: string, password: string, role?: string) => {
+      const res = await fetch(`${API_BASE}/api/auth/signup`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, role: role || "candidate" }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Signup failed");
+      }
+
+      const data = await res.json();
+      await saveToken(data.token);
+      setAuthState({
+        token: data.token,
+        userId: data.user_id,
+        email: data.email,
+        role: data.role || role || "candidate",
+        isAuthenticated: true,
+        isLoading: false,
+      });
+    },
+    [],
+  );
+
+  const logout = useCallback(async () => {
+    try {
+      const token = await getToken();
+      await fetch(`${API_BASE}/api/auth/logout`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+    } catch {
+      // Logout API call is best-effort
+    }
+    await removeToken();
+    setAuthState({
+      token: null,
+      userId: null,
+      email: null,
+      role: null,
+      isAuthenticated: false,
+      isLoading: false,
+    });
+  }, []);
+
+  if (authState.isLoading) {
+    return (
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: colors.primary,
+        }}
+      >
+        <ActivityIndicator size="large" color={colors.gold} />
+      </View>
+    );
+  }
+
+  return (
+    <AuthContext.Provider value={{ ...authState, login, signup, logout }}>
+      <StatusBar style="light" />
+      <Stack
+        screenOptions={{
+          headerStyle: { backgroundColor: colors.primary },
+          headerTintColor: colors.white,
+          headerTitleStyle: { fontWeight: "600" },
+          contentStyle: { backgroundColor: colors.gray50 },
+        }}
+      >
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen
+          name="(employer-tabs)"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="match/[id]"
+          options={{ title: "Job Details", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer-onboarding"
+          options={{ title: "Setup Company Profile", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/job/[id]"
+          options={{ title: "Job Details", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/job/new"
+          options={{ title: "Post a Job", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/candidate/[id]"
+          options={{ title: "Candidate", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="sieve"
+          options={{
+            title: "Sieve",
+            presentation: "fullScreenModal",
+            headerStyle: { backgroundColor: colors.primary },
+            headerTintColor: colors.white,
+          }}
+        />
+        <Stack.Screen
+          name="profile/upload"
+          options={{ title: "Upload Resume", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="profile/documents"
+          options={{ title: "Documents", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="profile/references"
+          options={{ title: "References", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="profile/insights"
+          options={{ title: "Career Insights", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="profile/billing"
+          options={{ title: "Billing", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="profile/settings"
+          options={{ title: "Settings", presentation: "card" }}
+        />
+      </Stack>
+    </AuthContext.Provider>
+  );
+}
