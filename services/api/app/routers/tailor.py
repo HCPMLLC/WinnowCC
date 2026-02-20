@@ -12,7 +12,13 @@ from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
 from app.models.tailored_resume import TailoredResume
 from app.models.user import User
-from app.schemas.tailor import TailorRequestResponse, TailorStatusResponse
+from app.models.job import Job as JobModel
+from app.schemas.tailor import (
+    DocumentListItem,
+    DocumentListResponse,
+    TailorRequestResponse,
+    TailorStatusResponse,
+)
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.job_pipeline import tailor_job
 from app.services.queue import get_queue, get_redis_connection
@@ -30,6 +36,44 @@ def _latest_profile_version(session: Session, user_id: int) -> int:
     )
     version = session.execute(stmt).scalar()
     return int(version or 0)
+
+
+@router.get(
+    "/documents",
+    response_model=DocumentListResponse,
+    dependencies=[Depends(require_onboarded_user)],
+)
+def list_documents(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> DocumentListResponse:
+    stmt = (
+        select(TailoredResume, JobModel.title, JobModel.company)
+        .join(JobModel, TailoredResume.job_id == JobModel.id, isouter=True)
+        .where(TailoredResume.user_id == user.id)
+        .order_by(TailoredResume.created_at.desc())
+    )
+    rows = session.execute(stmt).all()
+    items: list[DocumentListItem] = []
+    for tailored, job_title, company in rows:
+        has_resume = bool(tailored.docx_url and Path(tailored.docx_url).exists())
+        has_cover = bool(
+            tailored.cover_letter_url
+            and Path(tailored.cover_letter_url).exists()
+        )
+        items.append(
+            DocumentListItem(
+                id=tailored.id,
+                job_id=tailored.job_id,
+                job_title=job_title,
+                company=company,
+                profile_version=tailored.profile_version,
+                has_resume=has_resume,
+                has_cover_letter=has_cover,
+                created_at=tailored.created_at,
+            )
+        )
+    return DocumentListResponse(documents=items)
 
 
 @router.post(

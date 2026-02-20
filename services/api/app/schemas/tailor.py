@@ -24,3 +24,18 @@ class TailoredDocumentResponse(BaseModel):
     cover_letter_url: str
     created_at: datetime | None = None
     has_active_match: bool = False
+
+
+class DocumentListItem(BaseModel):
+    id: int
+    job_id: int
+    job_title: str | None = None
+    company: str | None = None
+    profile_version: int
+    has_resume: bool
+    has_cover_letter: bool
+    created_at: datetime | None = None
+
+
+class DocumentListResponse(BaseModel):
+    documents: list[DocumentListItem]

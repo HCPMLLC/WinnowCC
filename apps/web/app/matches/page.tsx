@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import { useProgress } from "../hooks/useProgress";
+import CandidateLayout from "../components/CandidateLayout";
 import ReferralToggle from "../components/ReferralToggle";
 import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
 import CollapsibleTip from "../components/CollapsibleTip";
@@ -322,7 +323,8 @@ export default function MatchesPage() {
   };
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-gray-100">
+    <CandidateLayout>
+    <div className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-lg bg-gray-100">
       {/* Header - ZipRecruiter style */}
       <header className="z-10 shrink-0 border-b border-gray-200 bg-white shadow-sm">
         <div className="flex items-center justify-between px-4 py-3">
@@ -843,5 +845,6 @@ export default function MatchesPage() {
         </div>
       </div>
     </div>
+    </CandidateLayout>
   );
 }

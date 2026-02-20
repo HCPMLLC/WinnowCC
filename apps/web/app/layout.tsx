@@ -1,6 +1,7 @@
 import "./globals.css";
 import type { Metadata } from "next";
 import Navbar from "./components/Navbar";
+import AuthenticatedSieve from "./components/sieve/AuthenticatedSieve";
 
 export const metadata: Metadata = {
   title: "Winnow",
@@ -20,6 +21,7 @@ export default function RootLayout({
       <body>
         <Navbar />
         {children}
+        <AuthenticatedSieve />
       </body>
     </html>
   );

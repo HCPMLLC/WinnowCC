@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import { useProgress } from "../hooks/useProgress";
+import CandidateLayout from "../components/CandidateLayout";
 
 type UploadResult = {
   resume_document_id: number;
@@ -170,7 +171,8 @@ export default function UploadPage() {
   };
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-6 py-16">
+    <CandidateLayout>
+    <div className="flex flex-col gap-8">
       <header>
         <h1 className="text-3xl font-semibold">Upload Resume</h1>
         <p className="mt-2 text-sm text-slate-600">
@@ -248,6 +250,7 @@ export default function UploadPage() {
           ) : null}
         </div>
       ) : null}
-    </main>
+    </div>
+    </CandidateLayout>
   );
 }

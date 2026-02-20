@@ -5,6 +5,8 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import CandidateLayout from "../components/CandidateLayout";
+import CollapsibleTip from "../components/CollapsibleTip";
 
 type ExperienceItem = {
   company?: string | null;
@@ -631,15 +633,25 @@ export default function ProfilePage() {
 
   if (!profile) {
     return (
-      <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-16">
-        <h1 className="text-3xl font-semibold">Profile</h1>
-        <p className="text-sm text-slate-600">Loading profile...</p>
-      </main>
+      <CandidateLayout>
+        <div className="flex flex-col gap-6">
+          <h1 className="text-3xl font-semibold">Profile</h1>
+          <p className="text-sm text-slate-600">Loading profile...</p>
+        </div>
+      </CandidateLayout>
     );
   }
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-8 px-6 py-16">
+    <CandidateLayout>
+      <div className="flex flex-col gap-8">
+      <CollapsibleTip title="Build a Stronger Profile" defaultOpen={false}>
+        <p>
+          Higher completeness scores unlock better matches. Add work experience,
+          skills, and education for the best results.
+        </p>
+      </CollapsibleTip>
+
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-semibold">Profile</h1>
@@ -1337,6 +1349,7 @@ export default function ProfilePage() {
           {isSaving ? "Saving..." : "Save Profile"}
         </button>
       </div>
-    </main>
+      </div>
+    </CandidateLayout>
   );
 }
