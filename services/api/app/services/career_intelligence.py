@@ -434,6 +434,62 @@ def salary_intelligence(
 
         return result
 
+    # Tier 4: LLM estimate (Claude Haiku — fast, cheap, sufficient for salary)
+    try:
+        client = _get_client()
+        llm_response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=256,
+            system=(
+                "You are a salary data analyst. Given a job title, seniority level, "
+                "and optional location, estimate the annual salary range in USD. "
+                'Return JSON only: {"min": <int>, "max": <int>, "currency": "USD", '
+                '"confidence": "low"|"medium"|"high"}'
+            ),
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        f"Role: {role_title}, Seniority: {seniority}, "
+                        f"Location: {location or 'US National'}"
+                    ),
+                }
+            ],
+        )
+        llm_raw = _extract_json(llm_response.content[0].text)
+        llm_data = json.loads(llm_raw)
+        lo = int(llm_data["min"])
+        hi = int(llm_data["max"])
+        span = hi - lo
+        result = {
+            "role": role_title,
+            "location": location,
+            "sample_size": 0,
+            "source": "ai_estimate",
+            "currency": llm_data.get("currency", "USD"),
+            "confidence": llm_data.get("confidence", "low"),
+            "p10": lo,
+            "p25": int(lo + span * 0.25),
+            "p50": int(lo + span * 0.50),
+            "p75": int(lo + span * 0.75),
+            "p90": hi,
+        }
+
+        # Cache with 1-day expiry (shorter — AI estimates are less stable)
+        intel = MarketIntel(
+            scope_type="salary",
+            scope_key=scope_key,
+            data_json=result,
+            sample_size=0,
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+        db.merge(intel)
+        db.commit()
+
+        return result
+    except Exception:
+        logger.warning("LLM salary estimate failed for '%s'", role_title, exc_info=True)
+
     return {
         "role": role_title,
         "location": location,

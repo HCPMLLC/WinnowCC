@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
@@ -40,6 +40,9 @@ export default function InsightsPage() {
   const [salaryError, setSalaryError] = useState<string | null>(null);
   const [salaryRole, setSalaryRole] = useState("");
   const [salaryLocation, setSalaryLocation] = useState("");
+  const [rolesSuggestions, setRolesSuggestions] = useState<string[]>([]);
+  const [rolesDropdownOpen, setRolesDropdownOpen] = useState(false);
+  const rolesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     async function init() {
@@ -74,6 +77,24 @@ export default function InsightsPage() {
     }
     init();
   }, [router]);
+
+  // Fetch salary role suggestions on mount
+  useEffect(() => {
+    fetch(`${API_BASE}/api/insights/salary-roles`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: string[]) => setRolesSuggestions(d))
+      .catch(() => {});
+  }, []);
+
+  // Close roles dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (rolesRef.current && !rolesRef.current.contains(e.target as Node))
+        setRolesDropdownOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
 
   const loadTrajectory = async () => {
     setTrajectoryLoading(true);
@@ -345,10 +366,35 @@ export default function InsightsPage() {
 
           <div className="p-6">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-              <div className="flex-1">
+              <div className="flex-1" ref={rolesRef}>
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Role / Title</label>
-                <input type="text" value={salaryRole} onChange={(e) => setSalaryRole(e.target.value)} placeholder="e.g. Software Engineer"
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500" />
+                <div className="relative">
+                  <input type="text" value={salaryRole}
+                    onChange={(e) => { setSalaryRole(e.target.value); setRolesDropdownOpen(true); }}
+                    onFocus={() => setRolesDropdownOpen(true)}
+                    placeholder="e.g. Software Engineer"
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500" />
+                  {rolesDropdownOpen && salaryRole.trim() && (() => {
+                    const q = salaryRole.toLowerCase();
+                    const filtered = rolesSuggestions.filter((r) => r.toLowerCase().includes(q));
+                    if (filtered.length === 0)
+                      return (
+                        <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-400 shadow-lg">
+                          Type any role — AI will estimate if needed
+                        </div>
+                      );
+                    return (
+                      <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                        {filtered.slice(0, 12).map((r) => (
+                          <button key={r} onClick={() => { setSalaryRole(r); setRolesDropdownOpen(false); }}
+                            className="w-full border-b border-gray-100 px-3 py-2 text-left text-sm capitalize hover:bg-blue-50 last:border-0">
+                            {r}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="flex-1">
                 <label className="block text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Location (optional)</label>
@@ -369,12 +415,24 @@ export default function InsightsPage() {
                   <h3 className="text-base font-semibold text-gray-900">
                     {salary.role}{salary.location ? ` in ${salary.location}` : ""}
                   </h3>
-                  <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500">
-                    {salary.source === "reference" ? "Reference data" : `${salary.sample_size} job${salary.sample_size !== 1 ? "s" : ""} sampled`}
-                  </span>
+                  {!salary.source && salary.sample_size > 0 && (
+                    <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-xs text-green-700">
+                      Live job data ({salary.sample_size} samples)
+                    </span>
+                  )}
+                  {salary.source === "reference" && (
+                    <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs text-blue-700">
+                      Reference estimates
+                    </span>
+                  )}
+                  {salary.source === "ai_estimate" && (
+                    <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs text-purple-700">
+                      AI estimate
+                    </span>
+                  )}
                 </div>
 
-                {salary.sample_size === 0 && salary.source !== "reference" ? (
+                {salary.sample_size === 0 && salary.source !== "reference" && salary.source !== "ai_estimate" ? (
                   <p className="text-sm text-gray-500">{salary.message || "No salary data available for this query."}</p>
                 ) : (
                   <div className="space-y-3">
@@ -401,6 +459,9 @@ export default function InsightsPage() {
                     })}
                     {salary.source === "reference" && (
                       <p className="mt-3 text-xs text-gray-400 italic">Based on market reference data (estimated)</p>
+                    )}
+                    {salary.source === "ai_estimate" && (
+                      <p className="mt-3 text-xs text-gray-400 italic">AI-generated salary estimate — actual ranges may vary</p>
                     )}
                   </div>
                 )}

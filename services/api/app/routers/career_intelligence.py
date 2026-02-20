@@ -34,6 +34,17 @@ router = APIRouter(
 
 
 # ---------------------------------------------------------------------------
+# Salary autocomplete roles (no auth — static data)
+# ---------------------------------------------------------------------------
+@router.get("/salary-roles")
+def salary_roles() -> list[str]:
+    """Return searchable role titles for salary autocomplete."""
+    from app.services.salary_reference import get_supported_roles
+
+    return get_supported_roles()
+
+
+# ---------------------------------------------------------------------------
 # Brief generation
 # ---------------------------------------------------------------------------
 @router.post("/brief/{candidate_profile_id}")
