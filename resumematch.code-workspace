@@ -1,0 +1,19 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "apps/web/app/components/sieve"
+		}
+	],
+	"settings": {
+		"files.watcherExclude": {
+			"**/apps/web/.next/**": true,
+			"**/.git/objects/**": true,
+			"**/.git/subtree-cache/**": true,
+			"**/node_modules/**": true,
+			"**/services/api/.venv/**": true
+		}
+	}
+}
