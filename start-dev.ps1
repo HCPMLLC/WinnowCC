@@ -36,6 +36,11 @@ Write-Host "API:   $api"
 Write-Host "Web:   $web"
 Write-Host ""
 
+# --- Kill stale processes ---
+Write-Host "[0/4] Stopping stale dev processes..." -ForegroundColor Yellow
+& (Join-Path $root "stop-dev.ps1")
+Write-Host ""
+
 # --- Start infra (Postgres + Redis) ---
 Write-Host "[1/4] Starting Docker containers (Postgres + Redis)..." -ForegroundColor Yellow
 Push-Location $infra
@@ -64,5 +69,5 @@ Start-NewPSWindow `
   -command "npm run dev"
 
 Write-Host ""
-Write-Host "Done. Open the web app URL shown in the 'Winnow Web' window (usually http://localhost:3000 or :3001)." -ForegroundColor Green
-Write-Host "API should be at http://127.0.0.1:8000 (see the 'Winnow API' window)." -ForegroundColor Green
+Write-Host "Done. Web: http://localhost:3000 | API: http://127.0.0.1:8000" -ForegroundColor Green
+Write-Host "Stale processes are auto-killed — ports should always be correct." -ForegroundColor Green
