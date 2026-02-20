@@ -35,6 +35,8 @@ from app.models.job_run import JobRun
 from app.models.match import Match
 from app.models.merged_packet import MergedPacket
 from app.models.migration import MigrationEntityMap, MigrationJob
+from app.models.outreach_enrollment import OutreachEnrollment
+from app.models.outreach_sequence import OutreachSequence
 from app.models.recruiter import RecruiterProfile, RecruiterTeamMember
 from app.models.recruiter_activity import RecruiterActivity
 from app.models.recruiter_client import RecruiterClient
@@ -91,6 +93,8 @@ __all__ = [
     "MergedPacket",
     "MigrationEntityMap",
     "MigrationJob",
+    "OutreachEnrollment",
+    "OutreachSequence",
     "ParsedCertification",
     "ParsedEducation",
     "ParsedResumeDocument",

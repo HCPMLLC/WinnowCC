@@ -88,6 +88,7 @@ from app.routers.recruiter_actions import (  # noqa: E402
 from app.routers.recruiter_migration import (  # noqa: E402
     router as recruiter_migration_router,
 )
+from app.routers.outreach import router as outreach_router  # noqa: E402
 from app.routers.references import router as references_router  # noqa: E402
 from app.routers.resume import router as resume_router  # noqa: E402
 from app.routers.scheduler import router as scheduler_router  # noqa: E402
@@ -197,6 +198,7 @@ app.include_router(talent_pipeline_router)
 app.include_router(recruiter_router)
 app.include_router(recruiter_actions_router)
 app.include_router(recruiter_migration_router)
+app.include_router(outreach_router)
 app.include_router(hiring_workspace_router)
 app.include_router(market_intelligence_router)
 app.include_router(career_intelligence_router)
