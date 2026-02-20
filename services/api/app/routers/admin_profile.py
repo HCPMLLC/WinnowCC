@@ -1,3 +1,6 @@
+import re
+from datetime import datetime, timedelta, timezone
+
 from pydantic import BaseModel
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func, select
@@ -12,6 +15,7 @@ from app.schemas.profile import (
     ProfileCompletenessResponse,
 )
 from app.services.auth import require_admin_user
+from app.services.cascade_delete import cascade_delete_user
 from app.services.profile_parser import default_profile_json
 from app.services.profile_scoring import compute_profile_completeness
 
@@ -24,6 +28,31 @@ class UserSummary(BaseModel):
     name: str | None
     completeness_score: int
     onboarding_completed: bool
+
+
+# --- Purge schemas ---
+
+_TEST_EMAIL_RE = re.compile(r"(test|example)", re.IGNORECASE)
+
+
+class PurgeableUser(BaseModel):
+    id: int
+    email: str
+    name: str | None
+    reason: str  # "test" | "inactive"
+    created_at: datetime | None
+
+
+class PurgeRequest(BaseModel):
+    user_ids: list[int]
+
+
+class PurgeResponse(BaseModel):
+    deleted_count: int
+    message: str
+
+
+# --- Static-path routes (must come before /{user_id} dynamic routes) ---
 
 
 @router.get("/users", response_model=list[UserSummary])
@@ -60,6 +89,89 @@ def list_users(
             )
         )
     return results
+
+
+@router.get("/purgeable", response_model=list[PurgeableUser])
+def list_purgeable_users(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> list[PurgeableUser]:
+    """Scan for test or inactive accounts that can be purged."""
+    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+
+    users = session.execute(select(User).order_by(User.id)).scalars().all()
+
+    # Pre-fetch user IDs that have at least one candidate profile
+    users_with_profile = set(
+        session.execute(
+            select(CandidateProfile.user_id).distinct()
+        ).scalars().all()
+    )
+
+    results: list[PurgeableUser] = []
+    for user in users:
+        reason = None
+
+        # Test accounts: email matches test/example patterns
+        if _TEST_EMAIL_RE.search(user.email or ""):
+            reason = "test"
+        # Inactive accounts: no candidate profile and created > 30 days ago
+        elif (
+            user.id not in users_with_profile
+            and user.created_at
+            and user.created_at.replace(tzinfo=timezone.utc) < cutoff
+        ):
+            reason = "inactive"
+
+        if reason:
+            # Try to get name from latest profile
+            name = None
+            profile = session.execute(
+                select(CandidateProfile)
+                .where(CandidateProfile.user_id == user.id)
+                .order_by(CandidateProfile.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if profile and profile.profile_json:
+                name = profile.profile_json.get("basics", {}).get("name")
+
+            results.append(
+                PurgeableUser(
+                    id=user.id,
+                    email=user.email,
+                    name=name,
+                    reason=reason,
+                    created_at=user.created_at,
+                )
+            )
+
+    return results
+
+
+@router.post("/purge", response_model=PurgeResponse)
+def purge_users(
+    payload: PurgeRequest,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> PurgeResponse:
+    """Delete selected purgeable users and all their associated data."""
+    if not payload.user_ids:
+        raise HTTPException(status_code=400, detail="No user IDs provided.")
+
+    deleted_count = 0
+    for user_id in payload.user_ids:
+        if cascade_delete_user(session, user_id):
+            deleted_count += 1
+
+    session.commit()
+
+    return PurgeResponse(
+        deleted_count=deleted_count,
+        message=f"Successfully purged {deleted_count} user(s).",
+    )
+
+
+# --- Dynamic /{user_id} routes (must come after static-prefix routes) ---
 
 
 @router.get("/{user_id}", response_model=CandidateProfileResponse)
