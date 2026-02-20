@@ -1,0 +1,613 @@
+import { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  StyleSheet,
+  ScrollView,
+  TouchableOpacity,
+  RefreshControl,
+  Alert,
+  Linking,
+} from "react-native";
+import { Picker } from "@react-native-picker/picker";
+import { useRouter } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { useAuth } from "../../lib/auth";
+import { api } from "../../lib/api";
+import LoadingSpinner from "../../components/LoadingSpinner";
+import ProfileMenuItem from "../../components/ProfileMenuItem";
+import {
+  COMPANY_SIZES,
+  INDUSTRIES,
+  type EmployerProfile,
+  type EmployerSubscription,
+} from "../../lib/employer-types";
+import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
+
+export default function EmployerSettingsScreen() {
+  const { email, role, logout } = useAuth();
+  const router = useRouter();
+  const [profile, setProfile] = useState<EmployerProfile | null>(null);
+  const [subscription, setSubscription] =
+    useState<EmployerSubscription | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [showEditProfile, setShowEditProfile] = useState(false);
+
+  // Edit form state
+  const [editName, setEditName] = useState("");
+  const [editSize, setEditSize] = useState("");
+  const [editIndustry, setEditIndustry] = useState("");
+  const [editWebsite, setEditWebsite] = useState("");
+  const [editBillingEmail, setEditBillingEmail] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+
+  const loadData = async () => {
+    try {
+      const [profileRes, subRes] = await Promise.all([
+        api.get("/api/employer/profile"),
+        api.get("/api/employer/billing/subscription").catch(() => null),
+      ]);
+
+      if (profileRes.ok) {
+        const p = await profileRes.json();
+        setProfile(p);
+        setEditName(p.company_name ?? "");
+        setEditSize(p.company_size ?? "");
+        setEditIndustry(p.industry ?? "");
+        setEditWebsite(p.company_website ?? "");
+        setEditBillingEmail(p.billing_email ?? "");
+        setEditDescription(p.company_description ?? "");
+      }
+      if (subRes && subRes.ok) {
+        setSubscription(await subRes.json());
+      }
+    } catch {
+      // Silently fail
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
+
+  const handleSaveProfile = async () => {
+    if (!editName.trim()) {
+      Alert.alert("Required", "Company name is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await api.patch("/api/employer/profile", {
+        company_name: editName.trim(),
+        company_size: editSize || null,
+        industry: editIndustry || null,
+        company_website: editWebsite.trim() || null,
+        billing_email: editBillingEmail.trim() || null,
+        company_description: editDescription.trim() || null,
+      });
+      if (res.ok) {
+        Alert.alert("Saved", "Profile updated.");
+        setShowEditProfile(false);
+        loadData();
+      } else {
+        Alert.alert("Error", "Failed to save profile.");
+      }
+    } catch {
+      Alert.alert("Error", "Something went wrong.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleUpgrade = async (tier: string) => {
+    try {
+      const res = await api.post("/api/employer/billing/checkout", { tier });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.checkout_url || data.url) {
+          Linking.openURL(data.checkout_url || data.url);
+        }
+      } else {
+        Alert.alert("Error", "Failed to start checkout.");
+      }
+    } catch {
+      Alert.alert("Error", "Something went wrong.");
+    }
+  };
+
+  const handleManageSubscription = async () => {
+    try {
+      const res = await api.post("/api/employer/billing/portal", {});
+      if (res.ok) {
+        const data = await res.json();
+        if (data.portal_url || data.url) {
+          Linking.openURL(data.portal_url || data.url);
+        }
+      } else {
+        Alert.alert("Error", "Failed to open billing portal.");
+      }
+    } catch {
+      Alert.alert("Error", "Something went wrong.");
+    }
+  };
+
+  const handleLogout = () => {
+    Alert.alert("Log Out", "Are you sure you want to log out?", [
+      { text: "Cancel", style: "cancel" },
+      { text: "Log Out", style: "destructive", onPress: logout },
+    ]);
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  const tier =
+    subscription?.tier ?? profile?.subscription_tier ?? "free";
+
+  return (
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+      }
+    >
+      <Text style={styles.email}>{email}</Text>
+
+      {/* Plan badge */}
+      <View style={styles.planBadgeRow}>
+        <View style={styles.planBadge}>
+          <Text style={styles.planBadgeText}>{tier.toUpperCase()} Plan</Text>
+        </View>
+        {subscription?.status && (
+          <Text style={styles.planStatus}>{subscription.status}</Text>
+        )}
+      </View>
+
+      {/* Subscription card */}
+      {subscription?.has_subscription && (
+        <View style={styles.card}>
+          <Text style={styles.cardTitle}>Subscription</Text>
+          {subscription.current_period_end && (
+            <Text style={styles.cardMeta}>
+              Current period ends:{" "}
+              {new Date(subscription.current_period_end).toLocaleDateString()}
+            </Text>
+          )}
+          {subscription.cancel_at_period_end && (
+            <Text style={[styles.cardMeta, { color: colors.amber500 }]}>
+              Cancels at end of period
+            </Text>
+          )}
+          <TouchableOpacity
+            style={styles.manageBtn}
+            onPress={handleManageSubscription}
+          >
+            <Text style={styles.manageBtnText}>Manage Subscription</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Pricing plans */}
+      <Text style={styles.sectionTitle}>Plans</Text>
+
+      <View style={styles.card}>
+        <View style={styles.planRow}>
+          <View style={styles.planInfo}>
+            <Text style={styles.planName}>Free</Text>
+            <Text style={styles.planPrice}>$0/mo</Text>
+          </View>
+          <Text style={styles.planFeatures}>
+            1 active job, 10 candidate views/mo
+          </Text>
+        </View>
+      </View>
+
+      {tier !== "starter" && tier !== "pro" && (
+        <UpgradeButton
+          label="Starter — $99/mo"
+          desc="5 jobs, 100 views/mo, pipeline"
+          onPress={() => handleUpgrade("starter")}
+        />
+      )}
+
+      {tier !== "pro" && (
+        <UpgradeButton
+          label="Pro — $299/mo"
+          desc="Unlimited jobs, views, analytics, distribution"
+          onPress={() => handleUpgrade("pro")}
+        />
+      )}
+
+      {/* Profile card */}
+      {profile && (
+        <View style={[styles.card, { marginTop: spacing.md }]}>
+          <Text style={styles.companyName}>{profile.company_name}</Text>
+          {profile.industry && (
+            <Text style={styles.companyMeta}>{profile.industry}</Text>
+          )}
+          {profile.company_size && (
+            <Text style={styles.companyMeta}>
+              {profile.company_size} employees
+            </Text>
+          )}
+          {profile.company_website && (
+            <Text style={styles.companyMeta}>{profile.company_website}</Text>
+          )}
+        </View>
+      )}
+
+      {/* Edit profile */}
+      <ProfileMenuItem
+        icon="create-outline"
+        label="Edit Profile"
+        subtitle="Company info, billing email"
+        onPress={() => setShowEditProfile(!showEditProfile)}
+      />
+
+      {showEditProfile && (
+        <View style={styles.editSection}>
+          <Text style={styles.label}>Company Name</Text>
+          <TextInput
+            style={styles.input}
+            value={editName}
+            onChangeText={setEditName}
+            placeholder="Company name"
+            placeholderTextColor={colors.gray400}
+          />
+
+          <Text style={styles.label}>Company Size</Text>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={editSize}
+              onValueChange={setEditSize}
+              style={styles.picker}
+            >
+              <Picker.Item label="Select size..." value="" />
+              {COMPANY_SIZES.map((s) => (
+                <Picker.Item key={s} label={s} value={s} />
+              ))}
+            </Picker>
+          </View>
+
+          <Text style={styles.label}>Industry</Text>
+          <View style={styles.pickerWrapper}>
+            <Picker
+              selectedValue={editIndustry}
+              onValueChange={setEditIndustry}
+              style={styles.picker}
+            >
+              <Picker.Item label="Select industry..." value="" />
+              {INDUSTRIES.map((i) => (
+                <Picker.Item key={i} label={i} value={i} />
+              ))}
+            </Picker>
+          </View>
+
+          <Text style={styles.label}>Website</Text>
+          <TextInput
+            style={styles.input}
+            value={editWebsite}
+            onChangeText={setEditWebsite}
+            placeholder="https://example.com"
+            placeholderTextColor={colors.gray400}
+            keyboardType="url"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Billing Email</Text>
+          <TextInput
+            style={styles.input}
+            value={editBillingEmail}
+            onChangeText={setEditBillingEmail}
+            placeholder="billing@company.com"
+            placeholderTextColor={colors.gray400}
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+
+          <Text style={styles.label}>Description</Text>
+          <TextInput
+            style={[styles.input, styles.textArea]}
+            value={editDescription}
+            onChangeText={setEditDescription}
+            placeholder="Brief company description"
+            placeholderTextColor={colors.gray400}
+            multiline
+            numberOfLines={3}
+          />
+
+          <TouchableOpacity
+            style={[styles.saveBtn, saving && styles.btnDisabled]}
+            onPress={handleSaveProfile}
+            disabled={saving}
+          >
+            <Text style={styles.saveBtnText}>
+              {saving ? "Saving..." : "Save Profile"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Quick links */}
+      <Text style={styles.sectionTitle}>Quick Links</Text>
+
+      <ProfileMenuItem
+        icon="analytics-outline"
+        label="Analytics"
+        subtitle="View performance metrics"
+        onPress={() => router.push("/employer/analytics")}
+      />
+
+      <ProfileMenuItem
+        icon="bookmark-outline"
+        label="Saved Candidates"
+        subtitle="Manage saved candidates"
+        onPress={() => router.push("/employer/saved")}
+      />
+
+      {/* Role switcher */}
+      {role === "both" && (
+        <TouchableOpacity
+          style={styles.switchBanner}
+          onPress={() => router.replace("/(tabs)/dashboard")}
+        >
+          <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
+          <Text style={styles.switchText}>Switch to Candidate View</Text>
+        </TouchableOpacity>
+      )}
+
+      {(role === "recruiter" || role === "both") && (
+        <TouchableOpacity
+          style={styles.switchBanner}
+          onPress={() => router.replace("/(recruiter-tabs)/dashboard")}
+        >
+          <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
+          <Text style={styles.switchText}>Switch to Recruiter View</Text>
+        </TouchableOpacity>
+      )}
+
+      {/* Logout */}
+      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
+        <Text style={styles.logoutBtnText}>Log Out</Text>
+      </TouchableOpacity>
+    </ScrollView>
+  );
+}
+
+function UpgradeButton({
+  label,
+  desc,
+  onPress,
+}: {
+  label: string;
+  desc: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity style={upgradeStyles.btn} onPress={onPress}>
+      <View style={upgradeStyles.info}>
+        <Text style={upgradeStyles.label}>{label}</Text>
+        <Text style={upgradeStyles.desc}>{desc}</Text>
+      </View>
+      <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+    </TouchableOpacity>
+  );
+}
+
+const upgradeStyles = StyleSheet.create({
+  btn: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: colors.sage,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  info: { flex: 1, marginRight: spacing.sm },
+  label: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  desc: {
+    fontSize: fontSize.xs,
+    color: colors.primaryLight,
+    marginTop: 2,
+  },
+});
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.gray50 },
+  content: { padding: spacing.md, paddingBottom: spacing.xxl },
+  email: {
+    fontSize: fontSize.lg,
+    fontWeight: "600",
+    color: colors.gray900,
+    marginBottom: spacing.md,
+  },
+  planBadgeRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    marginBottom: spacing.md,
+  },
+  planBadge: {
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.full,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
+  },
+  planBadgeText: {
+    color: colors.gold,
+    fontSize: fontSize.xs,
+    fontWeight: "600",
+  },
+  planStatus: {
+    fontSize: fontSize.xs,
+    color: colors.gray500,
+  },
+  card: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  cardTitle: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.gray900,
+    marginBottom: spacing.xs,
+  },
+  cardMeta: {
+    fontSize: fontSize.sm,
+    color: colors.gray500,
+    marginBottom: spacing.xs,
+  },
+  manageBtn: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    alignItems: "center",
+    marginTop: spacing.sm,
+  },
+  manageBtnText: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  sectionTitle: {
+    fontSize: fontSize.lg,
+    fontWeight: "700",
+    color: colors.gray900,
+    marginBottom: spacing.sm,
+    marginTop: spacing.sm,
+  },
+  planRow: {
+    marginBottom: spacing.xs,
+  },
+  planInfo: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  planName: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.gray900,
+  },
+  planPrice: {
+    fontSize: fontSize.md,
+    fontWeight: "700",
+    color: colors.primary,
+  },
+  planFeatures: {
+    fontSize: fontSize.xs,
+    color: colors.gray500,
+  },
+  companyName: {
+    fontSize: fontSize.xl,
+    fontWeight: "700",
+    color: colors.gray900,
+  },
+  companyMeta: {
+    fontSize: fontSize.sm,
+    color: colors.gray500,
+    marginTop: 2,
+  },
+  editSection: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.lg,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  label: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.gray700,
+    marginBottom: spacing.xs,
+  },
+  input: {
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: fontSize.md,
+    color: colors.gray900,
+    marginBottom: spacing.md,
+  },
+  textArea: {
+    minHeight: 80,
+    textAlignVertical: "top",
+  },
+  pickerWrapper: {
+    backgroundColor: colors.gray50,
+    borderRadius: borderRadius.md,
+    borderWidth: 1,
+    borderColor: colors.gray200,
+    marginBottom: spacing.md,
+    overflow: "hidden",
+  },
+  picker: { color: colors.gray900 },
+  saveBtn: {
+    backgroundColor: colors.gold,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+  },
+  btnDisabled: { opacity: 0.6 },
+  saveBtnText: {
+    fontSize: fontSize.lg,
+    fontWeight: "600",
+    color: colors.primary,
+  },
+  switchBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.xs,
+    backgroundColor: colors.primaryLight,
+    borderRadius: borderRadius.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  switchText: {
+    fontSize: fontSize.sm,
+    fontWeight: "600",
+    color: colors.gold,
+  },
+  logoutBtn: {
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    alignItems: "center",
+    marginTop: spacing.lg,
+    borderWidth: 1,
+    borderColor: colors.red500,
+  },
+  logoutBtnText: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.red500,
+  },
+});

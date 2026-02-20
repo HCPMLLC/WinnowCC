@@ -26,7 +26,7 @@ interface Analytics {
 }
 
 export default function EmployerDashboardScreen() {
-  const { email, role, logout } = useAuth();
+  const { email, role } = useAuth();
   const router = useRouter();
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [loading, setLoading] = useState(true);
@@ -58,10 +58,6 @@ export default function EmployerDashboardScreen() {
   const onRefresh = () => {
     setRefreshing(true);
     loadData();
-  };
-
-  const handleLogout = () => {
-    logout();
   };
 
   if (loading) return <LoadingSpinner />;
@@ -189,9 +185,43 @@ export default function EmployerDashboardScreen() {
         </View>
       </TouchableOpacity>
 
-      {/* Logout */}
-      <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-        <Text style={styles.logoutText}>Log Out</Text>
+      <TouchableOpacity
+        style={styles.actionCard}
+        onPress={() => router.push("/employer/analytics")}
+      >
+        <Ionicons name="analytics-outline" size={24} color={colors.blue500} />
+        <View style={styles.actionContent}>
+          <Text style={styles.actionTitle}>View Analytics</Text>
+          <Text style={styles.actionDesc}>
+            Track performance across your job postings
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.actionCard}
+        onPress={() => router.push("/employer/saved")}
+      >
+        <Ionicons name="bookmark-outline" size={24} color={colors.amber500} />
+        <View style={styles.actionContent}>
+          <Text style={styles.actionTitle}>Saved Candidates</Text>
+          <Text style={styles.actionDesc}>
+            Review and manage your saved candidates
+          </Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        style={styles.actionCard}
+        onPress={() => router.push("/(employer-tabs)/pipeline")}
+      >
+        <Ionicons name="layers-outline" size={24} color={colors.green500} />
+        <View style={styles.actionContent}>
+          <Text style={styles.actionTitle}>Talent Pipeline</Text>
+          <Text style={styles.actionDesc}>
+            Manage candidates through your hiring stages
+          </Text>
+        </View>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -316,18 +346,5 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.gray500,
     marginTop: 2,
-  },
-  logoutBtn: {
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.md,
-    alignItems: "center",
-    marginTop: spacing.lg,
-    borderWidth: 1,
-    borderColor: colors.red500,
-  },
-  logoutText: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.red500,
   },
 });
