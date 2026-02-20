@@ -18,13 +18,21 @@ function LoginForm() {
   const redirectTarget =
     redirectParam === "/onboarding" ? "/upload" : baseRedirect;
 
+  const resetToken = searchParams.get("token");
+  const isResetMode = modeParam === "reset" && !!resetToken;
+
   const [isSignUp, setIsSignUp] = useState(modeParam === "signup");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [showResetOffer, setShowResetOffer] = useState(false);
   const [busy, setBusy] = useState(false);
-  const [showForgotMessage, setShowForgotMessage] = useState(false);
+  const [showForgotForm, setShowForgotForm] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotSent, setForgotSent] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
 
   // MFA state
   const [mfaRequired, setMfaRequired] = useState(false);
@@ -37,7 +45,6 @@ function LoginForm() {
     e.preventDefault();
     setErr(null);
     setShowResetOffer(false);
-    setShowForgotMessage(false);
     setBusy(true);
 
     try {
@@ -157,6 +164,57 @@ function LoginForm() {
     }
   }
 
+  async function handleForgotPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    setBusy(true);
+    try {
+      await fetch(`${API_BASE}/api/auth/forgot-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: forgotEmail }),
+      });
+      setForgotSent(true);
+    } catch {
+      setErr("Something went wrong. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleResetPassword(e: React.FormEvent) {
+    e.preventDefault();
+    setErr(null);
+    if (newPassword !== confirmPassword) {
+      setErr("Passwords do not match.");
+      return;
+    }
+    if (newPassword.length < 8) {
+      setErr("Password must be at least 8 characters.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const res = await fetch(`${API_BASE}/api/auth/reset-password`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ token: resetToken, password: newPassword }),
+      });
+      if (!res.ok) {
+        const body = await res.text();
+        let detail = "Reset failed. Please try again.";
+        try { detail = JSON.parse(body).detail || detail; } catch {}
+        throw new Error(detail);
+      }
+      setResetSuccess(true);
+    } catch (e: any) {
+      setErr(e?.message || "Reset failed. Please try again.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const handleSocialLogin = (provider: string) => {
     const auth0Domain = process.env.NEXT_PUBLIC_AUTH0_DOMAIN;
     const auth0ClientId = process.env.NEXT_PUBLIC_AUTH0_CLIENT_ID;
@@ -180,7 +238,8 @@ function LoginForm() {
     setIsSignUp(!isSignUp);
     setErr(null);
     setShowResetOffer(false);
-    setShowForgotMessage(false);
+    setShowForgotForm(false);
+    setForgotSent(false);
   };
 
   // ---- MFA OTP screen ----
@@ -255,6 +314,152 @@ function LoginForm() {
               setResendMsg(null);
             }}
             className="text-slate-500 hover:text-slate-700"
+          >
+            Back to sign in
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Reset password screen (arrived via email link) ----
+  if (isResetMode) {
+    if (resetSuccess) {
+      return (
+        <div className="flex min-h-screen flex-col justify-center px-8 py-4 lg:px-12">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold tracking-tight text-white">Password reset</h1>
+            <p className="mt-2 text-white">Your password has been updated successfully.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => window.location.href = "/dashboard"}
+            className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+          >
+            Continue to Dashboard
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex min-h-screen flex-col justify-center px-8 py-4 lg:px-12">
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold tracking-tight text-white">Set new password</h1>
+          <p className="mt-2 text-white">Enter your new password below.</p>
+        </div>
+        <form onSubmit={handleResetPassword} className="space-y-4">
+          <div>
+            <label htmlFor="new-password" className="block text-sm font-medium text-slate-700">
+              New password (min 8 characters)
+            </label>
+            <input
+              id="new-password"
+              type="password"
+              required
+              minLength={8}
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              placeholder="New password"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label htmlFor="confirm-password" className="block text-sm font-medium text-slate-700">
+              Confirm password
+            </label>
+            <input
+              id="confirm-password"
+              type="password"
+              required
+              minLength={8}
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              placeholder="Confirm password"
+            />
+          </div>
+          {err && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <p>{err}</p>
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Resetting..." : "Reset password"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  // ---- Forgot password screen ----
+  if (showForgotForm) {
+    if (forgotSent) {
+      return (
+        <div className="flex min-h-screen flex-col justify-center px-8 py-4 lg:px-12">
+          <div className="mb-4">
+            <h1 className="text-3xl font-bold tracking-tight text-white">Check your email</h1>
+            <p className="mt-2 text-white">
+              If an account exists for <strong>{forgotEmail}</strong>, we sent a password reset link.
+              Check your inbox (and spam folder).
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => { setShowForgotForm(false); setForgotSent(false); setErr(null); }}
+            className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+          >
+            Back to sign in
+          </button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex min-h-screen flex-col justify-center px-8 py-4 lg:px-12">
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold tracking-tight text-white">Reset your password</h1>
+          <p className="mt-2 text-white">
+            Enter your email address and we&apos;ll send you a link to reset your password.
+          </p>
+        </div>
+        <form onSubmit={handleForgotPassword} className="space-y-4">
+          <div>
+            <label htmlFor="forgot-email" className="block text-sm font-medium text-slate-700">
+              Email
+            </label>
+            <input
+              id="forgot-email"
+              type="email"
+              required
+              value={forgotEmail}
+              onChange={(e) => setForgotEmail(e.target.value)}
+              className="mt-1 block w-full rounded-lg border border-slate-300 px-3 py-2.5 text-sm shadow-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              placeholder="you@example.com"
+              autoFocus
+            />
+          </div>
+          {err && (
+            <div className="rounded-lg bg-red-50 p-3 text-sm text-red-700">
+              <p>{err}</p>
+            </div>
+          )}
+          <button
+            type="submit"
+            disabled={busy}
+            className="w-full rounded-lg bg-slate-900 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {busy ? "Sending..." : "Send reset link"}
+          </button>
+        </form>
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={() => { setShowForgotForm(false); setErr(null); }}
+            className="text-sm text-slate-500 hover:text-slate-700"
           >
             Back to sign in
           </button>
@@ -388,7 +593,7 @@ function LoginForm() {
             {showResetOffer && (
               <button
                 type="button"
-                onClick={() => { setShowForgotMessage(true); setErr(null); setShowResetOffer(false); }}
+                onClick={() => { setShowForgotForm(true); setForgotEmail(email); setErr(null); setShowResetOffer(false); }}
                 className="mt-2 font-semibold text-red-800 underline hover:text-red-900"
               >
                 Reset your password
@@ -397,11 +602,6 @@ function LoginForm() {
           </div>
         )}
 
-        {showForgotMessage && (
-          <div className="rounded-lg bg-blue-50 p-3 text-sm text-blue-700">
-            Password reset coming soon. Please contact support for assistance.
-          </div>
-        )}
 
         <button
           type="submit"
@@ -419,7 +619,7 @@ function LoginForm() {
         <div className="mt-4 text-center">
           <button
             type="button"
-            onClick={() => setShowForgotMessage(true)}
+            onClick={() => { setShowForgotForm(true); setForgotEmail(email); setErr(null); }}
             className="text-sm text-slate-500 hover:text-slate-700"
           >
             Forgot password?
