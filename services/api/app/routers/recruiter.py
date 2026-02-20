@@ -2070,6 +2070,14 @@ def generate_brief(
     return result
 
 
+@router.get("/salary-roles")
+def salary_roles() -> list[str]:
+    """Return searchable role titles for salary autocomplete (no auth required)."""
+    from app.services.salary_reference import get_supported_roles
+
+    return get_supported_roles()
+
+
 @router.get("/salary-intelligence")
 def salary_lookup(
     role: str = Query(...),

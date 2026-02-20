@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProgress } from "../../hooks/useProgress";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -46,6 +46,14 @@ export default function IntelligenceDashboard() {
 
   const [copied, setCopied] = useState(false);
 
+  // Salary autocomplete
+  const [rolesSuggestions, setRolesSuggestions] = useState<string[]>([]);
+  const [rolesDropdownOpen, setRolesDropdownOpen] = useState(false);
+  const rolesRef = useRef<HTMLDivElement>(null);
+
+  // Employer tier for upsell
+  const [employerTier, setEmployerTier] = useState<string | null>(null);
+
   // Load saved candidates and jobs on mount
   useEffect(() => {
     fetch(`${API}/api/employer/candidates/saved`, { credentials: "include" })
@@ -71,6 +79,30 @@ export default function IntelligenceDashboard() {
         );
       })
       .catch(() => {});
+  }, []);
+
+  // Fetch salary role suggestions on mount
+  useEffect(() => {
+    fetch(`${API}/api/career-intelligence/salary-roles`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d: string[]) => setRolesSuggestions(d))
+      .catch(() => {});
+
+    // Fetch employer billing tier for upsell
+    fetch(`${API}/api/billing/status`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (d?.tier) setEmployerTier(d.tier); })
+      .catch(() => {});
+  }, []);
+
+  // Close roles dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (rolesRef.current && !rolesRef.current.contains(e.target as Node))
+        setRolesDropdownOpen(false);
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   async function apiFetch(path: string, options: RequestInit = {}) {
@@ -176,6 +208,15 @@ export default function IntelligenceDashboard() {
         AI-powered recruiter tools for candidate evaluation, salary data, and
         hiring predictions.
       </p>
+
+      {employerTier && employerTier !== "pro" && (
+        <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">
+          Upgrade to Pro for unlimited intelligence lookups, deeper salary analysis, and AI-powered candidate briefs.{" "}
+          <a href="/employer/pricing" className="font-medium underline hover:text-blue-900">
+            View plans &rarr;
+          </a>
+        </div>
+      )}
 
       {noCandidates && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -472,17 +513,40 @@ export default function IntelligenceDashboard() {
             Salary Intelligence
           </h2>
           <div className="space-y-3">
-            <div>
+            <div ref={rolesRef}>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
                 Role Title
               </label>
-              <input
-                type="text"
-                value={salaryRole}
-                onChange={(e) => setSalaryRole(e.target.value)}
-                className={selectClasses}
-                placeholder="e.g. Software Engineer"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={salaryRole}
+                  onChange={(e) => { setSalaryRole(e.target.value); setRolesDropdownOpen(true); }}
+                  onFocus={() => setRolesDropdownOpen(true)}
+                  className={selectClasses}
+                  placeholder="e.g. Software Engineer"
+                />
+                {rolesDropdownOpen && salaryRole.trim() && (() => {
+                  const q = salaryRole.toLowerCase();
+                  const filtered = rolesSuggestions.filter((r) => r.toLowerCase().includes(q));
+                  if (filtered.length === 0)
+                    return (
+                      <div className="absolute z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-400 shadow-lg">
+                        Type any role — AI will estimate if needed
+                      </div>
+                    );
+                  return (
+                    <div className="absolute z-20 mt-1 max-h-48 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white shadow-lg">
+                      {filtered.slice(0, 12).map((r) => (
+                        <button key={r} onClick={() => { setSalaryRole(r); setRolesDropdownOpen(false); }}
+                          className="w-full border-b border-slate-100 px-3 py-2 text-left text-sm capitalize hover:bg-blue-50 last:border-0">
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
             </div>
             <div>
               <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
@@ -522,8 +586,23 @@ export default function IntelligenceDashboard() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="text-xs font-semibold text-slate-500">
-                    SALARY PERCENTILES ({String(salaryResult.sample_size)} samples)
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    SALARY PERCENTILES
+                    {!salaryResult.source && Number(salaryResult.sample_size) > 0 && (
+                      <span className="rounded bg-green-100 px-1.5 py-0.5 font-medium text-green-700">
+                        Live job data ({String(salaryResult.sample_size)} samples)
+                      </span>
+                    )}
+                    {salaryResult.source === "reference" && (
+                      <span className="rounded bg-blue-100 px-1.5 py-0.5 font-medium text-blue-700">
+                        Reference estimates
+                      </span>
+                    )}
+                    {salaryResult.source === "ai_estimate" && (
+                      <span className="rounded bg-purple-100 px-1.5 py-0.5 font-medium text-purple-700">
+                        AI estimate
+                      </span>
+                    )}
                   </div>
                   {/* CSS-only bar chart */}
                   <div className="space-y-2">

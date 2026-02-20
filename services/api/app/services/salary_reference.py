@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import re
+from difflib import SequenceMatcher
+
 # (title_keyword, seniority) → (min, max, currency, salary_type)
 _SALARY_TABLE: dict[tuple[str, str], tuple[int, int, str, str]] = {
     # Software Engineering
@@ -261,6 +264,39 @@ _TITLE_KEYWORDS = [
 ]
 
 
+def _tokenize(text: str) -> set[str]:
+    """Split text into lowercase word tokens, expanding common compounds."""
+    words = set(re.findall(r"[a-z]+", text.lower()))
+    # Expand known compound words so "cybersecurity" also produces {"cyber", "security"}
+    _compounds = {
+        "cybersecurity": {"cyber", "security"},
+        "devops": {"dev", "ops"},
+        "fullstack": {"full", "stack"},
+        "frontend": {"front", "end"},
+        "backend": {"back", "end"},
+    }
+    expanded = set()
+    for w in words:
+        expanded.add(w)
+        if w in _compounds:
+            expanded.update(_compounds[w])
+    return expanded
+
+
+def _token_overlap(tokens_a: set[str], tokens_b: set[str]) -> float:
+    """Compute overlap ratio between two token sets (Jaccard-like, biased to smaller set)."""
+    if not tokens_a or not tokens_b:
+        return 0.0
+    intersection = tokens_a & tokens_b
+    smaller = min(len(tokens_a), len(tokens_b))
+    return len(intersection) / smaller if smaller else 0.0
+
+
+def get_supported_roles() -> list[str]:
+    """Return the list of supported role title keywords for autocomplete."""
+    return list(_TITLE_KEYWORDS)
+
+
 def estimate_salary(
     title: str,
     seniority: str,
@@ -269,17 +305,48 @@ def estimate_salary(
 ) -> tuple[int, int, str, str] | None:
     """Estimate salary range for a job based on title and seniority.
 
+    Uses a 3-pass approach:
+      1. Exact substring match (fast)
+      2. Token overlap (handles compound words like "cyber security" vs "cybersecurity")
+      3. difflib.SequenceMatcher (handles typos and slight variations)
+
     Returns (min, max, currency, salary_type) or None if no match.
     """
     title_lower = title.lower()
     seniority_lower = seniority.lower() if seniority else "mid"
 
-    # Find best matching title keyword
+    # --- Pass 1: Exact substring (current behavior, fastest) ---
     matched_keyword = None
     for kw in _TITLE_KEYWORDS:
         if kw in title_lower:
             matched_keyword = kw
             break
+
+    # --- Pass 2: Token overlap (handles compound words) ---
+    if not matched_keyword:
+        title_tokens = _tokenize(title_lower)
+        best_overlap = 0.0
+        best_kw = None
+        for kw in _TITLE_KEYWORDS:
+            kw_tokens = _tokenize(kw)
+            overlap = _token_overlap(title_tokens, kw_tokens)
+            if overlap > best_overlap:
+                best_overlap = overlap
+                best_kw = kw
+        if best_overlap >= 0.6 and best_kw:
+            matched_keyword = best_kw
+
+    # --- Pass 3: SequenceMatcher (handles typos / slight variations) ---
+    if not matched_keyword:
+        best_ratio = 0.0
+        best_kw = None
+        for kw in _TITLE_KEYWORDS:
+            ratio = SequenceMatcher(None, title_lower, kw).ratio()
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_kw = kw
+        if best_ratio >= 0.75 and best_kw:
+            matched_keyword = best_kw
 
     if not matched_keyword:
         return None
