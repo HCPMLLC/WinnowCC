@@ -103,6 +103,86 @@ function JobDescription({ text, html }: { text: string; html?: string }) {
   );
 }
 
+const SCORE_THRESHOLD = 50;
+const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+
+function MatchCard({
+  match,
+  isSelected,
+  onSelect,
+  formatSalary,
+  getTimeAgo,
+}: {
+  match: Match;
+  isSelected: boolean;
+  onSelect: (id: number) => void;
+  formatSalary: (job: Job) => string | null;
+  getTimeAgo: (dateStr: string) => string;
+}) {
+  const job = match.job;
+  const reasons = match.reasons || {};
+  const salary = formatSalary(job);
+  const timeAgo = job.posted_date ? getTimeAgo(job.posted_date) : null;
+
+  return (
+    <div
+      onClick={() => onSelect(match.id)}
+      className={`cursor-pointer border-b border-gray-100 px-4 py-3 transition-colors ${
+        isSelected
+          ? "border-l-4 border-l-green-600 bg-green-50"
+          : "border-l-4 border-l-transparent hover:bg-gray-50"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-2">
+        <h3 className={`text-sm font-semibold leading-tight ${isSelected ? "text-green-900" : "text-gray-900"}`}>
+          {job.title}
+        </h3>
+        <div className="flex shrink-0 items-center gap-1">
+          {match.referred && (
+            <span className="rounded bg-amber-500 px-1 py-0.5 text-xs font-bold text-white">8x</span>
+          )}
+          <span className="rounded bg-green-600 px-1.5 py-0.5 text-xs font-bold text-white">
+            {match.interview_probability ?? match.match_score}%
+          </span>
+        </div>
+      </div>
+      <div className="mt-1 flex items-center gap-2">
+        {job.company_logo ? <img src={job.company_logo} alt="" className="h-4 w-4 rounded object-contain" /> : null}
+        <span className="text-sm text-gray-700">{job.company}</span>
+      </div>
+      <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
+        <span>{job.location}</span>
+        {salary && (<><span className="text-gray-300">|</span><span className="font-medium text-gray-700">{salary}</span></>)}
+        {timeAgo && (<><span className="text-gray-300">|</span><span>{timeAgo}</span></>)}
+      </div>
+      {match.application_status && (
+        <div className="mt-1.5">
+          <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+            match.application_status === "applied" ? "bg-yellow-100 text-yellow-800" :
+            match.application_status === "interviewing" ? "bg-purple-100 text-purple-800" :
+            match.application_status === "offer" ? "bg-green-100 text-green-800" :
+            match.application_status === "rejected" ? "bg-red-100 text-red-800" :
+            match.application_status === "saved" ? "bg-blue-100 text-blue-800" :
+            "bg-gray-100 text-gray-600"
+          }`}>
+            {match.application_status.charAt(0).toUpperCase() + match.application_status.slice(1)}
+          </span>
+        </div>
+      )}
+      {reasons.matched_skills && reasons.matched_skills.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-1">
+          {reasons.matched_skills.slice(0, 3).map((skill, i) => (
+            <span key={i} className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">{skill}</span>
+          ))}
+          {reasons.matched_skills.length > 3 && (
+            <span className="text-xs text-gray-400">+{reasons.matched_skills.length - 3}</span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function MatchesPage() {
   const router = useRouter();
   const pathname = usePathname();
@@ -116,11 +196,21 @@ export default function MatchesPage() {
     Record<number, { resume?: string; cover?: string }>
   >({});
   const [refreshStatus, setRefreshStatus] = useState<string | null>(null);
+  const [olderExpanded, setOlderExpanded] = useState(false);
   const refreshProg = useProgress();
   const prepareProg = useProgress();
   const [preparingJobId, setPreparingJobId] = useState<number | null>(null);
   const draftProg = useProgress();
   const [creatingDraftId, setCreatingDraftId] = useState<number | null>(null);
+
+  const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
+  const now = Date.now();
+  const recentMatches = qualified.filter(
+    (m) => m.job.posted_date && now - new Date(m.job.posted_date).getTime() <= SEVEN_DAYS_MS
+  );
+  const olderMatches = qualified.filter(
+    (m) => !m.job.posted_date || now - new Date(m.job.posted_date).getTime() > SEVEN_DAYS_MS
+  );
 
   const selectedMatch = matches.find((m) => m.id === selectedMatchId) || null;
 
@@ -143,7 +233,7 @@ export default function MatchesPage() {
   useEffect(() => {
     const loadMatches = async () => {
       try {
-        const response = await fetch(`${API_BASE}/api/matches`, {
+        const response = await fetch(`${API_BASE}/api/matches/all`, {
           credentials: "include",
         });
         if (!response.ok) {
@@ -151,8 +241,9 @@ export default function MatchesPage() {
         }
         const payload = (await response.json()) as Match[];
         setMatches(payload);
-        if (payload.length > 0 && !selectedMatchId) {
-          setSelectedMatchId(payload[0].id);
+        const aboveThreshold = payload.filter((m) => m.match_score >= SCORE_THRESHOLD);
+        if (aboveThreshold.length > 0 && !selectedMatchId) {
+          setSelectedMatchId(aboveThreshold[0].id);
         }
       } catch (caught) {
         const message =
@@ -331,7 +422,7 @@ export default function MatchesPage() {
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-gray-900">Job Matches</h1>
             <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
-              {matches.length} jobs
+              {qualified.length} jobs
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -375,108 +466,7 @@ export default function MatchesPage() {
       <div className="flex min-h-0 flex-1">
         {/* Left column - Job list */}
         <div className="w-[340px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
-          {matches.map((match, index) => {
-            const job = match.job;
-            const reasons = match.reasons || {};
-            const salary = formatSalary(job);
-            const isSelected = selectedMatchId === match.id;
-            const timeAgo = job.posted_date ? getTimeAgo(job.posted_date) : null;
-
-            return (
-              <div
-                key={match.id}
-                onClick={() => setSelectedMatchId(match.id)}
-                className={`cursor-pointer border-b border-gray-100 px-4 py-3 transition-colors ${
-                  isSelected
-                    ? "border-l-4 border-l-green-600 bg-green-50"
-                    : "border-l-4 border-l-transparent hover:bg-gray-50"
-                }`}
-              >
-                {/* Job title and interview probability */}
-                <div className="flex items-start justify-between gap-2">
-                  <h3 className={`text-sm font-semibold leading-tight ${isSelected ? "text-green-900" : "text-gray-900"}`}>
-                    {job.title}
-                  </h3>
-                  <div className="flex shrink-0 items-center gap-1">
-                    {match.referred && (
-                      <span className="rounded bg-amber-500 px-1 py-0.5 text-xs font-bold text-white">
-                        8x
-                      </span>
-                    )}
-                    <span className="rounded bg-green-600 px-1.5 py-0.5 text-xs font-bold text-white">
-                      {match.interview_probability ?? match.match_score}%
-                    </span>
-                  </div>
-                </div>
-
-                {/* Company */}
-                <div className="mt-1 flex items-center gap-2">
-                  {job.company_logo ? (
-                    <img
-                      src={job.company_logo}
-                      alt=""
-                      className="h-4 w-4 rounded object-contain"
-                    />
-                  ) : null}
-                  <span className="text-sm text-gray-700">{job.company}</span>
-                </div>
-
-                {/* Location and salary */}
-                <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-gray-500">
-                  <span>{job.location}</span>
-                  {salary && (
-                    <>
-                      <span className="text-gray-300">|</span>
-                      <span className="font-medium text-gray-700">{salary}</span>
-                    </>
-                  )}
-                  {timeAgo && (
-                    <>
-                      <span className="text-gray-300">|</span>
-                      <span>{timeAgo}</span>
-                    </>
-                  )}
-                </div>
-
-                {/* Application status badge */}
-                {match.application_status && (
-                  <div className="mt-1.5">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
-                      match.application_status === "applied" ? "bg-yellow-100 text-yellow-800" :
-                      match.application_status === "interviewing" ? "bg-purple-100 text-purple-800" :
-                      match.application_status === "offer" ? "bg-green-100 text-green-800" :
-                      match.application_status === "rejected" ? "bg-red-100 text-red-800" :
-                      match.application_status === "saved" ? "bg-blue-100 text-blue-800" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
-                      {match.application_status.charAt(0).toUpperCase() + match.application_status.slice(1)}
-                    </span>
-                  </div>
-                )}
-
-                {/* Skills tags */}
-                {reasons.matched_skills && reasons.matched_skills.length > 0 && (
-                  <div className="mt-2 flex flex-wrap gap-1">
-                    {reasons.matched_skills.slice(0, 3).map((skill, i) => (
-                      <span
-                        key={i}
-                        className="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
-                      >
-                        {skill}
-                      </span>
-                    ))}
-                    {reasons.matched_skills.length > 3 && (
-                      <span className="text-xs text-gray-400">
-                        +{reasons.matched_skills.length - 3}
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-
-          {matches.length === 0 && (
+          {qualified.length === 0 ? (
             <div className="p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
                 <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -487,6 +477,49 @@ export default function MatchesPage() {
                 No matches yet. Click Refresh to find jobs.
               </p>
             </div>
+          ) : (
+            <>
+              {/* Last 7 Days — always visible */}
+              <div>
+                <div className="sticky top-0 z-10 border-b border-gray-200 bg-gray-50 px-4 py-2">
+                  <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Last 7 Days
+                    <span className="ml-1.5 rounded-full bg-green-100 px-1.5 py-0.5 text-xs font-medium text-green-700">
+                      {recentMatches.length}
+                    </span>
+                  </h3>
+                </div>
+                {recentMatches.length > 0 ? recentMatches.map((match) => (
+                  <MatchCard key={match.id} match={match} isSelected={selectedMatchId === match.id} onSelect={setSelectedMatchId} formatSalary={formatSalary} getTimeAgo={getTimeAgo} />
+                )) : (
+                  <div className="px-4 py-6 text-center text-sm text-gray-400">No recent matches above {SCORE_THRESHOLD}%</div>
+                )}
+              </div>
+
+              {/* Older */}
+              {olderMatches.length > 0 && (
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setOlderExpanded((v) => !v)}
+                    className="sticky top-0 z-10 flex w-full items-center justify-between border-b border-gray-200 bg-gray-50 px-4 py-2 text-left hover:bg-gray-100"
+                  >
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Older
+                      <span className="ml-1.5 rounded-full bg-gray-200 px-1.5 py-0.5 text-xs font-medium text-gray-600">
+                        {olderMatches.length}
+                      </span>
+                    </h3>
+                    <svg className={`h-4 w-4 text-gray-400 transition-transform ${olderExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {olderExpanded && olderMatches.map((match) => (
+                    <MatchCard key={match.id} match={match} isSelected={selectedMatchId === match.id} onSelect={setSelectedMatchId} formatSalary={formatSalary} getTimeAgo={getTimeAgo} />
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
