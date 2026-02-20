@@ -132,6 +132,9 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "resume_imports_per_month": 50,
         "resume_imports_per_batch": 10,
         "sieve_messages_per_day": 30,
+        "outreach_sequences": False,
+        "active_sequences": 0,
+        "enrollments_per_month": 0,
     },
     "solo": {
         "seats": 1,
@@ -149,6 +152,9 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "resume_imports_per_month": 25,
         "resume_imports_per_batch": 10,
         "sieve_messages_per_day": 30,
+        "outreach_sequences": False,
+        "active_sequences": 0,
+        "enrollments_per_month": 0,
     },
     "team": {
         "seats": 10,
@@ -166,6 +172,9 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "resume_imports_per_month": 200,
         "resume_imports_per_batch": 25,
         "sieve_messages_per_day": 30,
+        "outreach_sequences": True,
+        "active_sequences": 3,
+        "enrollments_per_month": 50,
     },
     "agency": {
         "seats": 999,
@@ -183,6 +192,9 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "resume_imports_per_month": 999,
         "resume_imports_per_batch": 50,
         "sieve_messages_per_day": 30,
+        "outreach_sequences": True,
+        "active_sequences": 10,
+        "enrollments_per_month": 200,
     },
 }
 
@@ -464,6 +476,7 @@ def _maybe_reset_recruiter_counters(profile, session: Session) -> None:
         profile.job_uploads_used = 0
         profile.intro_requests_used = 0
         profile.resume_imports_used = 0
+        profile.outreach_enrollments_used = 0
         profile.usage_reset_at = now
         session.flush()
 

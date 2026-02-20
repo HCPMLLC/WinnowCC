@@ -61,6 +61,13 @@ export default function RecruiterPipeline() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkLoading, setBulkLoading] = useState(false);
 
+  // Enroll in Sequence
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [availableSequences, setAvailableSequences] = useState<{ id: number; name: string; steps: unknown[] }[]>([]);
+  const [enrollSeqId, setEnrollSeqId] = useState<number | null>(null);
+  const [enrolling, setEnrolling] = useState(false);
+  const [enrollResult, setEnrollResult] = useState("");
+
   // Edit modal
   const [editTarget, setEditTarget] = useState<PipelineCandidate | null>(null);
   const [editForm, setEditForm] = useState({ external_name: "", external_email: "", external_phone: "", external_linkedin: "", notes: "", rating: 0 });
@@ -195,6 +202,47 @@ export default function RecruiterPipeline() {
       /* ignore */
     } finally {
       setEditSaving(false);
+    }
+  }
+
+  async function openEnrollModal() {
+    setEnrollResult("");
+    setEnrollSeqId(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/recruiter/sequences`, { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        setAvailableSequences(data.filter((s: { is_active: boolean }) => s.is_active));
+      }
+    } catch {
+      /* ignore */
+    }
+    setShowEnrollModal(true);
+  }
+
+  async function handleEnroll() {
+    if (!enrollSeqId) return;
+    setEnrolling(true);
+    setEnrollResult("");
+    try {
+      const res = await fetch(`${API_BASE}/api/recruiter/sequences/${enrollSeqId}/enroll`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pipeline_candidate_ids: Array.from(selected) }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setEnrollResult(`Enrolled ${data.enrolled}, skipped ${data.skipped}${data.no_email ? `, ${data.no_email} missing email` : ""}`);
+        setSelected(new Set());
+        setTimeout(() => setShowEnrollModal(false), 2000);
+      } else {
+        setEnrollResult(data.detail || "Failed to enroll");
+      }
+    } catch {
+      setEnrollResult("Network error");
+    } finally {
+      setEnrolling(false);
     }
   }
 
@@ -334,6 +382,9 @@ export default function RecruiterPipeline() {
             <option value="" disabled>Change Stage...</option>
             {STAGES.map((s) => <option key={s} value={s}>{s}</option>)}
           </select>
+          <button onClick={openEnrollModal} disabled={bulkLoading} className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+            Enroll in Sequence
+          </button>
           <button onClick={handleBulkDelete} disabled={bulkLoading} className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50">
             Delete Selected
           </button>
@@ -518,6 +569,45 @@ export default function RecruiterPipeline() {
             fetchPipeline();
           }}
         />
+      )}
+
+      {/* Enroll in Sequence Modal */}
+      {showEnrollModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowEnrollModal(false)}>
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl" onClick={(ev) => ev.stopPropagation()}>
+            <h2 className="mb-4 text-lg font-semibold text-slate-900">Enroll in Outreach Sequence</h2>
+            <p className="mb-4 text-sm text-slate-500">{selected.size} candidate(s) selected</p>
+            {availableSequences.length === 0 ? (
+              <p className="text-sm text-slate-500">No active sequences available. <a href="/recruiter/sequences" className="text-blue-600 hover:underline">Create one first</a>.</p>
+            ) : (
+              <div className="space-y-3">
+                <select
+                  value={enrollSeqId ?? ""}
+                  onChange={(e) => setEnrollSeqId(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                >
+                  <option value="">Select a sequence...</option>
+                  {availableSequences.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name} ({s.steps.length} steps)</option>
+                  ))}
+                </select>
+                {enrollResult && (
+                  <div className={`rounded-md p-3 text-sm ${enrollResult.startsWith("Enrolled") ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+                    {enrollResult}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="mt-5 flex justify-end gap-3">
+              <button onClick={() => setShowEnrollModal(false)} className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">Cancel</button>
+              {availableSequences.length > 0 && (
+                <button onClick={handleEnroll} disabled={enrolling || !enrollSeqId} className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50">
+                  {enrolling ? "Enrolling..." : "Enroll"}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
