@@ -201,6 +201,43 @@ def list_matches(
 
 
 @router.get(
+    "/all",
+    response_model=list[MatchResponse],
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def list_all_matches(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[MatchResponse]:
+    """Return all matches for the current user (no recency cutoff)."""
+    stmt = (
+        select(Match, Job)
+        .join(Job, Match.job_id == Job.id)
+        .where(Match.user_id == user.id)
+        .order_by(Match.match_score.desc())
+    )
+    rows = session.execute(stmt).all()
+    return [
+        MatchResponse(
+            id=match.id,
+            job=JobResponse.model_validate(job),
+            match_score=match.match_score,
+            interview_readiness_score=match.interview_readiness_score,
+            offer_probability=match.offer_probability,
+            reasons=match.reasons,
+            created_at=match.created_at,
+            resume_score=match.resume_score,
+            cover_letter_score=match.cover_letter_score,
+            application_logistics_score=match.application_logistics_score,
+            referred=match.referred,
+            interview_probability=match.interview_probability,
+            application_status=match.application_status,
+        )
+        for match, job in rows
+    ]
+
+
+@router.get(
     "/{match_id}",
     response_model=MatchResponse,
     dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
