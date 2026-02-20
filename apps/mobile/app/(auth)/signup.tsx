@@ -19,7 +19,7 @@ export default function SignupScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [role, setRole] = useState<"candidate" | "employer">("candidate");
+  const [role, setRole] = useState<"candidate" | "employer" | "recruiter">("candidate");
   const [loading, setLoading] = useState(false);
 
   const handleSignup = async () => {
@@ -89,6 +89,27 @@ export default function SignupScreen() {
               ]}
             >
               Employer
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.roleOption,
+              role === "recruiter" && styles.roleOptionActive,
+            ]}
+            onPress={() => setRole("recruiter")}
+          >
+            <Ionicons
+              name="people-outline"
+              size={20}
+              color={role === "recruiter" ? colors.primary : colors.gray400}
+            />
+            <Text
+              style={[
+                styles.roleText,
+                role === "recruiter" && styles.roleTextActive,
+              ]}
+            >
+              Recruiter
             </Text>
           </TouchableOpacity>
         </View>

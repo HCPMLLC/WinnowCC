@@ -224,6 +224,17 @@ export default function ProfileScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Recruiter switcher */}
+      {(role === "recruiter" || role === "both") && (
+        <TouchableOpacity
+          style={styles.switchBanner}
+          onPress={() => router.replace("/(recruiter-tabs)/dashboard")}
+        >
+          <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
+          <Text style={styles.switchBannerText}>Switch to Recruiter View</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Profile Summary */}
       {(summary.name || summary.skillsCount > 0) && (
         <View style={styles.summaryCard}>
