@@ -3,6 +3,7 @@ import {
   View,
   Text,
   TextInput,
+  Image,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -40,7 +41,11 @@ export default function LoginScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.inner}>
-        <Text style={styles.logo}>Winnow</Text>
+        <Image
+          source={require("../../assets/masthead.png")}
+          style={styles.masthead}
+          resizeMode="contain"
+        />
         <Text style={styles.subtitle}>Your job search, sharpened.</Text>
 
         <TextInput
@@ -93,12 +98,11 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
   },
-  logo: {
-    fontSize: fontSize.xxxl,
-    fontWeight: "700",
-    color: colors.gold,
-    textAlign: "center",
-    marginBottom: spacing.xs,
+  masthead: {
+    width: "80%",
+    height: 100,
+    alignSelf: "center",
+    marginBottom: spacing.sm,
   },
   subtitle: {
     fontSize: fontSize.md,
