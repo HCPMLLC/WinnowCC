@@ -104,7 +104,13 @@ def _send_otp_to_user(user: User, session: Session) -> None:
     )
     user.mfa_otp_attempts = 0
     session.commit()
-    send_mfa_otp_email(user.email, code)
+    try:
+        send_mfa_otp_email(user.email, code)
+    except Exception:
+        import logging
+        logging.getLogger(__name__).warning(
+            "Failed to send MFA OTP email to %s", user.email, exc_info=True,
+        )
 
 
 # ---------------------------------------------------------------------------
