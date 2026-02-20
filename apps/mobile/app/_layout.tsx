@@ -225,6 +225,14 @@ export default function RootLayout() {
           options={{ title: "Candidate", presentation: "card" }}
         />
         <Stack.Screen
+          name="employer/analytics"
+          options={{ title: "Analytics", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/saved"
+          options={{ title: "Saved Candidates", presentation: "card" }}
+        />
+        <Stack.Screen
           name="sieve"
           options={{
             title: "Sieve",
