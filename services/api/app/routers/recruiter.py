@@ -359,6 +359,7 @@ def add_to_pipeline(
 def list_pipeline(
     stage: str | None = Query(None),
     job_id: int | None = Query(None),
+    search: str | None = Query(None),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
@@ -371,7 +372,7 @@ def list_pipeline(
 
     pcs = svc_list(
         session, profile, stage=stage, job_id=job_id,
-        limit=limit, offset=offset,
+        search=search, limit=limit, offset=offset,
     )
     # Batch-load linked profiles to avoid N+1 queries
     cp_ids = [pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id]
@@ -740,6 +741,49 @@ async def upload_pipeline_resumes(
         remaining_monthly_quota=remaining,
         upgrade_recommendation=upgrade_recommendation,
     )
+
+
+@router.post("/pipeline/bulk-delete")
+def bulk_delete_pipeline_candidates(
+    ids: list[int] = Query(..., max_length=100),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Batch-delete pipeline candidates owned by this recruiter."""
+    from app.services.recruiter_service import bulk_delete_pipeline
+
+    if not ids or len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 candidate IDs.",
+        )
+    deleted = bulk_delete_pipeline(session, profile, ids)
+    return {"deleted": deleted, "requested": len(ids)}
+
+
+@router.patch("/pipeline/bulk-stage")
+def bulk_update_pipeline_stage(
+    ids: list[int] = Query(..., max_length=100),
+    new_stage: str = Query(...),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Batch-update stage on pipeline candidates owned by this recruiter."""
+    from app.schemas.recruiter_crm import ALLOWED_STAGES
+    from app.services.recruiter_service import bulk_update_pipeline_stage as svc_bulk_stage
+
+    if not ids or len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 candidate IDs.",
+        )
+    if new_stage not in ALLOWED_STAGES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid stage. Must be one of: {', '.join(ALLOWED_STAGES)}",
+        )
+    updated = svc_bulk_stage(session, profile, ids, new_stage)
+    return {"updated": updated, "requested": len(ids)}
 
 
 @router.put("/pipeline/{candidate_id}", response_model=PipelineCandidateResponse)
