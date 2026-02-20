@@ -116,6 +116,17 @@ export default function EmployerDashboardScreen() {
         </TouchableOpacity>
       )}
 
+      {/* Recruiter switcher */}
+      {(role === "recruiter" || role === "both") && (
+        <TouchableOpacity
+          style={styles.switchBanner}
+          onPress={() => router.replace("/(recruiter-tabs)/dashboard")}
+        >
+          <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
+          <Text style={styles.switchText}>Switch to Recruiter View</Text>
+        </TouchableOpacity>
+      )}
+
       {/* Plan badge */}
       <View style={styles.planBadge}>
         <Text style={styles.planText}>

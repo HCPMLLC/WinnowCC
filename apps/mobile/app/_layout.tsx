@@ -66,7 +66,9 @@ export default function RootLayout() {
     if (!authState.isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/login");
     } else if (authState.isAuthenticated && inAuthGroup) {
-      if (authState.role === "employer") {
+      if (authState.role === "recruiter") {
+        router.replace("/(recruiter-tabs)/dashboard");
+      } else if (authState.role === "employer") {
         router.replace("/(employer-tabs)/dashboard");
       } else {
         router.replace("/(tabs)/dashboard");
@@ -177,6 +179,30 @@ export default function RootLayout() {
         <Stack.Screen
           name="(employer-tabs)"
           options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="(recruiter-tabs)"
+          options={{ headerShown: false }}
+        />
+        <Stack.Screen
+          name="recruiter-onboarding"
+          options={{ title: "Setup Recruiter Profile", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/job/[id]"
+          options={{ title: "Job Details", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/client/[id]"
+          options={{ title: "Client Details", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/pipeline/add"
+          options={{ title: "Add to Pipeline", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/pipeline/[id]"
+          options={{ title: "Pipeline Candidate", presentation: "card" }}
         />
         <Stack.Screen
           name="match/[id]"
