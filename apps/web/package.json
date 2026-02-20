@@ -2,8 +2,9 @@
   "name": "winnow-web",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "dev:clean": "rimraf .next && next dev",
+    "dev": "next dev --turbo",
+    "dev:clean": "rimraf .next && next dev --turbo",
+    "dev:webpack": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
