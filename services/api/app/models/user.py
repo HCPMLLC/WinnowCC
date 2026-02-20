@@ -47,6 +47,14 @@ class User(Base):
         Boolean, nullable=False, server_default=text("false")
     )
 
+    # Password reset
+    password_reset_token: Mapped[str | None] = mapped_column(
+        String(255), unique=True, nullable=True
+    )
+    password_reset_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Back-references for ORM relationships declared on other models
     employer_profile = relationship("EmployerProfile", back_populates="user", uselist=False)
     recruiter_profile = relationship("RecruiterProfile", back_populates="user", uselist=False)

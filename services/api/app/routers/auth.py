@@ -18,7 +18,7 @@ from app.services.auth import (
     verify_otp,
     verify_password,
 )
-from app.services.email import send_mfa_otp_email
+from app.services.email import send_mfa_otp_email, send_password_reset_email
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -58,6 +58,15 @@ class VerifyOtpRequest(BaseModel):
 
 class ResendOtpRequest(BaseModel):
     email: EmailStr
+    password: str
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
     password: str
 
 
@@ -223,6 +232,68 @@ def resend_otp(
 
     _send_otp_to_user(user, session)
     return {"status": "sent"}
+
+
+RESET_TOKEN_TTL_MINUTES = 30
+
+
+@router.post("/forgot-password")
+def forgot_password(
+    payload: ForgotPasswordRequest,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Send a password reset link. Always returns 200 to prevent email enumeration."""
+    import secrets as _secrets
+
+    email = payload.email.lower().strip()
+    user = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if user is not None:
+        token = _secrets.token_urlsafe(32)
+        user.password_reset_token = token
+        user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=RESET_TOKEN_TTL_MINUTES
+        )
+        session.commit()
+        send_password_reset_email(user.email, token)
+
+    return {"status": "sent"}
+
+
+@router.post("/reset-password")
+def reset_password(
+    payload: ResetPasswordRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> dict:
+    """Reset password using a valid token."""
+    _validate_password(payload.password)
+
+    user = session.execute(
+        select(User).where(User.password_reset_token == payload.token)
+    ).scalar_one_or_none()
+
+    if user is None:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
+
+    if (
+        user.password_reset_expires_at is None
+        or datetime.now(timezone.utc) > user.password_reset_expires_at
+    ):
+        user.password_reset_token = None
+        user.password_reset_expires_at = None
+        session.commit()
+        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+
+    user.password_hash = hash_password(payload.password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    session.commit()
+
+    set_auth_cookie(response, user_id=user.id, email=user.email)
+    return {"status": "ok"}
 
 
 @router.post("/logout")
