@@ -1,0 +1,129 @@
+import { useEffect, useState, useCallback } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  StyleSheet,
+  RefreshControl,
+} from "react-native";
+import { api } from "../../lib/api";
+import MatchCard from "../../components/MatchCard";
+import LoadingSpinner from "../../components/LoadingSpinner";
+import { colors, spacing, fontSize } from "../../lib/theme";
+
+interface MatchJob {
+  id: number;
+  title: string;
+  company: string;
+  location?: string;
+  remote_flag?: boolean;
+}
+
+interface Match {
+  id: number;
+  job: MatchJob;
+  match_score: number;
+  interview_readiness_score: number;
+  interview_probability?: number;
+  reasons?: { matched_skills?: string[] };
+  application_status?: string;
+}
+
+export default function MatchesScreen() {
+  const [matches, setMatches] = useState<Match[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadMatches = useCallback(async () => {
+    try {
+      setError(null);
+      const res = await api.get("/api/matches/all");
+      if (res.ok) {
+        const data = await res.json();
+        setMatches(Array.isArray(data) ? data : data.matches || []);
+      } else if (res.status === 403) {
+        setError("Complete onboarding on the web app first.");
+      } else {
+        setError("Failed to load matches.");
+      }
+    } catch {
+      setError("Could not connect to server.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMatches();
+  }, [loadMatches]);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadMatches();
+  };
+
+  if (loading) return <LoadingSpinner />;
+
+  return (
+    <View style={styles.container}>
+      <FlatList
+        data={matches}
+        keyExtractor={(item) => String(item.id)}
+        renderItem={({ item }) => (
+          <MatchCard
+            match={{
+              id: item.id,
+              job_title: item.job.title,
+              company: item.job.company,
+              location: item.job.location || "",
+              remote_flag: item.job.remote_flag || false,
+              match_score: item.match_score,
+              interview_readiness_score: item.interview_readiness_score,
+              reasons: item.reasons,
+              application_status: item.application_status,
+            }}
+          />
+        )}
+        contentContainerStyle={styles.list}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+        ListEmptyComponent={
+          <View style={styles.empty}>
+            <Text style={styles.emptyTitle}>
+              {error || "No matches yet"}
+            </Text>
+            <Text style={styles.emptyText}>
+              {error
+                ? "Pull down to retry."
+                : "Upload your resume on the web app to get started."}
+            </Text>
+          </View>
+        }
+      />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  container: { flex: 1, backgroundColor: colors.gray50 },
+  list: { padding: spacing.md },
+  empty: {
+    alignItems: "center",
+    paddingTop: spacing.xxl,
+    paddingHorizontal: spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: fontSize.xl,
+    fontWeight: "600",
+    color: colors.gray700,
+    marginBottom: spacing.sm,
+  },
+  emptyText: {
+    fontSize: fontSize.md,
+    color: colors.gray500,
+    textAlign: "center",
+  },
+});
