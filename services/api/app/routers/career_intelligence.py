@@ -12,8 +12,11 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
+from app.models.recruiter import RecruiterProfile
+from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.user import User
 from app.services.auth import get_current_user, require_employer
+from app.services.recruiter_service import _log_activity, add_to_pipeline
 from app.services.career_intelligence import (
     compute_market_position,
     generate_candidate_brief,
@@ -147,6 +150,8 @@ class LinkedInProfilePayload(BaseModel):
     contact_info: dict | None = None
     open_to_work: bool | None = None
     recommendations_count: int | None = None
+    extraction_version: str | None = None
+    extraction_quality: float | None = None
 
 
 def _require_sourcing_role(user: User = Depends(get_current_user)) -> User:
@@ -225,6 +230,97 @@ def source_from_linkedin(
         raise HTTPException(
             status_code=500, detail="Failed to save LinkedIn profile."
         )
+
+
+def _log_linkedin_source_activity(
+    db: Session,
+    user: User,
+    payload: LinkedInProfilePayload,
+    candidate_profile_id: int,
+) -> None:
+    """Log a linkedin_sourced activity for recruiter users."""
+    if user.role not in ("recruiter", "both"):
+        return
+    profile = db.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if not profile:
+        return
+    _log_activity(
+        db,
+        profile,
+        activity_type="linkedin_sourced",
+        subject=f"Sourced {payload.name} from LinkedIn",
+        activity_metadata={
+            "linkedin_url": payload.linkedin_url,
+            "candidate_name": payload.name,
+            "candidate_profile_id": candidate_profile_id,
+            "extraction_version": payload.extraction_version,
+        },
+    )
+
+
+def _wire_to_recruiter_pipeline(
+    db: Session,
+    user: User,
+    payload: LinkedInProfilePayload,
+    candidate_profile_id: int,
+) -> int | None:
+    """Add or update a recruiter pipeline entry for the sourced candidate."""
+    if user.role not in ("recruiter", "both"):
+        return None
+    profile = db.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if not profile:
+        return None
+
+    linkedin_url = payload.linkedin_url.rstrip("/")
+
+    # Check for existing pipeline entry with same LinkedIn URL
+    existing_pc = db.execute(
+        select(RecruiterPipelineCandidate).where(
+            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+            RecruiterPipelineCandidate.external_linkedin.in_(
+                [linkedin_url, linkedin_url + "/"]
+            ),
+        )
+    ).scalars().first()
+
+    if existing_pc:
+        existing_pc.candidate_profile_id = candidate_profile_id
+        existing_pc.external_name = payload.name
+        db.commit()
+        db.refresh(existing_pc)
+        return existing_pc.id
+
+    # Resolve tag_job_id to a recruiter_job_id if provided
+    recruiter_job_id = None
+    if payload.tag_job_id:
+        from app.models.recruiter_job import RecruiterJob
+
+        rj = db.execute(
+            select(RecruiterJob).where(
+                RecruiterJob.recruiter_profile_id == profile.id,
+                RecruiterJob.id == payload.tag_job_id,
+            )
+        ).scalar_one_or_none()
+        if rj:
+            recruiter_job_id = rj.id
+
+    pc = add_to_pipeline(
+        db,
+        profile,
+        {
+            "candidate_profile_id": candidate_profile_id,
+            "external_name": payload.name,
+            "external_linkedin": linkedin_url,
+            "source": "linkedin_extension",
+            "stage": "sourced",
+            "recruiter_job_id": recruiter_job_id,
+        },
+    )
+    return pc.id
 
 
 def _source_from_linkedin_impl(
@@ -311,11 +407,18 @@ def _source_from_linkedin_impl(
         merged = {**(existing.profile_json or {}), **profile_data}
         existing.profile_json = merged
         db.commit()
-        return {
+
+        _log_linkedin_source_activity(db, user, payload, existing.id)
+        pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, existing.id)
+
+        result = {
             "candidate_profile_id": existing.id,
             "status": "updated",
             "message": "Existing profile updated with latest LinkedIn data",
         }
+        if pipeline_id:
+            result["pipeline_candidate_id"] = pipeline_id
+        return result
 
     # Create new profile (linked to a placeholder user)
     # Extract slug from URL: ".../in/jacewoody" → "jacewoody"
@@ -347,8 +450,14 @@ def _source_from_linkedin_impl(
     db.commit()
     db.refresh(new_profile)
 
-    return {
+    _log_linkedin_source_activity(db, user, payload, new_profile.id)
+    pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, new_profile.id)
+
+    result = {
         "candidate_profile_id": new_profile.id,
         "status": "created",
         "message": "New candidate profile created from LinkedIn",
     }
+    if pipeline_id:
+        result["pipeline_candidate_id"] = pipeline_id
+    return result
