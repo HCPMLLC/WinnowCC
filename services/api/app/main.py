@@ -43,8 +43,10 @@ from app.middleware.rate_limit import limiter  # noqa: E402
 from app.middleware.security_headers import SecurityHeadersMiddleware  # noqa: E402
 from app.routers.account import router as account_router  # noqa: E402
 from app.routers.admin_candidates import router as admin_candidates_router  # noqa: E402
+from app.routers.admin_employers import router as admin_employers_router  # noqa: E402
 from app.routers.admin_jobs import router as admin_jobs_router  # noqa: E402
 from app.routers.admin_profile import router as admin_profile_router  # noqa: E402
+from app.routers.admin_recruiters import router as admin_recruiters_router  # noqa: E402
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
 from app.routers.billing import router as billing_router  # noqa: E402
@@ -173,6 +175,8 @@ app.include_router(trust_router)
 app.include_router(admin_trust_router)
 app.include_router(admin_profile_router)
 app.include_router(admin_candidates_router)
+app.include_router(admin_employers_router)
+app.include_router(admin_recruiters_router)
 app.include_router(match_router)
 app.include_router(matches_router)
 app.include_router(tailor_router)
