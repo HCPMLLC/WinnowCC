@@ -100,16 +100,18 @@ export default function InsightsPage() {
     finally { setSalaryLoading(false); }
   };
 
-  if (loading) return <div className="flex min-h-screen items-center justify-center bg-gray-50"><p className="text-gray-500">Loading...</p></div>;
+  if (loading) return <CandidateLayout><div className="flex items-center justify-center py-16"><p className="text-gray-500">Loading...</p></div></CandidateLayout>;
 
   if (error) return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50">
-      <div className="rounded-xl bg-amber-50 border border-amber-200 p-8 max-w-md text-center shadow">
-        <h2 className="text-xl font-bold text-amber-900 mb-2">Pro Feature</h2>
-        <p className="text-amber-800">{error}</p>
-        <button onClick={() => router.push("/settings")} className="mt-4 rounded-lg bg-amber-600 px-6 py-2.5 font-medium text-white hover:bg-amber-700">Upgrade Plan</button>
+    <CandidateLayout>
+      <div className="flex flex-col items-center justify-center py-16">
+        <div className="rounded-xl bg-amber-50 border border-amber-200 p-8 max-w-md text-center shadow">
+          <h2 className="text-xl font-bold text-amber-900 mb-2">Pro Feature</h2>
+          <p className="text-amber-800">{error}</p>
+          <button onClick={() => router.push("/settings")} className="mt-4 rounded-lg bg-amber-600 px-6 py-2.5 font-medium text-white hover:bg-amber-700">Upgrade Plan</button>
+        </div>
       </div>
-    </div>
+    </CandidateLayout>
   );
 
   const fmt = (n: number | undefined) => n != null ? `$${n.toLocaleString()}` : "";
