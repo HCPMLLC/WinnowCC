@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
 
 const API_BASE =
@@ -88,7 +89,7 @@ export default function DashboardPage() {
   };
 
   return (
-    <main className="mx-auto min-h-screen max-w-6xl px-6 py-10">
+    <CandidateLayout>
       {/* Header */}
       <header className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Dashboard</h1>
@@ -609,6 +610,6 @@ export default function DashboardPage() {
           </p>
         </div>
       )}
-    </main>
+    </CandidateLayout>
   );
 }
