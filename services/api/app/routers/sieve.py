@@ -53,14 +53,22 @@ def sieve_triggers(
 ) -> SieveTriggersResponse:
     """Return proactive nudge triggers for the current user."""
     role = getattr(user, "role", "candidate")
-    # Fallback: check for employer profile if role is still "candidate"
+    # Fallback: check for employer/recruiter profile if role is still "candidate"
     is_employer = role == "employer"
-    if not is_employer and role == "candidate":
+    is_recruiter = role == "recruiter"
+    if not is_employer and not is_recruiter and role == "candidate":
         is_employer = session.execute(
             select(EmployerProfile.id).where(EmployerProfile.user_id == user.id).limit(1)
         ).scalar_one_or_none() is not None
+        if not is_employer:
+            is_recruiter = session.execute(
+                select(RecruiterProfile.id).where(RecruiterProfile.user_id == user.id).limit(1)
+            ).scalar_one_or_none() is not None
 
-    if is_employer:
+    if is_recruiter:
+        # Recruiters use the FAB for chat but have no proactive triggers yet
+        triggers = []
+    elif is_employer:
         triggers = compute_employer_triggers(user, session, dismissed_ids=body.dismissed_ids)
     else:
         triggers = compute_all_triggers(user, session, dismissed_ids=body.dismissed_ids)
