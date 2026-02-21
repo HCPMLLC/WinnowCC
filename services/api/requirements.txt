@@ -1,6 +1,7 @@
 # ---------- Core API ----------
 fastapi>=0.110
 uvicorn[standard]>=0.29
+python-multipart>=0.0.9
 pydantic>=2.0
 email-validator>=2.0
 slowapi>=0.1.9
@@ -16,10 +17,9 @@ rq>=1.15,<3.0
 rq-scheduler>=0.14.0
 
 # ---------- AI / LLM ----------
-anthropic>=1.0
-openai>=1.0
-sentence-transformers>=3.0.0
-voyageai>=0.3.0
+anthropic>=0.78
+openai>=2.0
+# sentence-transformers omitted — large (PyTorch); use voyage/openai embeddings in production
 
 # ---------- Billing / Email ----------
 stripe>=5.0
