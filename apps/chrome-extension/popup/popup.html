@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=360" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>Winnow Sourcing</title>
+</head>
+<body>
+  <div class="popup">
+    <header class="header">
+      <div class="brand">Winnow</div>
+      <div class="subtitle">LinkedIn Sourcing</div>
+    </header>
+
+    <!-- State 1: Sign In -->
+    <div id="signin-section" class="section hidden">
+      <p class="signin-text">Sign in with your Winnow account to start sourcing candidates from LinkedIn.</p>
+      <button id="btn-signin" class="btn btn-primary btn-signin">
+        <svg class="btn-icon" viewBox="0 0 128 128" width="18" height="18">
+          <rect width="128" height="128" rx="20" fill="#fff"/>
+          <text x="64" y="88" font-family="Arial, sans-serif" font-size="72" font-weight="800" fill="#2563eb" text-anchor="middle">W</text>
+        </svg>
+        Sign in with Winnow
+      </button>
+      <div id="signin-error" class="error hidden"></div>
+      <details class="dev-settings">
+        <summary>Developer settings</summary>
+        <label>API URL (override)</label>
+        <input id="api-url-override" type="url" placeholder="http://127.0.0.1:8000" />
+        <a href="#" id="btn-dev-login" class="dev-login-link">Use manual token login</a>
+      </details>
+    </div>
+
+    <!-- State 2: Not on LinkedIn -->
+    <div id="not-linkedin" class="section hidden">
+      <div class="notice">
+        Navigate to a LinkedIn profile page to source a candidate.
+      </div>
+    </div>
+
+    <!-- State 3: Extract & Save -->
+    <div id="extract-panel" class="section hidden">
+      <div id="profile-preview" class="preview hidden">
+        <div class="preview-name" id="preview-name"></div>
+        <div class="preview-headline" id="preview-headline"></div>
+        <div class="preview-location" id="preview-location"></div>
+        <div class="preview-stats" id="preview-stats"></div>
+        <div class="preview-about hidden" id="preview-about"></div>
+        <div class="preview-badge hidden" id="preview-otw">Open to Work</div>
+      </div>
+
+      <button id="btn-extract" class="btn btn-primary">Extract Profile</button>
+
+      <div id="save-section" class="hidden">
+        <label>Tag to Job (optional)</label>
+        <select id="job-select">
+          <option value="">No job selected</option>
+        </select>
+        <button id="btn-save" class="btn btn-success">Save to Winnow</button>
+      </div>
+
+      <div id="save-result" class="result hidden"></div>
+
+      <details id="debug-panel" class="hidden" style="margin-top:8px;font-size:11px;">
+        <summary style="cursor:pointer;color:#6b7280;">Debug Info</summary>
+        <pre id="debug-content" style="max-height:300px;overflow:auto;background:#f3f4f6;padding:6px;border-radius:4px;white-space:pre-wrap;word-break:break-all;font-size:10px;"></pre>
+      </details>
+    </div>
+
+    <!-- Connected indicator -->
+    <div id="connected-bar" class="connected-bar hidden">
+      <span class="dot"></span>
+      <span id="connected-email">Connected</span>
+      <button id="btn-disconnect" class="btn-link">Sign out</button>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

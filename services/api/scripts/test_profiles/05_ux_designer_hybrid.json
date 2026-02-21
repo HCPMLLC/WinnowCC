@@ -1,0 +1,45 @@
+{
+  "name": "Test Profile — UX Designer",
+  "basics": {
+    "name": "Sam Williams",
+    "email": "test-sam@example.com",
+    "location": "San Francisco, CA",
+    "years_of_experience": 5
+  },
+  "experience": [
+    {
+      "company": "ProductStudio Inc",
+      "title": "Senior UX Designer",
+      "start_date": "2023-03",
+      "end_date": null,
+      "bullets": [
+        "Led UX redesign of core SaaS product improving task completion rate by 35% and reducing support tickets by 40%",
+        "Conducted 50+ user research interviews and usability tests to validate design decisions",
+        "Created and maintained design system with 120+ components in Figma used by 3 product teams"
+      ]
+    },
+    {
+      "company": "Digital Agency XYZ",
+      "title": "UX/UI Designer",
+      "start_date": "2020-06",
+      "end_date": "2023-02",
+      "bullets": [
+        "Designed mobile and web experiences for 12+ client projects across fintech, healthcare, and e-commerce",
+        "Built interactive prototypes in Figma and Framer reducing stakeholder review cycles from 3 rounds to 1",
+        "Established user research practice including persona development, journey mapping, and heuristic evaluation"
+      ]
+    }
+  ],
+  "education": [
+    {"institution": "California College of the Arts", "degree": "BFA Interaction Design", "year": 2020}
+  ],
+  "skills": ["Figma", "Sketch", "Adobe XD", "Framer", "User Research", "Usability Testing", "Wireframing", "Prototyping", "Design Systems", "Information Architecture", "HTML", "CSS"],
+  "certifications": ["Google UX Design Certificate"],
+  "preferences": {
+    "desired_titles": ["Senior UX Designer", "Lead Product Designer", "UX Research Manager"],
+    "remote_preference": "hybrid",
+    "desired_salary_min": 120000,
+    "desired_salary_max": 160000,
+    "desired_locations": ["San Francisco, CA", "Remote"]
+  }
+}

@@ -1,0 +1,83 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - link "Winnow" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img "Winnow" [ref=e8]
+        - generic [ref=e9]:
+          - heading "Create your account" [level=1] [ref=e10]
+          - paragraph [ref=e11]: Start matching your resume to the best opportunities.
+        - generic [ref=e12]:
+          - button "Continue with LinkedIn" [ref=e13] [cursor=pointer]:
+            - img [ref=e14]
+            - text: Continue with LinkedIn
+          - button "Continue with Google" [ref=e16] [cursor=pointer]:
+            - img [ref=e17]
+            - text: Continue with Google
+          - button "Continue with GitHub" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+            - text: Continue with GitHub
+          - button "Continue with Microsoft" [ref=e25] [cursor=pointer]:
+            - img [ref=e26]
+            - text: Continue with Microsoft
+          - button "Continue with Apple" [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+            - text: Continue with Apple
+        - generic [ref=e35]: or continue with email
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: I am a...
+            - generic [ref=e39]:
+              - button "Job Seeker Find opportunities" [ref=e40] [cursor=pointer]:
+                - generic [ref=e41]: Job Seeker
+                - generic [ref=e42]: Find opportunities
+              - button "Employer Find talent" [ref=e43] [cursor=pointer]:
+                - generic [ref=e44]: Employer
+                - generic [ref=e45]: Find talent
+              - button "Recruiter Place talent" [ref=e46] [cursor=pointer]:
+                - generic [ref=e47]: Recruiter
+                - generic [ref=e48]: Place talent
+          - generic [ref=e49]:
+            - generic [ref=e50]: Email
+            - textbox "Email" [ref=e51]:
+              - /placeholder: you@example.com
+              - text: e2e_1771189275972_qist0f@example.com
+          - generic [ref=e52]:
+            - generic [ref=e53]: Password (min 8 characters)
+            - textbox "Password (min 8 characters)" [ref=e54]:
+              - /placeholder: Create a password
+              - text: TestPassword123!
+          - button "Create free account" [ref=e55] [cursor=pointer]
+        - paragraph [ref=e56]:
+          - text: Already have an account?
+          - button "Sign in" [ref=e57] [cursor=pointer]
+      - generic [ref=e63]:
+        - heading "Separate the wheat from the chaff" [level=2] [ref=e64]
+        - paragraph [ref=e65]:
+          - text: Join thousands of job seekers using
+          - strong [ref=e66]: Winnow
+          - text: to separate the wheat from the chaff. Getting interviews and offers is not a numbers game. It is a targeted, highly-customized precision campaign.
+        - paragraph [ref=e67]:
+          - text: Upload your resume once, and let our advanced algorithms and automated workflows find jobs that match your interests and abilities.
+          - strong [ref=e68]: Winnow
+          - text: curates a bespoke shortlist of jobs scored and ranked by probability of success - your very own Interview Probability Score™.
+        - paragraph [ref=e69]:
+          - text: You choose which of those jobs to apply to and
+          - strong [ref=e70]: Winnow
+          - text: customizes a version of your resume and cover letter optimized for that job.
+        - paragraph [ref=e71]:
+          - text: Shotgun approaches produce shotgun results. Let
+          - strong [ref=e72]: Winnow
+          - text: blow away the chaff and get you the call-backs you've been missing.
+        - generic [ref=e73]:
+          - paragraph [ref=e74]: New Feature
+          - paragraph [ref=e75]:
+            - text: Your IPS™ now includes resume fit, cover letter quality, applying in the first 10 days, and referrals — the same criteria recruiters use. Most tools only look at your resume, so
+            - strong [ref=e76]: Winnow
+            - text: gives you a clearer picture of your real chances.
+  - alert [ref=e77]
+```

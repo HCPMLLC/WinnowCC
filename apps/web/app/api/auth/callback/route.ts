@@ -1,0 +1,87 @@
+import { NextRequest, NextResponse } from "next/server";
+
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
+function parseRedirectFromState(stateParam: string | null): string {
+  if (!stateParam) return "/dashboard";
+  try {
+    const parsed = JSON.parse(atob(stateParam));
+    if (parsed.redirect && typeof parsed.redirect === "string" && parsed.redirect.startsWith("/")) {
+      return parsed.redirect;
+    }
+  } catch {
+    /* ignore malformed state */
+  }
+  return "/dashboard";
+}
+
+export async function GET(request: NextRequest) {
+  const searchParams = request.nextUrl.searchParams;
+  const code = searchParams.get("code");
+  const error = searchParams.get("error");
+  const errorDescription = searchParams.get("error_description");
+  const stateParam = searchParams.get("state");
+
+  // Handle Auth0 errors
+  if (error) {
+    console.error("Auth0 error:", error, errorDescription);
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent(errorDescription || error)}`, request.url)
+    );
+  }
+
+  if (!code) {
+    return NextResponse.redirect(
+      new URL("/login?error=No authorization code received", request.url)
+    );
+  }
+
+  // Extract redirect target from OAuth state
+  const redirectAfterAuth = parseRedirectFromState(stateParam);
+
+  try {
+    // Exchange the code for tokens via our backend
+    const response = await fetch(`${API_BASE}/api/auth/oauth/callback`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        code,
+        redirect_uri: `${request.nextUrl.origin}/api/auth/callback`,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Backend OAuth error:", errorText);
+      return NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent("Authentication failed")}`, request.url)
+      );
+    }
+
+    const data = await response.json();
+
+    // Use redirect from state, but always go to onboarding if not complete
+    const redirectUrl = data.onboarding_complete ? redirectAfterAuth : "/onboarding";
+    const res = NextResponse.redirect(new URL(redirectUrl, request.url));
+
+    // Set the session cookie from the backend response
+    if (data.session_token) {
+      res.cookies.set("rm_session", data.session_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7, // 7 days
+      });
+    }
+
+    return res;
+  } catch (err) {
+    console.error("OAuth callback error:", err);
+    return NextResponse.redirect(
+      new URL("/login?error=Authentication failed", request.url)
+    );
+  }
+}

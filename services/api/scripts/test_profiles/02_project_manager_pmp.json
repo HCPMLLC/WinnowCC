@@ -1,0 +1,46 @@
+{
+  "name": "Test Profile — PM/PMP",
+  "basics": {
+    "name": "Maria Santos",
+    "email": "test-maria@example.com",
+    "location": "San Antonio, TX",
+    "years_of_experience": 12
+  },
+  "experience": [
+    {
+      "company": "Global Consulting Group",
+      "title": "Senior Program Manager",
+      "start_date": "2019-01",
+      "end_date": null,
+      "bullets": [
+        "Managed portfolio of 8 concurrent projects worth $12M total budget using Agile and Waterfall methodologies",
+        "Reduced project delivery timelines by 25% through implementation of standardized risk management framework",
+        "Led cross-functional team of 35 across 3 time zones to deliver enterprise ERP migration on schedule"
+      ]
+    },
+    {
+      "company": "Defense Contractor Corp",
+      "title": "Project Manager",
+      "start_date": "2014-06",
+      "end_date": "2018-12",
+      "bullets": [
+        "Delivered 15+ DoD projects meeting CMMI Level 3 compliance requirements with zero audit findings",
+        "Managed $5M annual budget with 98% forecast accuracy using Earned Value Management",
+        "Implemented MS Project Server improving resource utilization from 72% to 89%"
+      ]
+    }
+  ],
+  "education": [
+    {"institution": "UTSA", "degree": "MBA", "year": 2014},
+    {"institution": "Texas State University", "degree": "BS Business Administration", "year": 2012}
+  ],
+  "skills": ["Project Management", "Agile", "Scrum", "Waterfall", "MS Project", "Jira", "Risk Management", "Budgeting", "Stakeholder Management", "EVM", "SAFe", "Kanban"],
+  "certifications": ["PMP", "CSM", "SAFe Agilist"],
+  "preferences": {
+    "desired_titles": ["Program Manager", "Senior Project Manager", "PMO Director"],
+    "remote_preference": "hybrid",
+    "desired_salary_min": 130000,
+    "desired_salary_max": 170000,
+    "desired_locations": ["San Antonio, TX", "Austin, TX", "Remote"]
+  }
+}

@@ -1,0 +1,45 @@
+{
+  "name": "Test Profile — Data Analyst",
+  "basics": {
+    "name": "Priya Patel",
+    "email": "test-priya@example.com",
+    "location": "Chicago, IL",
+    "years_of_experience": 4
+  },
+  "experience": [
+    {
+      "company": "FinanceData LLC",
+      "title": "Data Analyst",
+      "start_date": "2022-05",
+      "end_date": null,
+      "bullets": [
+        "Built automated reporting dashboards in Tableau serving 200+ stakeholders across 5 business units",
+        "Developed Python ETL pipelines processing 10GB daily from 12 data sources into Snowflake data warehouse",
+        "Conducted A/B test analysis for product team resulting in 15% improvement in user conversion rates"
+      ]
+    },
+    {
+      "company": "Retail Analytics Co",
+      "title": "Junior Data Analyst",
+      "start_date": "2021-01",
+      "end_date": "2022-04",
+      "bullets": [
+        "Created SQL-based inventory forecasting model reducing stockout rate by 22%",
+        "Automated weekly KPI reports using Python and pandas, saving 8 hours per week of manual work",
+        "Collaborated with merchandising team to design customer segmentation model driving targeted campaigns"
+      ]
+    }
+  ],
+  "education": [
+    {"institution": "University of Chicago", "degree": "BS Statistics", "year": 2020}
+  ],
+  "skills": ["Python", "SQL", "Tableau", "Excel", "Snowflake", "pandas", "R", "A/B Testing", "ETL", "Statistics", "Data Visualization", "Git"],
+  "certifications": ["Tableau Desktop Certified"],
+  "preferences": {
+    "desired_titles": ["Senior Data Analyst", "Data Scientist", "Analytics Engineer"],
+    "remote_preference": "remote_only",
+    "desired_salary_min": 90000,
+    "desired_salary_max": 130000,
+    "desired_locations": ["Remote", "Chicago, IL"]
+  }
+}

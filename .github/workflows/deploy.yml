@@ -1,0 +1,128 @@
+name: Deploy to GCP
+
+on:
+  push:
+    branches: [main]
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  REGION: us-central1
+  API_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/api
+  WORKER_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/worker
+  WEB_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/web
+  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+
+jobs:
+  deploy-api:
+    name: Deploy API
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push API image
+        run: |
+          cd services/api
+          docker build \
+            --build-arg GIT_SHA=${{ github.sha }} \
+            -t ${{ env.API_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.API_IMAGE }}:latest .
+          docker push ${{ env.API_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.API_IMAGE }}:latest
+
+      - name: Deploy API to Cloud Run
+        run: |
+          gcloud run deploy winnow-api \
+            --image=${{ env.API_IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed
+
+      - name: Run migrations
+        run: |
+          gcloud run jobs execute winnow-migrate --region=${{ env.REGION }} --wait
+
+  deploy-worker:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push Worker image
+        run: |
+          cd services/api
+          docker build -f Dockerfile.worker -t ${{ env.WORKER_IMAGE }}:${{ github.sha }} -t ${{ env.WORKER_IMAGE }}:latest .
+          docker push ${{ env.WORKER_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.WORKER_IMAGE }}:latest
+
+      - name: Deploy Worker to Cloud Run
+        run: |
+          gcloud run deploy winnow-worker \
+            --image=${{ env.WORKER_IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed
+
+  deploy-web:
+    name: Deploy Web
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push Web image
+        run: |
+          cd apps/web
+          docker build \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.winnowcc.ai \
+            --build-arg NEXT_PUBLIC_APP_URL=https://winnowcc.ai \
+            --build-arg NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_WEB_DSN }} \
+            --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
+            --build-arg NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.POSTHOG_KEY }} \
+            --build-arg NEXT_PUBLIC_POSTHOG_HOST=https://us.i.posthog.com \
+            -t ${{ env.WEB_IMAGE }}:${{ github.sha }} \
+            -t ${{ env.WEB_IMAGE }}:latest .
+          docker push ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.WEB_IMAGE }}:latest
+
+      - name: Deploy Web to Cloud Run
+        run: |
+          gcloud run deploy winnow-web \
+            --image=${{ env.WEB_IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed
