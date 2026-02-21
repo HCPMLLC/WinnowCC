@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Cookie, Depends, HTTPException, Response
+from fastapi import Cookie, Depends, Header, HTTPException, Response
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -108,10 +108,18 @@ def decode_token(token: str) -> dict:
 def get_current_user(
     session: Session = Depends(get_session),
     rm_session: Optional[str] = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: Optional[str] = Header(default=None),
 ) -> User:
-    if not rm_session:
+    # Accept Bearer token (mobile) or cookie (web)
+    token = None
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization[7:]
+    elif rm_session:
+        token = rm_session
+
+    if not token:
         raise HTTPException(status_code=401, detail="Not authenticated.")
-    payload = decode_token(rm_session)
+    payload = decode_token(token)
     sub = payload.get("sub")
     if not sub:
         raise HTTPException(status_code=401, detail="Invalid session.")

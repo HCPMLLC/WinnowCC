@@ -14,6 +14,7 @@ from app.services.auth import (
     generate_otp,
     get_current_user,
     hash_password,
+    make_token,
     set_auth_cookie,
     verify_otp,
     verify_password,
@@ -40,6 +41,7 @@ class MeResponse(BaseModel):
     onboarding_complete: bool
     is_admin: bool = False
     role: str = "candidate"
+    token: str | None = None
 
 
 class LoginResponse(BaseModel):
@@ -49,6 +51,7 @@ class LoginResponse(BaseModel):
     onboarding_complete: bool | None = None
     is_admin: bool | None = None
     role: str | None = None
+    token: str | None = None
 
 
 class VerifyOtpRequest(BaseModel):
@@ -138,7 +141,9 @@ def signup(
     session.refresh(user)
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
-    return _me_response(user)
+    resp = _me_response(user)
+    resp.token = make_token(user_id=user.id, email=user.email)
+    return resp
 
 
 @router.post("/login", response_model=LoginResponse)
@@ -167,6 +172,7 @@ def login(
 
     # No MFA — normal login
     set_auth_cookie(response, user_id=user.id, email=user.email)
+    token = make_token(user_id=user.id, email=user.email)
     return LoginResponse(
         requires_mfa=False,
         user_id=user.id,
@@ -174,6 +180,7 @@ def login(
         onboarding_complete=bool(user.onboarding_completed_at),
         is_admin=user.is_admin,
         role=user.role,
+        token=token,
     )
 
 

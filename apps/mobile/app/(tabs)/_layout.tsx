@@ -1,8 +1,18 @@
-import { View } from "react-native";
+import { View, Image } from "react-native";
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { colors } from "../../lib/theme";
 import SieveFloatingButton from "../../components/SieveFloatingButton";
+
+function HeaderLogo() {
+  return (
+    <Image
+      source={require("../../assets/winnow-masthead.png")}
+      style={{ width: 120, height: 48, marginRight: 12 }}
+      resizeMode="contain"
+    />
+  );
+}
 
 export default function TabLayout() {
   return (
@@ -18,6 +28,7 @@ export default function TabLayout() {
         headerStyle: { backgroundColor: colors.primary },
         headerTintColor: colors.white,
         headerTitleStyle: { fontWeight: "600" },
+        headerRight: () => <HeaderLogo />,
       }}
     >
       <Tabs.Screen
