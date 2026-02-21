@@ -131,7 +131,14 @@ export default function PipelineScreen() {
         }
       />
 
-      {/* FAB */}
+      {/* FABs */}
+      <TouchableOpacity
+        style={[styles.fab, styles.fabSecondary]}
+        onPress={() => router.push("/recruiter/upload")}
+        activeOpacity={0.8}
+      >
+        <Ionicons name="cloud-upload-outline" size={22} color={colors.white} />
+      </TouchableOpacity>
       <TouchableOpacity
         style={styles.fab}
         onPress={() => router.push("/recruiter/pipeline/add")}
@@ -200,5 +207,12 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 4 },
     elevation: 6,
+  },
+  fabSecondary: {
+    bottom: 90,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
   },
 });

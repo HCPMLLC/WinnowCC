@@ -1,7 +1,13 @@
-import { getToken } from "./auth";
+import { Platform } from "react-native";
+import { getToken, removeToken } from "./auth";
 
 const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  Platform.OS === "web"
+    ? "http://localhost:8000"
+    : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 1000;
 
 interface RequestOptions extends Omit<RequestInit, "headers"> {
   headers?: Record<string, string>;
@@ -14,9 +20,14 @@ export class AuthError extends Error {
   }
 }
 
+function delay(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 /**
  * Make an authenticated API request.
  * Automatically adds the Bearer token from secure storage.
+ * Retries on network failures. Clears token on 401.
  */
 export async function apiFetch(
   path: string,
@@ -35,16 +46,31 @@ export async function apiFetch(
 
   const url = `${API_BASE}${path}`;
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  });
+  let lastError: Error | null = null;
 
-  if (response.status === 401) {
-    throw new AuthError("Session expired. Please log in again.");
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers,
+      });
+
+      if (response.status === 401) {
+        await removeToken();
+        throw new AuthError("Session expired. Please log in again.");
+      }
+
+      return response;
+    } catch (err: any) {
+      if (err instanceof AuthError) throw err;
+      lastError = err;
+      if (attempt < MAX_RETRIES) {
+        await delay(RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
   }
 
-  return response;
+  throw lastError || new Error("Request failed after retries.");
 }
 
 /**
@@ -79,6 +105,7 @@ export async function uploadFile(
   });
 
   if (response.status === 401) {
+    await removeToken();
     throw new AuthError("Session expired. Please log in again.");
   }
 

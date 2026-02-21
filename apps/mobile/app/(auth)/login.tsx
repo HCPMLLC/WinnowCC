@@ -78,6 +78,12 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
+        <Link href="/(auth)/forgot-password" asChild>
+          <TouchableOpacity style={styles.forgotRow}>
+            <Text style={styles.forgotText}>Forgot password?</Text>
+          </TouchableOpacity>
+        </Link>
+
         <View style={styles.footer}>
           <Text style={styles.footerText}>Don&apos;t have an account? </Text>
           <Link href="/(auth)/signup" asChild>
@@ -137,6 +143,8 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginTop: spacing.lg,
   },
+  forgotRow: { alignItems: "center", marginTop: spacing.md },
+  forgotText: { color: colors.gray300, fontSize: fontSize.sm },
   footerText: { color: colors.gray300, fontSize: fontSize.sm },
   link: { color: colors.gold, fontSize: fontSize.sm, fontWeight: "600" },
 });

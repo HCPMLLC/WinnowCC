@@ -8,6 +8,7 @@ export interface AuthState {
   userId: number | null;
   email: string | null;
   role: string | null;
+  onboardingComplete: boolean;
   isAuthenticated: boolean;
   isLoading: boolean;
 }
@@ -16,6 +17,7 @@ export interface AuthContextType extends AuthState {
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, role?: string) => Promise<void>;
   logout: () => Promise<void>;
+  markOnboardingComplete: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
@@ -55,6 +57,13 @@ export async function getToken(): Promise<string | null> {
   return null;
 }
 
+// Callback fired when token is cleared (e.g. 401 from API).
+// Root layout registers a listener to reset auth state.
+let _onTokenCleared: (() => void) | null = null;
+export function onTokenCleared(cb: () => void) {
+  _onTokenCleared = cb;
+}
+
 export async function removeToken(): Promise<void> {
   const store = await getSecureStore();
   if (store) {
@@ -62,4 +71,5 @@ export async function removeToken(): Promise<void> {
   } else if (typeof localStorage !== "undefined") {
     localStorage.removeItem(TOKEN_KEY);
   }
+  _onTokenCleared?.();
 }
