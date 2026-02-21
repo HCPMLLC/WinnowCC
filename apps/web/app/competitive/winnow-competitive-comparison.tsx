@@ -12,7 +12,7 @@ const COMPETITORS = [
   { key: "scalejobs", name: "Scale.jobs", type: "mjass" },
 ];
 
-const TYPE_LABELS = {
+const TYPE_LABELS: Record<string, { label: string; color: string }> = {
   platform: { label: "AI Platform", color: "#2563eb" },
   board: { label: "Job Board", color: "#64748b" },
   mjass: { label: "Apply-For-You Service", color: "#c084fc" },
@@ -243,13 +243,13 @@ const CATEGORIES = [
   },
 ];
 
-const STATUS = {
+const STATUS: Record<string, { icon: string; color: string; bg: string }> = {
   full: { icon: "\u2713", color: "#16a34a", bg: "rgba(22,163,74,0.08)" },
   partial: { icon: "\u25D0", color: "#d97706", bg: "rgba(217,119,6,0.06)" },
   none: { icon: "\u2014", color: "#94a3b8", bg: "transparent" },
 };
 
-function StatusCell({ status, isHighlight }) {
+function StatusCell({ status, isHighlight }: { status: string; isHighlight: boolean }) {
   const s = STATUS[status] || STATUS.none;
   const isWin = isHighlight && status === "full";
   return (
@@ -274,7 +274,7 @@ function StatusCell({ status, isHighlight }) {
   );
 }
 
-function Tip({ text, children }) {
+function Tip({ text, children }: { text: string; children: React.ReactNode }) {
   const [show, setShow] = useState(false);
   return (
     <span
@@ -309,13 +309,13 @@ function Tip({ text, children }) {
   );
 }
 
-function countScores(compKey) {
+function countScores(compKey: string) {
   let full = 0, partial = 0, total = 0;
   CATEGORIES.forEach((c) =>
     c.features.forEach((f) => {
       total++;
-      if (f[compKey] === "full") full++;
-      else if (f[compKey] === "partial") partial++;
+      if ((f as Record<string, unknown>)[compKey] === "full") full++;
+      else if ((f as Record<string, unknown>)[compKey] === "partial") partial++;
     })
   );
   return { full, partial, total };
@@ -325,7 +325,7 @@ export default function CompetitiveComparison() {
   const [expandedCats, setExpandedCats] = useState(
     Object.fromEntries(CATEGORIES.map((c) => [c.category, true]))
   );
-  const [hoveredRow, setHoveredRow] = useState(null);
+  const [hoveredRow, setHoveredRow] = useState<string | null>(null);
   const [filterType, setFilterType] = useState("all");
 
   const sortedComps = [...COMPETITORS].sort((a, b) => {
@@ -345,7 +345,7 @@ export default function CompetitiveComparison() {
       ? sortedComps
       : sortedComps.filter((c) => c.highlight || c.type === filterType);
 
-  const toggleCat = (cat) =>
+  const toggleCat = (cat: string) =>
     setExpandedCats((p) => ({ ...p, [cat]: !p[cat] }));
 
   const allExpanded = Object.values(expandedCats).every(Boolean);
@@ -860,8 +860,8 @@ export default function CompetitiveComparison() {
                               }}
                             >
                               <StatusCell
-                                status={feat[comp.key]}
-                                isHighlight={comp.highlight}
+                                status={(feat as Record<string, unknown>)[comp.key] as string}
+                                isHighlight={!!comp.highlight}
                               />
                             </td>
                           ))}

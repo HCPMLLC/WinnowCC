@@ -422,7 +422,7 @@ export default function MigrationWizard() {
             >
               New Migration
             </button>
-            {migration.status === "completed" && (
+            {(migration.status === "completed" || migration.status === "rolled_back") && (
               <button
                 onClick={rollback}
                 disabled={rolling || migration.status === "rolled_back"}

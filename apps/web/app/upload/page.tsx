@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
@@ -27,7 +27,7 @@ type ParseJobStatus = {
 
 const MAX_UPLOAD_MB = 10;
 
-export default function UploadPage() {
+function UploadPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -252,5 +252,13 @@ export default function UploadPage() {
       ) : null}
     </div>
     </CandidateLayout>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <Suspense>
+      <UploadPageContent />
+    </Suspense>
   );
 }
