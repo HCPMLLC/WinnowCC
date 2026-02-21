@@ -24,3 +24,23 @@ services/api/data/*.sqlite*
 Thumbs.db
 .vscode/
 .idea/
+
+# Claude IDE settings (may contain tokens in command history)
+.claude/settings.local.json
+
+# Session cookie files
+cookies*.txt
+
+# Temporary debug/export files
+tmp_*.json
+tmp_*.txt
+nul
+openapi*.json
+
+# Coverage & Expo cache
+.coverage
+.expo/
+
+# Log directory extras (json/txt not covered by *.log)
+services/api/logs/*.json
+services/api/logs/*.txt
