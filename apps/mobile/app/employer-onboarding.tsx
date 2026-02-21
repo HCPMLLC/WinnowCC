@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
+import { useAuth } from "../lib/auth";
 import { api } from "../lib/api";
 import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
 
@@ -19,6 +20,7 @@ const COMPANY_SIZES = ["1-10", "11-50", "51-200", "201-500", "501-1000", "1000+"
 
 export default function EmployerOnboardingScreen() {
   const router = useRouter();
+  const { markOnboardingComplete } = useAuth();
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
     company_name: "",
@@ -49,6 +51,7 @@ export default function EmployerOnboardingScreen() {
         throw new Error(err?.detail || "Failed to create profile");
       }
 
+      markOnboardingComplete();
       router.replace("/(employer-tabs)/dashboard");
     } catch (err: any) {
       Alert.alert("Error", err.message || "Something went wrong.");

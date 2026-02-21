@@ -37,15 +37,28 @@ interface JobDetail {
   created_at: string | null;
 }
 
+interface Distribution {
+  id: number;
+  board_type: string | null;
+  board_name: string | null;
+  status: string;
+  impressions: number;
+  clicks: number;
+  applications: number;
+  error_message: string | null;
+}
+
 const STATUS_OPTIONS = ["draft", "active", "paused", "closed"];
 
 export default function JobDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const [job, setJob] = useState<JobDetail | null>(null);
+  const [distributions, setDistributions] = useState<Distribution[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [updating, setUpdating] = useState(false);
+  const [distributing, setDistributing] = useState(false);
 
   const loadJob = async () => {
     try {
@@ -61,13 +74,71 @@ export default function JobDetailScreen() {
     }
   };
 
+  const loadDistributions = async () => {
+    try {
+      const res = await api.get(`/api/distribution/jobs/${id}/status`);
+      if (res.ok) {
+        const data = await res.json();
+        setDistributions(data.distributions || []);
+      }
+    } catch {
+      // Non-critical
+    }
+  };
+
+  const handleDistribute = async () => {
+    setDistributing(true);
+    try {
+      const res = await api.post(`/api/distribution/jobs/${id}/distribute`);
+      if (res.ok) {
+        const data = await res.json();
+        Alert.alert("Distributed", `Job sent to ${data.distributed} board(s).`);
+        loadDistributions();
+      } else {
+        const err = await res.json().catch(() => null);
+        Alert.alert("Error", err?.detail || "Failed to distribute job.");
+      }
+    } catch {
+      Alert.alert("Error", "Could not connect to server.");
+    } finally {
+      setDistributing(false);
+    }
+  };
+
+  const handleRemoveFromBoards = () => {
+    Alert.alert(
+      "Remove from Boards",
+      "Remove this job from all distribution boards?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Remove",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              const res = await api.post(`/api/distribution/jobs/${id}/remove`);
+              if (res.ok) {
+                Alert.alert("Removed", "Job removed from all boards.");
+                loadDistributions();
+              }
+            } catch {
+              Alert.alert("Error", "Could not remove from boards.");
+            }
+          },
+        },
+      ]
+    );
+  };
+
   useEffect(() => {
     loadJob();
+    loadDistributions();
   }, [id]);
 
   const onRefresh = () => {
     setRefreshing(true);
     loadJob();
+    loadDistributions();
   };
 
   const handleStatusChange = async (newStatus: string) => {
@@ -225,6 +296,52 @@ export default function JobDetailScreen() {
         ))}
       </ScrollView>
 
+      {/* Distribution */}
+      {job.status === "active" && (
+        <>
+          <Text style={styles.sectionTitle}>Distribution</Text>
+          <TouchableOpacity
+            style={[styles.distributeBtn, distributing && styles.distributeBtnDisabled]}
+            onPress={handleDistribute}
+            disabled={distributing}
+          >
+            <Ionicons name="share-outline" size={18} color={colors.white} />
+            <Text style={styles.distributeBtnText}>
+              {distributing ? "Distributing..." : "Distribute to Boards"}
+            </Text>
+          </TouchableOpacity>
+
+          {distributions.length > 0 && (
+            <View style={styles.distList}>
+              {distributions.map((d) => (
+                <View key={d.id} style={styles.distCard}>
+                  <View style={styles.distHeader}>
+                    <Text style={styles.distBoard}>
+                      {d.board_name || d.board_type || "Unknown Board"}
+                    </Text>
+                    <StatusBadge status={d.status} />
+                  </View>
+                  <View style={styles.distStats}>
+                    <Text style={styles.distStat}>{d.impressions} views</Text>
+                    <Text style={styles.distStat}>{d.clicks} clicks</Text>
+                    <Text style={styles.distStat}>{d.applications} apps</Text>
+                  </View>
+                  {d.error_message && (
+                    <Text style={styles.distError}>{d.error_message}</Text>
+                  )}
+                </View>
+              ))}
+              <TouchableOpacity
+                style={styles.removeBtn}
+                onPress={handleRemoveFromBoards}
+              >
+                <Text style={styles.removeBtnText}>Remove from All Boards</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+        </>
+      )}
+
       {/* Description */}
       <Text style={styles.sectionTitle}>Description</Text>
       <Text style={styles.bodyText}>{job.description}</Text>
@@ -368,6 +485,65 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     fontWeight: "600",
     color: colors.primary,
+  },
+  distributeBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.sm,
+    backgroundColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+    marginBottom: spacing.md,
+  },
+  distributeBtnDisabled: { opacity: 0.6 },
+  distributeBtnText: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.white,
+  },
+  distList: { gap: spacing.sm, marginBottom: spacing.md },
+  distCard: {
+    backgroundColor: colors.white,
+    borderRadius: borderRadius.md,
+    padding: spacing.md,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  distHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: spacing.xs,
+  },
+  distBoard: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.gray900,
+  },
+  distStats: {
+    flexDirection: "row",
+    gap: spacing.md,
+  },
+  distStat: {
+    fontSize: fontSize.sm,
+    color: colors.gray500,
+  },
+  distError: {
+    fontSize: fontSize.xs,
+    color: colors.red500,
+    marginTop: spacing.xs,
+  },
+  removeBtn: {
+    alignItems: "center",
+    paddingVertical: spacing.sm,
+  },
+  removeBtnText: {
+    fontSize: fontSize.sm,
+    color: colors.red500,
+    fontWeight: "500",
   },
   deleteBtn: {
     flexDirection: "row",

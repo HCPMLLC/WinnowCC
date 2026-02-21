@@ -8,6 +8,7 @@ import {
   saveToken,
   getToken,
   removeToken,
+  onTokenCleared,
 } from "../lib/auth";
 import { colors } from "../lib/theme";
 
@@ -22,12 +23,28 @@ export default function RootLayout() {
     userId: null,
     email: null,
     role: null,
+    onboardingComplete: false,
     isAuthenticated: false,
     isLoading: true,
   });
 
   const router = useRouter();
   const segments = useSegments();
+
+  // Listen for forced token removal (e.g. 401 from API)
+  useEffect(() => {
+    onTokenCleared(() => {
+      setAuthState({
+        token: null,
+        userId: null,
+        email: null,
+        role: null,
+        onboardingComplete: false,
+        isAuthenticated: false,
+        isLoading: false,
+      });
+    });
+  }, []);
 
   // Check for stored token on app launch
   useEffect(() => {
@@ -48,6 +65,7 @@ export default function RootLayout() {
                 userId: data.user_id,
                 email: data.email,
                 role: data.role || "candidate",
+                onboardingComplete: !!data.onboarding_complete,
                 isAuthenticated: true,
                 isLoading: false,
               });
@@ -66,16 +84,29 @@ export default function RootLayout() {
     })();
   }, []);
 
-  // Redirect based on auth state and role
+  // Redirect based on auth state, onboarding, and role
   useEffect(() => {
     if (authState.isLoading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inOnboarding =
+      segments[0] === "candidate-onboarding" ||
+      segments[0] === "employer-onboarding" ||
+      segments[0] === "recruiter-onboarding";
 
     if (!authState.isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/login");
     } else if (authState.isAuthenticated && inAuthGroup) {
-      if (authState.role === "recruiter") {
+      // Just logged in — check onboarding
+      if (!authState.onboardingComplete) {
+        if (authState.role === "recruiter") {
+          router.replace("/recruiter-onboarding");
+        } else if (authState.role === "employer") {
+          router.replace("/employer-onboarding");
+        } else {
+          router.replace("/candidate-onboarding");
+        }
+      } else if (authState.role === "recruiter") {
         router.replace("/(recruiter-tabs)/dashboard");
       } else if (authState.role === "employer") {
         router.replace("/(employer-tabs)/dashboard");
@@ -83,7 +114,7 @@ export default function RootLayout() {
         router.replace("/(tabs)/dashboard");
       }
     }
-  }, [authState.isAuthenticated, authState.isLoading, segments, router]);
+  }, [authState.isAuthenticated, authState.isLoading, authState.onboardingComplete, segments, router]);
 
   const login = useCallback(async (email: string, password: string) => {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -104,6 +135,7 @@ export default function RootLayout() {
       userId: data.user_id,
       email: data.email,
       role: data.role || "candidate",
+      onboardingComplete: !!data.onboarding_complete,
       isAuthenticated: true,
       isLoading: false,
     });
@@ -129,12 +161,17 @@ export default function RootLayout() {
         userId: data.user_id,
         email: data.email,
         role: data.role || role || "candidate",
+        onboardingComplete: !!data.onboarding_complete,
         isAuthenticated: true,
         isLoading: false,
       });
     },
     [],
   );
+
+  const markOnboardingComplete = useCallback(() => {
+    setAuthState((s) => ({ ...s, onboardingComplete: true }));
+  }, []);
 
   const logout = useCallback(async () => {
     try {
@@ -152,6 +189,7 @@ export default function RootLayout() {
       userId: null,
       email: null,
       role: null,
+      onboardingComplete: false,
       isAuthenticated: false,
       isLoading: false,
     });
@@ -176,7 +214,7 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthContext.Provider value={{ ...authState, login, signup, logout }}>
+    <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete }}>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -197,6 +235,10 @@ export default function RootLayout() {
           options={{ headerShown: false }}
         />
         <Stack.Screen
+          name="candidate-onboarding"
+          options={{ title: "Complete Your Profile", presentation: "card" }}
+        />
+        <Stack.Screen
           name="recruiter-onboarding"
           options={{ title: "Setup Recruiter Profile", presentation: "card" }}
         />
@@ -207,6 +249,10 @@ export default function RootLayout() {
         <Stack.Screen
           name="recruiter/client/[id]"
           options={{ title: "Client Details", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/upload"
+          options={{ title: "Bulk Resume Upload", presentation: "card" }}
         />
         <Stack.Screen
           name="recruiter/pipeline/add"
