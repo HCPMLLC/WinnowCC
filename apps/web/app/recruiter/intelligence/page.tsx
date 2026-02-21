@@ -171,7 +171,7 @@ export default function RecruiterIntelligence() {
   const [briefProfileId, setBriefProfileId] = useState("");
   const [briefType, setBriefType] = useState("general");
   const [briefJobId, setBriefJobId] = useState("");
-  const [briefResult, setBriefResult] = useState<Record<string, unknown> | null>(null);
+  const [briefResult, setBriefResult] = useState<Record<string, any> | null>(null);
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState("");
   const [briefProgress, setBriefProgress] = useState(0);
@@ -179,7 +179,7 @@ export default function RecruiterIntelligence() {
 
   // Trajectory state
   const [trajProfileId, setTrajProfileId] = useState("");
-  const [trajResult, setTrajResult] = useState<Record<string, unknown> | null>(null);
+  const [trajResult, setTrajResult] = useState<Record<string, any> | null>(null);
   const [trajLoading, setTrajLoading] = useState(false);
   const [trajError, setTrajError] = useState("");
 
@@ -971,7 +971,7 @@ export default function RecruiterIntelligence() {
               )}
               <div className="grid gap-4 sm:grid-cols-2">
                 {(["trajectory_6mo", "trajectory_12mo"] as const).map((key) => {
-                  const step = trajResult[key] as Record<string, unknown> | undefined;
+                  const step = trajResult[key] as Record<string, any> | undefined;
                   if (!step || typeof step !== "object") return null;
                   return (
                     <div

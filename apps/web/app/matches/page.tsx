@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
@@ -183,7 +183,7 @@ function MatchCard({
   );
 }
 
-export default function MatchesPage() {
+function MatchesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -879,5 +879,13 @@ export default function MatchesPage() {
       </div>
     </div>
     </CandidateLayout>
+  );
+}
+
+export default function MatchesPage() {
+  return (
+    <Suspense>
+      <MatchesPageContent />
+    </Suspense>
   );
 }

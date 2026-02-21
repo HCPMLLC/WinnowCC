@@ -24,24 +24,24 @@ export default function IntelligenceDashboard() {
   const [briefCandidateId, setBriefCandidateId] = useState("");
   const [briefJobId, setBriefJobId] = useState("");
   const [briefType, setBriefType] = useState("general");
-  const [briefResult, setBriefResult] = useState<Record<string, unknown> | null>(null);
+  const [briefResult, setBriefResult] = useState<Record<string, any> | null>(null);
   const brief = useProgress();
 
   // Salary intelligence state
   const [salaryRole, setSalaryRole] = useState("");
   const [salaryLocation, setSalaryLocation] = useState("");
-  const [salaryResult, setSalaryResult] = useState<Record<string, unknown> | null>(null);
+  const [salaryResult, setSalaryResult] = useState<Record<string, any> | null>(null);
   const salary = useProgress();
 
   // Time-to-fill state
   const [ttfJobId, setTtfJobId] = useState("");
-  const [ttfResult, setTtfResult] = useState<Record<string, unknown> | null>(null);
+  const [ttfResult, setTtfResult] = useState<Record<string, any> | null>(null);
   const ttf = useProgress();
 
   // Market position state
   const [mpCandidateId, setMpCandidateId] = useState("");
   const [mpJobId, setMpJobId] = useState("");
-  const [mpResult, setMpResult] = useState<Record<string, unknown> | null>(null);
+  const [mpResult, setMpResult] = useState<Record<string, any> | null>(null);
   const mp = useProgress();
 
   const [copied, setCopied] = useState(false);

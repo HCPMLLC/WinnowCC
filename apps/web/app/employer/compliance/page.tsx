@@ -19,7 +19,7 @@ export default function CompliancePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
-  const [report, setReport] = useState<Record<string, unknown> | null>(null);
+  const [report, setReport] = useState<Record<string, any> | null>(null);
 
   useEffect(() => {
     fetchLog();

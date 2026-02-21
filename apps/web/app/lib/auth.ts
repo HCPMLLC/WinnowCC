@@ -2,6 +2,8 @@ export type AuthMe = {
   user_id: number;
   email: string;
   onboarding_complete: boolean;
+  is_admin: boolean;
+  role: string;
 };
 
 const API_BASE =
