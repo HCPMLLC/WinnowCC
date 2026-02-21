@@ -1,0 +1,45 @@
+{
+  "name": "Test Profile — Senior SWE",
+  "basics": {
+    "name": "Alex Chen",
+    "email": "test-alex@example.com",
+    "location": "Austin, TX",
+    "years_of_experience": 8
+  },
+  "experience": [
+    {
+      "company": "TechCorp Inc.",
+      "title": "Senior Software Engineer",
+      "start_date": "2021-03",
+      "end_date": null,
+      "bullets": [
+        "Led migration of monolithic Java application to microservices architecture using Spring Boot and Kubernetes, reducing deployment time by 70%",
+        "Designed and implemented real-time data pipeline processing 2M events/day using Apache Kafka and Flink",
+        "Mentored team of 4 junior engineers through code reviews and pair programming sessions"
+      ]
+    },
+    {
+      "company": "StartupXYZ",
+      "title": "Software Engineer",
+      "start_date": "2018-06",
+      "end_date": "2021-02",
+      "bullets": [
+        "Built full-stack web application using React, Node.js, and PostgreSQL serving 50K monthly active users",
+        "Implemented CI/CD pipeline with GitHub Actions reducing release cycle from 2 weeks to daily deploys",
+        "Optimized database queries reducing API response times from 800ms to 120ms average"
+      ]
+    }
+  ],
+  "education": [
+    {"institution": "University of Texas at Austin", "degree": "BS Computer Science", "year": 2018}
+  ],
+  "skills": ["Python", "Java", "TypeScript", "React", "Node.js", "PostgreSQL", "Kubernetes", "Docker", "AWS", "Kafka", "Spring Boot", "CI/CD", "Git"],
+  "certifications": ["AWS Solutions Architect Associate"],
+  "preferences": {
+    "desired_titles": ["Senior Software Engineer", "Staff Engineer", "Tech Lead"],
+    "remote_preference": "remote_only",
+    "desired_salary_min": 150000,
+    "desired_salary_max": 200000,
+    "desired_locations": ["Austin, TX", "Remote"]
+  }
+}

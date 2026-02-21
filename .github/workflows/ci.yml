@@ -1,0 +1,244 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "20"
+
+jobs:
+  # ─── API: Lint + Test ───────────────────────────
+  api-lint:
+    name: API Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          cd services/api
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Ruff check
+        run: |
+          cd services/api
+          python -m ruff check .
+      - name: Ruff format check
+        run: |
+          cd services/api
+          python -m ruff format --check .
+
+  api-test:
+    name: API Tests
+    runs-on: ubuntu-latest
+    needs: api-lint
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: resumematch
+          POSTGRES_PASSWORD: resumematch
+          POSTGRES_DB: resumematch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DB_URL: postgresql+psycopg://resumematch:resumematch@localhost:5432/resumematch_test
+      TEST_DB_URL: postgresql+psycopg://resumematch:resumematch@localhost:5432/resumematch_test
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_SECRET: ci-test-secret
+      AUTH_COOKIE_NAME: rm_session
+      ADMIN_TOKEN: ci-admin-token
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - name: Install dependencies
+        run: |
+          cd services/api
+          pip install -r requirements.txt -r requirements-dev.txt
+      - name: Run Alembic migrations
+        run: |
+          cd services/api
+          alembic upgrade head
+      - name: Run tests with coverage
+        run: |
+          cd services/api
+          python -m pytest tests/ -v --cov=app --cov-report=term-missing --cov-fail-under=50
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-coverage
+          path: services/api/htmlcov/
+
+  # ─── Web: Lint + Build ─────────────────────────
+  web-lint:
+    name: Web Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: |
+          cd apps/web
+          npm ci
+      - name: Next.js lint
+        run: |
+          cd apps/web
+          npm run lint
+
+  web-build:
+    name: Web Build
+    runs-on: ubuntu-latest
+    needs: web-lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Install dependencies
+        run: |
+          cd apps/web
+          npm ci
+      - name: Build Next.js
+        env:
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+        run: |
+          cd apps/web
+          npm run build
+
+  # ─── Security Scan ─────────────────────────────
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install Python dependencies
+        run: |
+          cd services/api
+          pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Run pip-audit
+        run: |
+          cd services/api
+          pip-audit --strict --desc
+        continue-on-error: true
+
+      - name: Run npm audit
+        run: |
+          cd apps/web
+          npm ci
+          npm audit --production --audit-level=high
+        continue-on-error: true
+
+  # ─── E2E Tests (on main only) ──────────────────
+  e2e-test:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [api-test, web-build]
+    if: github.ref == 'refs/heads/main'
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: resumematch
+          POSTGRES_PASSWORD: resumematch
+          POSTGRES_DB: resumematch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+    env:
+      DB_URL: postgresql+psycopg://resumematch:resumematch@localhost:5432/resumematch_test
+      REDIS_URL: redis://localhost:6379/0
+      AUTH_SECRET: ci-test-secret
+      AUTH_COOKIE_NAME: rm_session
+      ADMIN_TOKEN: ci-admin-token
+      NEXT_PUBLIC_API_BASE_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Install API dependencies
+        run: |
+          cd services/api
+          pip install -r requirements.txt
+      - name: Run migrations
+        run: |
+          cd services/api
+          alembic upgrade head
+      - name: Start API
+        run: |
+          cd services/api
+          uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+          sleep 5
+      - name: Install web dependencies
+        run: |
+          cd apps/web
+          npm ci
+      - name: Install Playwright browsers
+        run: |
+          cd apps/web
+          npx playwright install --with-deps chromium
+      - name: Build and start web
+        run: |
+          cd apps/web
+          npm run build
+          npm start &
+          sleep 5
+      - name: Run Playwright tests
+        run: |
+          cd apps/web
+          PLAYWRIGHT_BASE_URL=http://localhost:3000 npx playwright test
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/

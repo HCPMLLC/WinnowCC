@@ -70,4 +70,4 @@ Start-NewPSWindow `
 
 Write-Host ""
 Write-Host "Done. Web: http://localhost:3000 | API: http://127.0.0.1:8000" -ForegroundColor Green
-Write-Host "Stale processes are auto-killed — ports should always be correct." -ForegroundColor Green
+Write-Host "Stale processes are auto-killed - ports should always be correct." -ForegroundColor Green

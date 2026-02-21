@@ -1,0 +1,642 @@
+"""LLM-based resume parser using PROMPT9 system prompt.
+
+Chain: OpenAI (primary) → Anthropic Claude (fallback) → regex (final).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import math
+import os
+import re
+from datetime import date
+from pathlib import Path
+
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+PROMPT9_PATH = Path(__file__).resolve().parents[2] / "PROMPT9_Resume_Parser.md"
+
+_prompt9_cache: str | None = None
+
+
+def _load_prompt9() -> str:
+    """Read and cache the PROMPT9 system prompt file."""
+    global _prompt9_cache
+    if _prompt9_cache is None:
+        _prompt9_cache = PROMPT9_PATH.read_text(encoding="utf-8")
+    return _prompt9_cache
+
+
+def is_llm_parser_available() -> bool:
+    """Return True if enabled, at least one API key is set, and PROMPT9 exists."""
+    enabled = os.getenv("LLM_PARSER_ENABLED", "true").lower() in ("true", "1", "yes")
+    has_openai = bool(os.getenv("OPENAI_API_KEY", "").strip())
+    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    has_prompt = PROMPT9_PATH.exists()
+    return enabled and (has_openai or has_anthropic) and has_prompt
+
+
+def _has_openai_key() -> bool:
+    return bool(os.getenv("OPENAI_API_KEY", "").strip())
+
+
+def _has_anthropic_key() -> bool:
+    return bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+
+
+# ---------------------------------------------------------------------------
+# LLM API call
+# ---------------------------------------------------------------------------
+
+
+def parse_resume_with_llm(resume_text: str) -> dict:
+    """Call OpenAI API with PROMPT9 to parse resume text into structured JSON."""
+    from openai import OpenAI  # lazy import — graceful if not installed
+
+    api_key = os.getenv("OPENAI_API_KEY", "")
+    model = os.getenv("LLM_PARSER_MODEL", "gpt-4o-mini")
+    timeout = int(os.getenv("LLM_PARSER_TIMEOUT", "120"))
+
+    system_prompt = _load_prompt9() + "\n\nReturn ONLY valid JSON, no markdown fences."
+
+    client = OpenAI(api_key=api_key, timeout=timeout, max_retries=2)
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {
+                "role": "user",
+                "content": f"Parse the following resume:\n\n{resume_text}",
+            },
+        ],
+        temperature=0.0,
+        response_format={"type": "json_object"},
+    )
+
+    raw = response.choices[0].message.content or ""
+
+    # Defensive: strip markdown fences if present
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+
+    result = json.loads(raw)
+    if not isinstance(result, dict):
+        raise ValueError("LLM response is not a JSON object")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Anthropic Claude API call (fallback)
+# ---------------------------------------------------------------------------
+
+
+def parse_resume_with_claude(resume_text: str) -> dict:
+    """Call Anthropic Claude API with PROMPT9.
+
+    Parses resume text into structured JSON.
+    """
+    from anthropic import Anthropic  # lazy import
+
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
+    model = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
+    timeout = int(os.getenv("LLM_PARSER_TIMEOUT", "120"))
+
+    system_prompt = _load_prompt9() + "\n\nReturn ONLY valid JSON, no markdown fences."
+
+    client = Anthropic(api_key=api_key, timeout=timeout)
+    response = client.messages.create(
+        model=model,
+        max_tokens=16384,
+        system=system_prompt,
+        messages=[
+            {
+                "role": "user",
+                "content": f"Parse the following resume:\n\n{resume_text}",
+            },
+        ],
+        temperature=0.0,
+    )
+
+    raw = response.content[0].text or ""
+
+    # Defensive: strip markdown fences if present
+    raw = raw.strip()
+    if raw.startswith("```"):
+        raw = re.sub(r"^```(?:json)?\s*", "", raw)
+        raw = re.sub(r"\s*```$", "", raw)
+
+    result = json.loads(raw)
+    if not isinstance(result, dict):
+        raise ValueError("Claude response is not a JSON object")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Mapper: PROMPT9 output → profile_json
+# ---------------------------------------------------------------------------
+
+# State name → abbreviation lookup
+_STATE_ABBREVIATIONS: dict[str, str] = {
+    "alabama": "AL",
+    "alaska": "AK",
+    "arizona": "AZ",
+    "arkansas": "AR",
+    "california": "CA",
+    "colorado": "CO",
+    "connecticut": "CT",
+    "delaware": "DE",
+    "florida": "FL",
+    "georgia": "GA",
+    "hawaii": "HI",
+    "idaho": "ID",
+    "illinois": "IL",
+    "indiana": "IN",
+    "iowa": "IA",
+    "kansas": "KS",
+    "kentucky": "KY",
+    "louisiana": "LA",
+    "maine": "ME",
+    "maryland": "MD",
+    "massachusetts": "MA",
+    "michigan": "MI",
+    "minnesota": "MN",
+    "mississippi": "MS",
+    "missouri": "MO",
+    "montana": "MT",
+    "nebraska": "NE",
+    "nevada": "NV",
+    "new hampshire": "NH",
+    "new jersey": "NJ",
+    "new mexico": "NM",
+    "new york": "NY",
+    "north carolina": "NC",
+    "north dakota": "ND",
+    "ohio": "OH",
+    "oklahoma": "OK",
+    "oregon": "OR",
+    "pennsylvania": "PA",
+    "rhode island": "RI",
+    "south carolina": "SC",
+    "south dakota": "SD",
+    "tennessee": "TN",
+    "texas": "TX",
+    "utah": "UT",
+    "vermont": "VT",
+    "virginia": "VA",
+    "washington": "WA",
+    "west virginia": "WV",
+    "wisconsin": "WI",
+    "wyoming": "WY",
+    "district of columbia": "DC",
+}
+
+
+def _normalize_state(state: str | None) -> str:
+    """Convert full state name to 2-letter abbreviation.
+
+    Returns as-is if already short.
+    """
+    if not state:
+        return ""
+    state = state.strip()
+    if len(state) == 2:
+        return state.upper()
+    return _STATE_ABBREVIATIONS.get(state.lower(), state)
+
+
+def _format_location(city: str | None, state: str | None) -> str:
+    """Format city and state into 'City, ST' string."""
+    city = (city or "").strip()
+    st = _normalize_state(state)
+    if city and st:
+        return f"{city}, {st}"
+    return city or st
+
+
+def _split_name(full_name: str) -> tuple[str, str]:
+    """Split full name: last word = last_name, rest = first_name."""
+    parts = full_name.strip().split()
+    if not parts:
+        return ("", "")
+    if len(parts) == 1:
+        return (parts[0], "")
+    return (" ".join(parts[:-1]), parts[-1])
+
+
+def _format_phone_number(raw: str | None) -> str:
+    """Strip non-digits and format as (NNN) NNN-NNNN for US numbers."""
+    if not raw:
+        return ""
+    digits = re.sub(r"\D", "", raw)
+    if len(digits) == 10:
+        return f"({digits[:3]}) {digits[3:6]}-{digits[6:]}"
+    if len(digits) == 11 and digits[0] == "1":
+        return f"({digits[1:4]}) {digits[4:7]}-{digits[7:]}"
+    return raw.strip()
+
+
+def _normalize_date_to_mmm_yyyy(raw: str | None) -> str | None:
+    """Convert YYYY-MM, YYYY, or 'Present' to MMM-YYYY format."""
+    if not raw:
+        return None
+    val = raw.strip()
+    if val.lower() in ("present", "current", "now", "ongoing"):
+        return "Present"
+
+    month_abbrevs = [
+        "Jan",
+        "Feb",
+        "Mar",
+        "Apr",
+        "May",
+        "Jun",
+        "Jul",
+        "Aug",
+        "Sep",
+        "Oct",
+        "Nov",
+        "Dec",
+    ]
+
+    # YYYY-MM
+    m = re.match(r"^(\d{4})-(\d{2})$", val)
+    if m:
+        year, month_num = m.groups()
+        idx = int(month_num) - 1
+        if 0 <= idx < 12:
+            return f"{month_abbrevs[idx]}-{year}"
+        return val
+
+    # Already MMM-YYYY
+    if re.match(r"^[A-Z][a-z]{2}-\d{4}$", val):
+        return val
+
+    # Bare year
+    if re.match(r"^\d{4}$", val):
+        return val
+
+    return val
+
+
+def _has_quantified_metric(text: str) -> bool:
+    """Return True if text contains dollar amounts, percentages, or notable numbers."""
+    return bool(re.search(r"\$[\d,]+|[\d,]+%|\b\d{2,}(?:,\d{3})*\b|\b\d+x\b", text))
+
+
+def _calculate_total_years_from_experience(experience: list[dict]) -> int | None:
+    """Calculate total years from earliest start date to today (fallback)."""
+    month_map = {
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
+    }
+
+    def _to_date(val: str | None) -> date | None:
+        if not val:
+            return None
+        val = val.strip()
+        if val.lower() in ("present", "current", "now"):
+            return date.today()
+        m = re.match(r"([A-Z][a-z]{2})-(\d{4})", val)
+        if m:
+            mon = month_map.get(m.group(1).lower(), 1)
+            return date(int(m.group(2)), mon, 1)
+        if re.match(r"^\d{4}$", val):
+            return date(int(val), 1, 1)
+        return None
+
+    earliest: date | None = None
+    for exp in experience:
+        d = _to_date(exp.get("start_date"))
+        if d and (earliest is None or d < earliest):
+            earliest = d
+    if earliest is None:
+        return None
+    delta = date.today() - earliest
+    return math.ceil(delta.days / 365.25)
+
+
+def map_llm_to_profile_json(llm: dict) -> dict:
+    """Map PROMPT9 LLM output to the canonical profile_json schema."""
+    from app.services.profile_parser import default_profile_json
+
+    profile = default_profile_json()
+
+    # ---- Basics ----
+    contact = llm.get("contact_information") or {}
+    basics: dict = profile["basics"]
+
+    full_name = contact.get("full_name") or ""
+    if full_name:
+        basics["name"] = full_name
+        first, last = _split_name(full_name)
+        if first:
+            basics["first_name"] = first
+        if last:
+            basics["last_name"] = last
+
+    email = contact.get("email")
+    if email:
+        basics["email"] = email.strip()
+
+    phone = contact.get("phone")
+    if phone:
+        basics["phone"] = _format_phone_number(phone)
+
+    loc = contact.get("location") or {}
+    location_str = _format_location(loc.get("city"), loc.get("state_province"))
+    if location_str:
+        basics["location"] = location_str
+
+    summary = llm.get("professional_summary")
+    if summary:
+        basics["summary"] = summary
+
+    # Total years
+    yoe = llm.get("years_of_experience")
+    if yoe is not None:
+        try:
+            basics["total_years_experience"] = math.ceil(float(yoe))
+        except (ValueError, TypeError):
+            pass
+
+    # ---- Experience ----
+    experience_out: list[dict] = []
+    for job in llm.get("work_experience") or []:
+        job_loc = job.get("location") or {}
+        job_location_str = _format_location(
+            job_loc.get("city"), job_loc.get("state_province")
+        )
+
+        duties_raw = job.get("duties") or []
+        accomplishments_raw = job.get("accomplishments") or []
+        all_bullets = duties_raw + accomplishments_raw
+
+        quantified = [b for b in accomplishments_raw if _has_quantified_metric(b)]
+
+        # Flatten technologies_used: objects with name → list of names
+        tech_list_raw = job.get("technologies_used") or []
+        tech_names: list[str] = []
+        for t in tech_list_raw:
+            if isinstance(t, dict):
+                name = t.get("name")
+                if name:
+                    tech_names.append(name)
+            elif isinstance(t, str):
+                tech_names.append(t)
+
+        # Also pull environments_supported
+        envs = job.get("environments_supported") or []
+        for e in envs:
+            if isinstance(e, str) and e and e not in tech_names:
+                tech_names.append(e)
+
+        domain_skills = job.get("domain_skills") or []
+
+        exp_entry = {
+            "company": job.get("company_name"),
+            "title": job.get("job_title"),
+            "job_location": job_location_str or None,
+            "start_date": _normalize_date_to_mmm_yyyy(job.get("start_date")),
+            "end_date": _normalize_date_to_mmm_yyyy(job.get("end_date")),
+            "duties": all_bullets,
+            "quantified_accomplishments": quantified,
+            "skills_used": domain_skills,
+            "technologies_used": tech_names,
+        }
+        experience_out.append(exp_entry)
+
+    profile["experience"] = experience_out
+
+    # ---- Education ----
+    education_out: list[dict] = []
+    for edu in llm.get("education") or []:
+        education_out.append(
+            {
+                "school": edu.get("institution"),
+                "degree": edu.get("degree_type"),
+                "field": edu.get("field_of_study"),
+                "start_date": _normalize_date_to_mmm_yyyy(edu.get("start_date")),
+                "end_date": _normalize_date_to_mmm_yyyy(edu.get("graduation_date")),
+            }
+        )
+    profile["education"] = education_out
+
+    # ---- Certifications ----
+    skills_block = llm.get("skills") or {}
+    certs_out: list[dict] = []
+    for cert in skills_block.get("certifications") or []:
+        certs_out.append(
+            {
+                "name": cert.get("name"),
+                "issuer": cert.get("issuing_body"),
+                "date_obtained": _normalize_date_to_mmm_yyyy(cert.get("date_obtained")),
+                "expiry_date": _normalize_date_to_mmm_yyyy(cert.get("expiration_date")),
+            }
+        )
+    profile["certifications"] = certs_out
+
+    # ---- Skills (flat, deduped) ----
+    seen_lower: set[str] = set()
+    skill_names: list[str] = []
+
+    def _add_skill(name: str) -> None:
+        low = name.strip().lower()
+        if low and low not in seen_lower:
+            seen_lower.add(low)
+            skill_names.append(name.strip())
+
+    for ts in skills_block.get("technical_skills") or []:
+        if isinstance(ts, dict):
+            _add_skill(ts.get("name") or "")
+        elif isinstance(ts, str):
+            _add_skill(ts)
+
+    for m in skills_block.get("methodologies") or []:
+        if isinstance(m, str):
+            _add_skill(m)
+
+    for ss in skills_block.get("soft_skills") or []:
+        if isinstance(ss, str):
+            _add_skill(ss)
+
+    for ik in skills_block.get("industry_knowledge") or []:
+        if isinstance(ik, str):
+            _add_skill(ik)
+
+    # Collect from all work experience
+    for job in llm.get("work_experience") or []:
+        for t in job.get("technologies_used") or []:
+            if isinstance(t, dict):
+                _add_skill(t.get("name") or "")
+            elif isinstance(t, str):
+                _add_skill(t)
+        for ds in job.get("domain_skills") or []:
+            if isinstance(ds, str):
+                _add_skill(ds)
+
+    profile["skills"] = sorted(skill_names, key=str.lower)
+
+    # ---- LLM Enrichment (extra data not in regex parser) ----
+    enrichment: dict = {}
+
+    if llm.get("primary_industry"):
+        enrichment["primary_industry"] = llm["primary_industry"]
+    if llm.get("primary_role_category"):
+        enrichment["primary_role_category"] = llm["primary_role_category"]
+    if llm.get("disambiguation_notes"):
+        enrichment["disambiguation_notes"] = llm["disambiguation_notes"]
+
+    # Contact URLs
+    urls: dict[str, str] = {}
+    if contact.get("linkedin_url"):
+        urls["linkedin"] = contact["linkedin_url"]
+    if contact.get("github_url"):
+        urls["github"] = contact["github_url"]
+    if contact.get("portfolio_url"):
+        urls["portfolio"] = contact["portfolio_url"]
+    if urls:
+        enrichment["urls"] = urls
+
+    # Management scopes per job
+    mgmt_scopes: list[dict] = []
+    for job in llm.get("work_experience") or []:
+        scope = job.get("management_scope") or {}
+        if any(
+            scope.get(k) is not None
+            for k in ("direct_reports", "budget_managed", "team_size")
+        ):
+            mgmt_scopes.append(
+                {
+                    "company": job.get("company_name"),
+                    "title": job.get("job_title"),
+                    "direct_reports": scope.get("direct_reports"),
+                    "budget_managed": scope.get("budget_managed"),
+                    "team_size": scope.get("team_size"),
+                }
+            )
+    if mgmt_scopes:
+        enrichment["management_scopes"] = mgmt_scopes
+
+    # Additional sections
+    additional = llm.get("additional_sections") or {}
+    add_out: dict = {}
+    for key in (
+        "publications",
+        "awards",
+        "volunteer_work",
+        "professional_affiliations",
+    ):
+        vals = additional.get(key)
+        if vals and isinstance(vals, list) and any(v for v in vals):
+            add_out[key] = [v for v in vals if v]
+    if add_out:
+        enrichment["additional_sections"] = add_out
+
+    # Languages spoken
+    langs_raw = skills_block.get("languages_spoken") or []
+    langs: list[dict] = []
+    for lang in langs_raw:
+        if isinstance(lang, dict) and lang.get("language"):
+            langs.append(lang)
+        elif isinstance(lang, str) and lang:
+            langs.append({"language": lang, "proficiency": None})
+    if langs:
+        enrichment["languages_spoken"] = langs
+
+    # Licenses
+    licenses_raw = skills_block.get("licenses") or []
+    licenses: list[dict] = []
+    for lic in licenses_raw:
+        if isinstance(lic, dict) and lic.get("name"):
+            licenses.append(lic)
+    if licenses:
+        enrichment["licenses"] = licenses
+
+    # Technology contexts per job
+    tech_contexts: list[dict] = []
+    for job in llm.get("work_experience") or []:
+        job_tech = job.get("technologies_used") or []
+        contexts = [t for t in job_tech if isinstance(t, dict) and t.get("context")]
+        if contexts:
+            tech_contexts.append(
+                {
+                    "company": job.get("company_name"),
+                    "title": job.get("job_title"),
+                    "technologies": contexts,
+                }
+            )
+    if tech_contexts:
+        enrichment["technology_contexts"] = tech_contexts
+
+    if enrichment:
+        profile["llm_enrichment"] = enrichment
+
+    return profile
+
+
+# ---------------------------------------------------------------------------
+# Top-level entry point
+# ---------------------------------------------------------------------------
+
+
+def _call_llm(resume_text: str) -> dict:
+    """Try OpenAI first, then Claude. Raises on total failure."""
+    last_exc: Exception | None = None
+
+    if _has_openai_key():
+        try:
+            logger.info(
+                "Trying OpenAI (%s)", os.getenv("LLM_PARSER_MODEL", "gpt-4o-mini")
+            )
+            return parse_resume_with_llm(resume_text)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("OpenAI parse failed: %s", exc)
+
+    if _has_anthropic_key():
+        try:
+            logger.info(
+                "Trying Anthropic Claude (%s)",
+                os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929"),
+            )
+            return parse_resume_with_claude(resume_text)
+        except Exception as exc:
+            last_exc = exc
+            logger.warning("Claude parse failed: %s", exc)
+
+    raise last_exc or RuntimeError("No LLM API keys configured")
+
+
+def parse_with_llm(resume_text: str) -> dict:
+    """Parse resume text using LLM (OpenAI / Claude).
+
+    Returns canonical profile_json.
+    """
+    llm_output = _call_llm(resume_text)
+    profile = map_llm_to_profile_json(llm_output)
+
+    # Fallback: calculate total_years if LLM didn't provide it
+    basics = profile.get("basics", {})
+    if not basics.get("total_years_experience"):
+        years = _calculate_total_years_from_experience(profile.get("experience", []))
+        if years is not None:
+            basics["total_years_experience"] = years
+
+    return profile

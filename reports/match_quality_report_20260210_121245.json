@@ -1,0 +1,277 @@
+{
+  "timestamp": "2026-02-10T12:12:45.021659+00:00",
+  "total_active_jobs": 1975,
+  "profiles_tested": 5,
+  "results": [
+    {
+      "profile": "01_senior_swe_remote",
+      "profile_name": "Test Profile \u00e2\u20ac\u201d Senior SWE",
+      "total_matches": 50,
+      "matches_above_40": 32,
+      "top_match_score": 50,
+      "avg_top_10_score": 48.0,
+      "score_std_dev": 2.7,
+      "title_relevance_pct": 100.0,
+      "avg_skill_overlap": 0.0,
+      "hallucinated_skills": 0,
+      "location_compliance_pct": 90.0,
+      "fraudulent_matches": 0,
+      "stale_matches": 0,
+      "embedding_coverage_pct": 0.0,
+      "pass": false,
+      "issues": [
+        "Avg skill overlap 0.0 (target: >=3)",
+        "Score std dev 2.7 (target: >5)",
+        "Top match score 50 (target: >=60)"
+      ],
+      "top_5_matches": [
+        {
+          "job_title": "Senior Java Software Engineer (m/w/d)",
+          "company": "CPU Consulting & Software GmbH",
+          "match_score": 50,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Technical Delivery Manager 100% Remote",
+          "company": "Staffing the Universe",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Senior Full Stack AI Engineer",
+          "company": "AskVinny",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Senior Data Engineer",
+          "company": "Lalamove",
+          "match_score": 48,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Senior Python Software Engineer",
+          "company": "Bloomreach",
+          "match_score": 48,
+          "matched_skills": [],
+          "missing_skills": []
+        }
+      ]
+    },
+    {
+      "profile": "02_project_manager_pmp",
+      "profile_name": "Test Profile \u00e2\u20ac\u201d PM/PMP",
+      "total_matches": 50,
+      "matches_above_40": 38,
+      "top_match_score": 54,
+      "avg_top_10_score": 49.1,
+      "score_std_dev": 2.4,
+      "title_relevance_pct": 60.0,
+      "avg_skill_overlap": 0.0,
+      "hallucinated_skills": 0,
+      "location_compliance_pct": 100.0,
+      "fraudulent_matches": 0,
+      "stale_matches": 0,
+      "embedding_coverage_pct": 0.0,
+      "pass": false,
+      "issues": [
+        "Title relevance 60% (target: >=70%)",
+        "Avg skill overlap 0.0 (target: >=3)",
+        "Score std dev 2.4 (target: >5)",
+        "Top match score 54 (target: >=60)"
+      ],
+      "top_5_matches": [
+        {
+          "job_title": "Project/Program Management Manager (Remote)",
+          "company": "CareFirst BlueCross BlueShield",
+          "match_score": 54,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Technical IT-Consultant (gn*) ERP/WMS Systeme",
+          "company": "e-velopment GmbH",
+          "match_score": 51,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Consultant Senior Security-Architecture (d/w/m)",
+          "company": "XAAS",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "AI Internet Rater",
+          "company": "Welo Data",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Value Engineering Manager",
+          "company": "Celonis",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        }
+      ]
+    },
+    {
+      "profile": "03_marketing_manager",
+      "profile_name": "Test Profile \u00e2\u20ac\u201d Marketing Manager",
+      "total_matches": 0,
+      "matches_above_40": 0,
+      "top_match_score": 0,
+      "avg_top_10_score": 0.0,
+      "score_std_dev": 0,
+      "title_relevance_pct": 0.0,
+      "avg_skill_overlap": 0.0,
+      "hallucinated_skills": 0,
+      "location_compliance_pct": 0.0,
+      "fraudulent_matches": 0,
+      "stale_matches": 0,
+      "embedding_coverage_pct": 0.0,
+      "pass": false,
+      "issues": [
+        "Only 0 matches above 40 (target: >=10)",
+        "Title relevance 0% (target: >=70%)",
+        "Avg skill overlap 0.0 (target: >=3)",
+        "Score std dev 0.0 (target: >5)",
+        "Top match score 0 (target: >=60)"
+      ],
+      "top_5_matches": []
+    },
+    {
+      "profile": "04_data_analyst_remote",
+      "profile_name": "Test Profile \u00e2\u20ac\u201d Data Analyst",
+      "total_matches": 50,
+      "matches_above_40": 50,
+      "top_match_score": 59,
+      "avg_top_10_score": 58.7,
+      "score_std_dev": 0.5,
+      "title_relevance_pct": 0.0,
+      "avg_skill_overlap": 0.0,
+      "hallucinated_skills": 0,
+      "location_compliance_pct": 60.0,
+      "fraudulent_matches": 0,
+      "stale_matches": 0,
+      "embedding_coverage_pct": 0.0,
+      "pass": false,
+      "issues": [
+        "Title relevance 0% (target: >=70%)",
+        "Avg skill overlap 0.0 (target: >=3)",
+        "Score std dev 0.5 (target: >5)",
+        "Top match score 59 (target: >=60)"
+      ],
+      "top_5_matches": [
+        {
+          "job_title": "Partner Success Manager - (all genders) - 100% Homeoffice",
+          "company": "fino data services GmbH",
+          "match_score": 59,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Praktikant Recruiting - 100% remote",
+          "company": "Grube & Partner Consulting",
+          "match_score": 59,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Freelancer gesucht: B2B Fachautor:in Energiebranche (m/w/d)",
+          "company": "The Digitale GmbH",
+          "match_score": 59,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Minijob 100% remote: TikTok Creator f\u00fcr Lern App gesucht (m/w/d)",
+          "company": "KLUUU",
+          "match_score": 59,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Internship Online Marketing und Community Management bei Meet5 (m/w/d)",
+          "company": "Meet5 GmbH",
+          "match_score": 59,
+          "matched_skills": [],
+          "missing_skills": []
+        }
+      ]
+    },
+    {
+      "profile": "05_ux_designer_hybrid",
+      "profile_name": "Test Profile \u00e2\u20ac\u201d UX Designer",
+      "total_matches": 33,
+      "matches_above_40": 28,
+      "top_match_score": 52,
+      "avg_top_10_score": 47.1,
+      "score_std_dev": 2.5,
+      "title_relevance_pct": 60.0,
+      "avg_skill_overlap": 0.0,
+      "hallucinated_skills": 0,
+      "location_compliance_pct": 100.0,
+      "fraudulent_matches": 0,
+      "stale_matches": 0,
+      "embedding_coverage_pct": 0.0,
+      "pass": false,
+      "issues": [
+        "Title relevance 60% (target: >=70%)",
+        "Avg skill overlap 0.0 (target: >=3)",
+        "Score std dev 2.5 (target: >5)",
+        "Top match score 52 (target: >=60)"
+      ],
+      "top_5_matches": [
+        {
+          "job_title": "UI/UX Designer Deutsch/German (m/w/d) - Teilzeit, Remote (Landingpages, eCommerce, Conversion Focused) - Freelance m\u00f6glich",
+          "company": "agencro",
+          "match_score": 52,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Mediengestalter/in Digital und Print",
+          "company": "Bugaga Werbeagentur e.K.",
+          "match_score": 49,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "E-Commerce Manager:in (m/w/d) - Werkstudent (Vor Ort, Home-Office m\u00f6glich)",
+          "company": "Inkster GmbH",
+          "match_score": 47,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Working Student Graphic Design (m/f/d)",
+          "company": "KoRo Handels GmbH",
+          "match_score": 47,
+          "matched_skills": [],
+          "missing_skills": []
+        },
+        {
+          "job_title": "Junior Content Manager (m/w/d)",
+          "company": "Salfy (SalLab GmbH)",
+          "match_score": 47,
+          "matched_skills": [],
+          "missing_skills": []
+        }
+      ]
+    }
+  ],
+  "summary": {
+    "profiles_passed": 0,
+    "profiles_failed": 5,
+    "avg_match_score": 40.6,
+    "overall_pass": false
+  }
+}

@@ -1,0 +1,94 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="32 18 336 116" width="336" height="116">
+  <defs>
+    <linearGradient id="goldBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#E8C84A"/>
+      <stop offset="18%" stop-color="#D4A832"/>
+      <stop offset="40%" stop-color="#C49528"/>
+      <stop offset="65%" stop-color="#A87A1E"/>
+      <stop offset="85%" stop-color="#8B6318"/>
+      <stop offset="100%" stop-color="#6E4E12"/>
+    </linearGradient>
+    <linearGradient id="rimGold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F0D860"/>
+      <stop offset="25%" stop-color="#E0C040"/>
+      <stop offset="50%" stop-color="#C8A830"/>
+      <stop offset="75%" stop-color="#B89428"/>
+      <stop offset="100%" stop-color="#A08020"/>
+    </linearGradient>
+    <linearGradient id="rimSheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(255,255,255,0)"/>
+      <stop offset="20%" stop-color="rgba(255,255,255,0.12)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0.25)"/>
+      <stop offset="80%" stop-color="rgba(255,255,255,0.12)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <linearGradient id="bodySheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="rgba(255,255,255,0)"/>
+      <stop offset="15%" stop-color="rgba(255,255,255,0.06)"/>
+      <stop offset="35%" stop-color="rgba(255,255,255,0.18)"/>
+      <stop offset="50%" stop-color="rgba(255,255,255,0.22)"/>
+      <stop offset="65%" stop-color="rgba(255,255,255,0.18)"/>
+      <stop offset="85%" stop-color="rgba(255,255,255,0.06)"/>
+      <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+    </linearGradient>
+    <radialGradient id="holeTeal" cx="50%" cy="45%" r="50%">
+      <stop offset="0%" stop-color="#E8F3ED"/>
+      <stop offset="40%" stop-color="#CEE3D8"/>
+      <stop offset="70%" stop-color="#9DC7B1"/>
+      <stop offset="100%" stop-color="#6B9E80"/>
+    </radialGradient>
+    <radialGradient id="holeRim" cx="50%" cy="50%" r="50%">
+      <stop offset="65%" stop-color="#6B9E80"/>
+      <stop offset="78%" stop-color="#6A5A20"/>
+      <stop offset="88%" stop-color="#8B7428"/>
+      <stop offset="100%" stop-color="#A08830"/>
+    </radialGradient>
+    <filter id="dropShadow" x="-10%" y="-10%" width="120%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="3" result="blur"/>
+      <feOffset dx="0" dy="2" result="offsetBlur"/>
+      <feFlood flood-color="#000000" flood-opacity="0.15"/>
+      <feComposite in2="offsetBlur" operator="in"/>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="holeInset" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="blur"/>
+      <feOffset dx="0" dy="0.5"/>
+      <feComposite in2="SourceAlpha" operator="arithmetic" k2="-1" k3="1"/>
+      <feFlood flood-color="#3A6B50" flood-opacity="0.5"/>
+      <feComposite in2="blur" operator="in"/>
+      <feMerge><feMergeNode in="SourceGraphic"/><feMergeNode/></feMerge>
+    </filter>
+  </defs>
+
+  <g filter="url(#dropShadow)">
+    <!-- RIM BAR -->
+    <rect x="42" y="28" width="316" height="16" rx="3" ry="3" fill="url(#rimGold)"/>
+    <rect x="42" y="28" width="316" height="16" rx="3" ry="3" fill="url(#rimSheen)"/>
+    <rect x="42" y="29" width="316" height="3" rx="1.5" fill="rgba(255,255,220,0.18)"/>
+    <rect x="42" y="41" width="316" height="2" rx="1" fill="rgba(100,70,15,0.35)"/>
+
+    <!-- SHALLOW BOWL -->
+    <path d="M48,42 L352,42 Q350,50 346,58 Q330,88 305,102 Q270,120 200,124 Q130,120 95,102 Q70,88 54,58 Q50,50 48,42 Z"
+          fill="url(#goldBody)"/>
+    <path d="M48,42 L352,42 Q350,50 346,58 Q330,88 305,102 Q270,120 200,124 Q130,120 95,102 Q70,88 54,58 Q50,50 48,42 Z"
+          fill="url(#bodySheen)"/>
+    <path d="M65,48 Q200,42 335,48 Q200,55 65,48 Z" fill="rgba(255,255,220,0.12)"/>
+    <path d="M110,100 Q150,118 200,122 Q250,118 290,100 Q265,116 200,124 Q135,116 110,100 Z"
+          fill="rgba(80,55,10,0.25)"/>
+
+    <!-- Row 1 — 6 holes -->
+    <g><circle cx="115" cy="68" r="9" fill="url(#holeRim)"/><circle cx="115" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="113" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+    <g><circle cx="149" cy="68" r="9" fill="url(#holeRim)"/><circle cx="149" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="147" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+    <g><circle cx="183" cy="68" r="9" fill="url(#holeRim)"/><circle cx="183" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="181" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+    <g><circle cx="217" cy="68" r="9" fill="url(#holeRim)"/><circle cx="217" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="215" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+    <g><circle cx="251" cy="68" r="9" fill="url(#holeRim)"/><circle cx="251" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="249" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+    <g><circle cx="285" cy="68" r="9" fill="url(#holeRim)"/><circle cx="285" cy="68" r="6.8" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="283" cy="66" r="2.3" fill="rgba(255,255,255,0.45)"/></g>
+
+    <!-- Row 2 — 5 holes -->
+    <g><circle cx="132" cy="95" r="8.5" fill="url(#holeRim)"/><circle cx="132" cy="95" r="6.4" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="130" cy="93" r="2.1" fill="rgba(255,255,255,0.42)"/></g>
+    <g><circle cx="166" cy="102" r="8.5" fill="url(#holeRim)"/><circle cx="166" cy="102" r="6.4" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="164" cy="100" r="2.1" fill="rgba(255,255,255,0.42)"/></g>
+    <g><circle cx="200" cy="106" r="8.5" fill="url(#holeRim)"/><circle cx="200" cy="106" r="6.4" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="198" cy="104" r="2.1" fill="rgba(255,255,255,0.42)"/></g>
+    <g><circle cx="234" cy="102" r="8.5" fill="url(#holeRim)"/><circle cx="234" cy="102" r="6.4" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="232" cy="100" r="2.1" fill="rgba(255,255,255,0.42)"/></g>
+    <g><circle cx="268" cy="95" r="8.5" fill="url(#holeRim)"/><circle cx="268" cy="95" r="6.4" fill="url(#holeTeal)" filter="url(#holeInset)"/><circle cx="266" cy="93" r="2.1" fill="rgba(255,255,255,0.42)"/></g>
+  </g>
+</svg>

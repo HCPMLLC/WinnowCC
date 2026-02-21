@@ -1,0 +1,45 @@
+{
+  "name": "Test Profile — Marketing Manager",
+  "basics": {
+    "name": "Jordan Rivera",
+    "email": "test-jordan@example.com",
+    "location": "New York, NY",
+    "years_of_experience": 6
+  },
+  "experience": [
+    {
+      "company": "BrandCo Media",
+      "title": "Marketing Manager",
+      "start_date": "2022-01",
+      "end_date": null,
+      "bullets": [
+        "Grew organic traffic by 180% YoY through SEO content strategy and technical optimizations",
+        "Managed $500K annual paid media budget across Google Ads, Meta, and LinkedIn generating 3.2x ROAS",
+        "Led rebranding initiative including brand guidelines, website redesign, and launch campaign reaching 2M impressions"
+      ]
+    },
+    {
+      "company": "E-Commerce Startup",
+      "title": "Digital Marketing Specialist",
+      "start_date": "2019-08",
+      "end_date": "2021-12",
+      "bullets": [
+        "Built and managed email marketing program growing subscriber list from 5K to 45K with 28% open rates",
+        "Created social media content calendar producing 200+ posts/month across 4 platforms",
+        "Implemented marketing automation workflows in HubSpot reducing lead response time from 24hrs to 2hrs"
+      ]
+    }
+  ],
+  "education": [
+    {"institution": "NYU", "degree": "BA Marketing", "year": 2019}
+  ],
+  "skills": ["SEO", "SEM", "Google Ads", "Meta Ads", "HubSpot", "Content Marketing", "Email Marketing", "Social Media", "Google Analytics", "A/B Testing", "Copywriting", "Brand Strategy"],
+  "certifications": ["Google Ads Certified", "HubSpot Inbound Marketing"],
+  "preferences": {
+    "desired_titles": ["Senior Marketing Manager", "Head of Marketing", "Director of Digital Marketing"],
+    "remote_preference": "onsite",
+    "desired_salary_min": 100000,
+    "desired_salary_max": 140000,
+    "desired_locations": ["New York, NY", "Brooklyn, NY"]
+  }
+}

@@ -1,0 +1,70 @@
+# Page snapshot
+
+```yaml
+- generic [active] [ref=e1]:
+  - main [ref=e2]:
+    - generic [ref=e3]:
+      - generic [ref=e5]:
+        - link "Winnow" [ref=e7] [cursor=pointer]:
+          - /url: /
+          - img "Winnow" [ref=e8]
+        - generic [ref=e9]:
+          - heading "Welcome back" [level=1] [ref=e10]
+          - paragraph [ref=e11]: Sign in to continue matching your resume to the best opportunities.
+        - generic [ref=e12]:
+          - button "Continue with LinkedIn" [ref=e13] [cursor=pointer]:
+            - img [ref=e14]
+            - text: Continue with LinkedIn
+          - button "Continue with Google" [ref=e16] [cursor=pointer]:
+            - img [ref=e17]
+            - text: Continue with Google
+          - button "Continue with GitHub" [ref=e22] [cursor=pointer]:
+            - img [ref=e23]
+            - text: Continue with GitHub
+          - button "Continue with Microsoft" [ref=e25] [cursor=pointer]:
+            - img [ref=e26]
+            - text: Continue with Microsoft
+          - button "Continue with Apple" [ref=e28] [cursor=pointer]:
+            - img [ref=e29]
+            - text: Continue with Apple
+        - generic [ref=e35]: or continue with email
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]: Email
+            - textbox "Email" [ref=e39]:
+              - /placeholder: you@example.com
+          - generic [ref=e40]:
+            - generic [ref=e41]: Password
+            - textbox "Password" [ref=e42]:
+              - /placeholder: Enter your password
+          - button "Sign in" [ref=e43] [cursor=pointer]
+        - button "Forgot password?" [ref=e45] [cursor=pointer]
+        - paragraph [ref=e46]:
+          - text: Don't have an account?
+          - button "Sign up" [ref=e47] [cursor=pointer]
+      - generic [ref=e53]:
+        - heading "Separate the wheat from the chaff" [level=2] [ref=e54]
+        - paragraph [ref=e55]:
+          - text: Join thousands of job seekers using
+          - strong [ref=e56]: Winnow
+          - text: to separate the wheat from the chaff. Getting interviews and offers is not a numbers game. It is a targeted, highly-customized precision campaign.
+        - paragraph [ref=e57]:
+          - text: Upload your resume once, and let our advanced algorithms and automated workflows find jobs that match your interests and abilities.
+          - strong [ref=e58]: Winnow
+          - text: curates a bespoke shortlist of jobs scored and ranked by probability of success - your very own Interview Probability Score™.
+        - paragraph [ref=e59]:
+          - text: You choose which of those jobs to apply to and
+          - strong [ref=e60]: Winnow
+          - text: customizes a version of your resume and cover letter optimized for that job.
+        - paragraph [ref=e61]:
+          - text: Shotgun approaches produce shotgun results. Let
+          - strong [ref=e62]: Winnow
+          - text: blow away the chaff and get you the call-backs you've been missing.
+        - generic [ref=e63]:
+          - paragraph [ref=e64]: New Feature
+          - paragraph [ref=e65]:
+            - text: Your IPS™ now includes resume fit, cover letter quality, applying in the first 10 days, and referrals — the same criteria recruiters use. Most tools only look at your resume, so
+            - strong [ref=e66]: Winnow
+            - text: gives you a clearer picture of your real chances.
+  - alert [ref=e67]
+```
