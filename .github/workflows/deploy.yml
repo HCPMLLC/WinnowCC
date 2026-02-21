@@ -10,7 +10,6 @@ env:
   API_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/api
   WORKER_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/worker
   WEB_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/web
-  SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
 
 jobs:
   deploy-api:
@@ -47,10 +46,33 @@ jobs:
           gcloud run deploy winnow-api \
             --image=${{ env.API_IMAGE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --platform=managed
+            --platform=managed \
+            --allow-unauthenticated \
+            --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
+            --vpc-connector=winnow-connector \
+            --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest \
+            --set-env-vars=FRONTEND_URL=https://winnowcc.ai,AUTH_COOKIE_NAME=rm_session \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10
 
       - name: Run migrations
         run: |
+          if gcloud run jobs describe winnow-migrate --region=${{ env.REGION }} >/dev/null 2>&1; then
+            gcloud run jobs update winnow-migrate \
+              --image=${{ env.API_IMAGE }}:${{ github.sha }} \
+              --region=${{ env.REGION }}
+          else
+            gcloud run jobs create winnow-migrate \
+              --image=${{ env.API_IMAGE }}:${{ github.sha }} \
+              --region=${{ env.REGION }} \
+              --set-secrets=DB_URL=db-url:latest \
+              --set-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
+              --vpc-connector=winnow-connector \
+              --command=alembic \
+              --args=upgrade,head
+          fi
           gcloud run jobs execute winnow-migrate --region=${{ env.REGION }} --wait
 
   deploy-worker:
@@ -84,7 +106,16 @@ jobs:
           gcloud run deploy winnow-worker \
             --image=${{ env.WORKER_IMAGE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --platform=managed
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
+            --vpc-connector=winnow-connector \
+            --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest \
+            --set-env-vars=FRONTEND_URL=https://winnowcc.ai \
+            --memory=512Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=5
 
   deploy-web:
     name: Deploy Web
@@ -125,4 +156,9 @@ jobs:
           gcloud run deploy winnow-web \
             --image=${{ env.WEB_IMAGE }}:${{ github.sha }} \
             --region=${{ env.REGION }} \
-            --platform=managed
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=256Mi \
+            --cpu=1 \
+            --min-instances=0 \
+            --max-instances=10
