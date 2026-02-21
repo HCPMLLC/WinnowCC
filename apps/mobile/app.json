@@ -13,11 +13,16 @@
       "resizeMode": "contain",
       "backgroundColor": "#1B3025"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ai.winnowcc.app",
       "buildNumber": "1",
+      "privacyManifests": {
+        "NSPrivacyAccessedAPITypes": []
+      },
       "infoPlist": {
         "NSAppTransportSecurity": {
           "NSExceptionDomains": {
@@ -26,7 +31,8 @@
             }
           }
         },
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSPhotoLibraryUsageDescription": "Winnow needs access to your photo library to upload resume documents and profile photos."
       }
     },
     "android": {
@@ -40,6 +46,7 @@
     "web": {
       "favicon": "./assets/favicon.png"
     },
+    "privacyUrl": "https://winnowcc.ai/privacy",
     "plugins": [
       "expo-router",
       "expo-secure-store",
@@ -53,8 +60,10 @@
     ],
     "extra": {
       "eas": {
-        "projectId": "YOUR_EAS_PROJECT_ID"
-      }
-    }
+        "projectId": "e478f6c7-06cd-4a45-abb2-100c25facf68"
+      },
+      "router": {}
+    },
+    "owner": "hcpmllc"
   }
 }

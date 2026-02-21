@@ -24,9 +24,10 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID_EMAIL",
-        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_TEAM_ID"
+        "appleId": "rlevi@hcpm.llc",
+        "appleTeamId": "5Q23CSC47U",
+        "ascAppId": "6759479359",
+        "companyName": "Hill Country Project Management LLC"
       },
       "android": {
         "serviceAccountKeyPath": "./google-play-key.json",
