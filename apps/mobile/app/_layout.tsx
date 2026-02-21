@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator } from "react-native";
+import { View, ActivityIndicator, Platform, Text } from "react-native";
 import {
   AuthContext,
   AuthState,
@@ -12,7 +12,9 @@ import {
 import { colors } from "../lib/theme";
 
 const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  Platform.OS === "web"
+    ? "http://localhost:8000"
+    : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 export default function RootLayout() {
   const [authState, setAuthState] = useState<AuthState>({
@@ -30,29 +32,36 @@ export default function RootLayout() {
   // Check for stored token on app launch
   useEffect(() => {
     (async () => {
-      const token = await getToken();
-      if (token) {
-        try {
-          const res = await fetch(`${API_BASE}/api/auth/me`, {
-            headers: { Authorization: `Bearer ${token}` },
-          });
-          if (res.ok) {
-            const data = await res.json();
-            setAuthState({
-              token,
-              userId: data.user_id,
-              email: data.email,
-              role: data.role || "candidate",
-              isAuthenticated: true,
-              isLoading: false,
+      console.log("[RootLayout] Checking stored token...");
+      try {
+        const token = await getToken();
+        console.log("[RootLayout] Token retrieved:", token ? "exists" : "none");
+        if (token) {
+          try {
+            const res = await fetch(`${API_BASE}/api/auth/me`, {
+              headers: { Authorization: `Bearer ${token}` },
             });
-            return;
+            if (res.ok) {
+              const data = await res.json();
+              setAuthState({
+                token,
+                userId: data.user_id,
+                email: data.email,
+                role: data.role || "candidate",
+                isAuthenticated: true,
+                isLoading: false,
+              });
+              return;
+            }
+          } catch (e) {
+            console.log("[RootLayout] Auth check failed:", e);
           }
-        } catch {
-          // Token invalid — clear it
+          await removeToken();
         }
-        await removeToken();
+      } catch (e) {
+        console.log("[RootLayout] getToken error:", e);
       }
+      console.log("[RootLayout] Setting isLoading=false");
       setAuthState((s) => ({ ...s, isLoading: false }));
     })();
   }, []);
@@ -148,6 +157,8 @@ export default function RootLayout() {
     });
   }, []);
 
+  console.log("[RootLayout] Render — isLoading:", authState.isLoading, "isAuth:", authState.isAuthenticated);
+
   if (authState.isLoading) {
     return (
       <View
@@ -159,6 +170,7 @@ export default function RootLayout() {
         }}
       >
         <ActivityIndicator size="large" color={colors.gold} />
+        <Text style={{ color: "#E8C84A", marginTop: 16 }}>Loading Winnow...</Text>
       </View>
     );
   }

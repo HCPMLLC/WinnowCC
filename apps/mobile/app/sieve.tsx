@@ -4,6 +4,7 @@ import {
   Text,
   TextInput,
   FlatList,
+  Image,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -13,7 +14,11 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../lib/api";
 import SieveChatBubble from "../components/SieveChatBubble";
-import { colors, spacing, fontSize, borderRadius } from "../lib/theme";
+
+const GoldenSieveStatic = require("../assets/golden-sieve-static.png");
+
+const GREETING =
+  "Greetings. I\u2019m Sieve, your personal concierge. Ask me anything and I\u2019ll start sifting.";
 
 interface Message {
   id: string;
@@ -21,18 +26,11 @@ interface Message {
   content: string;
 }
 
-interface SuggestedAction {
-  label: string;
-  message: string;
-}
-
 export default function SieveScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const [suggestedActions, setSuggestedActions] = useState<SuggestedAction[]>(
-    [],
-  );
+  const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
   const flatListRef = useRef<FlatList>(null);
 
   const loadHistory = useCallback(async () => {
@@ -49,11 +47,11 @@ export default function SieveScreen() {
             id: String(i),
             role: m.role as "user" | "assistant",
             content: m.content,
-          })),
+          }))
         );
       }
     } catch {
-      // Non-critical — start fresh
+      // Non-critical
     }
   }, []);
 
@@ -75,7 +73,6 @@ export default function SieveScreen() {
     setSending(true);
     setSuggestedActions([]);
 
-    // Build conversation history (last 20 messages)
     const recentHistory = [...messages, userMsg]
       .slice(-20)
       .map((m) => ({ role: m.role, content: m.content }));
@@ -97,56 +94,56 @@ export default function SieveScreen() {
 
         if (data.suggested_actions?.length) {
           setSuggestedActions(
-            data.suggested_actions.map((a: any) => ({
-              label: a.label || a,
-              message: a.message || a.label || a,
-            })),
+            data.suggested_actions.map((a: any) =>
+              typeof a === "string" ? a : a.label || a.message || ""
+            )
           );
         }
       } else {
         const err = await res.json().catch(() => ({}));
-        const errMsg: Message = {
-          id: `e-${Date.now()}`,
-          role: "assistant",
-          content:
-            (err as any).detail || "Sorry, I couldn't process that request.",
-        };
-        setMessages((prev) => [...prev, errMsg]);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            role: "assistant",
+            content: (err as any).detail || "Sorry, I couldn\u2019t process that.",
+          },
+        ]);
       }
     } catch {
-      const errMsg: Message = {
-        id: `e-${Date.now()}`,
-        role: "assistant",
-        content: "Could not connect to server. Please try again.",
-      };
-      setMessages((prev) => [...prev, errMsg]);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: `e-${Date.now()}`,
+          role: "assistant",
+          content: "Could not connect to server. Please try again.",
+        },
+      ]);
     } finally {
       setSending(false);
     }
   }
 
   function handleClear() {
-    Alert.alert(
-      "Clear Chat",
-      "Delete all Sieve conversation history?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Clear",
-          style: "destructive",
-          onPress: async () => {
-            try {
-              await api.delete("/api/sieve/history");
-              setMessages([]);
-              setSuggestedActions([]);
-            } catch {
-              Alert.alert("Error", "Could not clear history.");
-            }
-          },
+    Alert.alert("Clear Chat", "Delete all Sieve conversation history?", [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Clear",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.delete("/api/sieve/history");
+            setMessages([]);
+            setSuggestedActions([]);
+          } catch {
+            Alert.alert("Error", "Could not clear history.");
+          }
         },
-      ],
-    );
+      },
+    ]);
   }
+
+  const canSend = input.trim().length > 0 && !sending;
 
   return (
     <KeyboardAvoidingView
@@ -154,15 +151,46 @@ export default function SieveScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
     >
-      {/* Header actions */}
-      <View style={styles.headerBar}>
-        <Text style={styles.headerTitle}>Sieve</Text>
-        <TouchableOpacity onPress={handleClear}>
-          <Ionicons name="trash-outline" size={20} color={colors.gray500} />
-        </TouchableOpacity>
+      {/* ── Header ── */}
+      <View style={styles.header}>
+        <View style={styles.headerGrid}>
+          {/* Left: Title */}
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>
+              Sieve{" "}
+              <Text style={styles.headerPronunciation}>/siv/</Text>
+            </Text>
+            <Text style={styles.headerSubtitle}>Your Personal Concierge</Text>
+          </View>
+
+          {/* Center: Logo */}
+          <View style={styles.headerCenter}>
+            <Image
+              source={GoldenSieveStatic}
+              style={{ width: 120, height: 60 }}
+              resizeMode="contain"
+            />
+          </View>
+
+          {/* Right: Actions */}
+          <View style={styles.headerRight}>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                style={styles.headerBtn}
+                onPress={handleClear}
+              >
+                <Ionicons name="trash-outline" size={14} color="rgba(232, 200, 74, 0.7)" />
+              </TouchableOpacity>
+            </View>
+            <View style={styles.onlineRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.onlineText}>Online</Text>
+            </View>
+          </View>
+        </View>
       </View>
 
-      {/* Messages */}
+      {/* ── Messages ── */}
       <FlatList
         ref={flatListRef}
         data={messages}
@@ -172,17 +200,10 @@ export default function SieveScreen() {
           flatListRef.current?.scrollToEnd({ animated: true })
         }
         ListEmptyComponent={
-          <View style={styles.welcome}>
-            <Ionicons
-              name="chatbubble-ellipses"
-              size={48}
-              color={colors.sage}
-            />
-            <Text style={styles.welcomeTitle}>Hi, I'm Sieve!</Text>
-            <Text style={styles.welcomeText}>
-              Your AI career concierge. Ask me about your matches, resume tips,
-              interview prep, or career strategy.
-            </Text>
+          <View style={styles.greetingRow}>
+            <View style={styles.greetingBubble}>
+              <Text style={styles.greetingText}>{GREETING}</Text>
+            </View>
           </View>
         }
         renderItem={({ item }) => (
@@ -190,17 +211,21 @@ export default function SieveScreen() {
         )}
       />
 
-      {/* Typing indicator */}
+      {/* ── Typing indicator ── */}
       {sending && (
         <View style={styles.typingRow}>
           <View style={styles.typingBubble}>
-            <Text style={styles.typingDots}>...</Text>
+            <View style={styles.typingDots}>
+              {[0, 1, 2].map((i) => (
+                <View key={i} style={[styles.typingDot, { opacity: 0.4 + (i * 0.2) }]} />
+              ))}
+            </View>
           </View>
         </View>
       )}
 
-      {/* Suggested actions */}
-      {suggestedActions.length > 0 && (
+      {/* ── Suggested actions ── */}
+      {suggestedActions.length > 0 && !sending && messages.length > 0 && (
         <FlatList
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -210,36 +235,34 @@ export default function SieveScreen() {
           renderItem={({ item }) => (
             <TouchableOpacity
               style={styles.suggestionChip}
-              onPress={() => sendMessage(item.message)}
+              onPress={() => sendMessage(item)}
             >
-              <Text style={styles.suggestionText}>{item.label}</Text>
+              <Text style={styles.suggestionText}>{item}</Text>
             </TouchableOpacity>
           )}
         />
       )}
 
-      {/* Input */}
-      <View style={styles.inputRow}>
+      {/* ── Input bar ── */}
+      <View style={styles.inputBar}>
         <TextInput
           style={styles.input}
           value={input}
           onChangeText={setInput}
-          placeholder="Ask Sieve anything..."
-          placeholderTextColor={colors.gray400}
+          placeholder="Type a message\u2026"
+          placeholderTextColor="#9CA3AF"
           multiline
           maxLength={2000}
           editable={!sending}
         />
         <TouchableOpacity
-          style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+          style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
           onPress={() => sendMessage(input)}
-          disabled={!input.trim() || sending}
+          disabled={!canSend}
         >
-          <Ionicons
-            name="send"
-            size={20}
-            color={input.trim() && !sending ? colors.primary : colors.gray400}
-          />
+          <Text style={[styles.sendArrow, !canSend && styles.sendArrowDisabled]}>
+            {"\u2191"}
+          </Text>
         </TouchableOpacity>
       </View>
     </KeyboardAvoidingView>
@@ -247,112 +270,210 @@ export default function SieveScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.gray50 },
-  headerBar: {
+  container: {
+    flex: 1,
+    backgroundColor: "#FAF6EE",
+  },
+
+  // ── Header ──
+  header: {
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#1B3025",
+    overflow: "visible",
+    zIndex: 10,
+  },
+  headerGrid: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.gray200,
-    backgroundColor: colors.white,
+    overflow: "visible",
+  },
+  headerLeft: {
+    flex: 1,
+    minWidth: 0,
   },
   headerTitle: {
-    fontSize: fontSize.lg,
+    fontSize: 18,
     fontWeight: "700",
-    color: colors.gray900,
+    color: "#E8C84A",
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
   },
+  headerPronunciation: {
+    fontWeight: "400",
+    fontStyle: "italic",
+    fontSize: 13,
+  },
+  headerSubtitle: {
+    fontSize: 11,
+    color: "#FFFFFF",
+    letterSpacing: 0.5,
+    marginTop: 2,
+  },
+  headerCenter: {
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 12,
+    overflow: "visible",
+    zIndex: 10,
+  },
+  headerRight: {
+    flex: 1,
+    alignItems: "flex-end",
+    gap: 6,
+  },
+  headerActions: {
+    flexDirection: "row",
+    gap: 4,
+  },
+  headerBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  onlineRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
+  },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#5CB87A",
+    shadowColor: "#5CB87A",
+    shadowOpacity: 0.5,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  onlineText: {
+    fontSize: 11,
+    color: "#FFFFFF",
+  },
+
+  // ── Messages ──
   messageList: {
-    padding: spacing.md,
-    paddingBottom: spacing.sm,
+    padding: 16,
+    paddingBottom: 8,
     flexGrow: 1,
   },
-  welcome: {
-    alignItems: "center",
-    paddingVertical: spacing.xxl,
-    paddingHorizontal: spacing.lg,
+  greetingRow: {
+    marginBottom: 12,
   },
-  welcomeTitle: {
-    fontSize: fontSize.xl,
-    fontWeight: "700",
-    color: colors.gray900,
-    marginTop: spacing.md,
+  greetingBubble: {
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(196, 149, 40, 0.15)",
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    padding: 12,
+    paddingHorizontal: 16,
+    maxWidth: "88%",
+    shadowColor: "#8B6318",
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
-  welcomeText: {
-    fontSize: fontSize.sm,
-    color: colors.gray500,
-    textAlign: "center",
-    marginTop: spacing.sm,
-    lineHeight: 20,
+  greetingText: {
+    fontSize: 14,
+    lineHeight: 22,
+    color: "#3E3525",
   },
+
+  // ── Typing ──
   typingRow: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.xs,
+    paddingHorizontal: 16,
+    paddingBottom: 4,
   },
   typingBubble: {
     alignSelf: "flex-start",
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    backgroundColor: "#FFFFFF",
+    borderWidth: 1,
+    borderColor: "rgba(196, 149, 40, 0.12)",
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
   },
   typingDots: {
-    fontSize: fontSize.xl,
-    color: colors.gray400,
-    letterSpacing: 4,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 5,
   },
+  typingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#C49528",
+  },
+
+  // ── Suggestions ──
   suggestionsRow: {
-    paddingHorizontal: spacing.md,
-    paddingBottom: spacing.sm,
-    gap: spacing.xs,
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+    gap: 6,
   },
   suggestionChip: {
-    backgroundColor: colors.sage,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderWidth: 1,
+    borderColor: "#E8C84A",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: "transparent",
   },
   suggestionText: {
-    fontSize: fontSize.sm,
-    fontWeight: "500",
-    color: colors.primary,
+    fontSize: 12,
+    color: "#3E3525",
   },
-  inputRow: {
+
+  // ── Input bar ──
+  inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: "#FFFDF7",
     borderTopWidth: 1,
-    borderTopColor: colors.gray200,
-    backgroundColor: colors.white,
+    borderTopColor: "rgba(196, 149, 40, 0.12)",
   },
   input: {
     flex: 1,
-    backgroundColor: colors.gray50,
-    borderRadius: borderRadius.lg,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    fontSize: fontSize.md,
-    color: colors.gray900,
-    maxHeight: 100,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: colors.gray200,
+    borderColor: "rgba(196, 149, 40, 0.2)",
+    backgroundColor: "#FFFFFF",
+    fontSize: 14,
+    color: "#3E3525",
+    maxHeight: 100,
   },
   sendBtn: {
     width: 40,
     height: 40,
-    borderRadius: 20,
-    backgroundColor: colors.gold,
+    borderRadius: 12,
+    backgroundColor: "#1B3025",
     justifyContent: "center",
     alignItems: "center",
-    marginLeft: spacing.sm,
   },
   sendBtnDisabled: {
-    backgroundColor: colors.gray200,
+    backgroundColor: "rgba(196, 149, 40, 0.12)",
+  },
+  sendArrow: {
+    fontSize: 18,
+    color: "#E8C84A",
+    fontWeight: "700",
+  },
+  sendArrowDisabled: {
+    color: "rgba(62, 53, 37, 0.3)",
   },
 });
