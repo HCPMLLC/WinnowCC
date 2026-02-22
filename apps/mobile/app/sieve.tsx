@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
   TextInput,
   ScrollView,
+  Image,
   TouchableOpacity,
   StyleSheet,
   KeyboardAvoidingView,
@@ -12,6 +13,8 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../lib/api";
+
+const GoldenSieveStatic = require("../assets/golden-sieve-static.png");
 
 const GREETING =
   "Greetings. I\u2019m Sieve, your personal concierge. Ask me anything and I\u2019ll start sifting.";
@@ -26,7 +29,36 @@ export default function SieveScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
+  const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Load conversation history on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get("/api/sieve/history");
+        if (res.ok) {
+          const data = await res.json();
+          const raw = data.messages || data;
+          const history = Array.isArray(raw) ? raw : [];
+          setMessages(
+            history
+              .filter(
+                (m: any) =>
+                  m && typeof m.content === "string" && typeof m.role === "string"
+              )
+              .map((m: any, i: number) => ({
+                id: `h-${i}`,
+                role: m.role as "user" | "assistant",
+                content: m.content,
+              }))
+          );
+        }
+      } catch {
+        // Non-critical
+      }
+    })();
+  }, []);
 
   const sendMessage = useCallback(
     async (text: string) => {
@@ -41,6 +73,7 @@ export default function SieveScreen() {
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
       setSending(true);
+      setSuggestedActions([]);
 
       try {
         const recentHistory = [...messages, userMsg]
@@ -64,6 +97,23 @@ export default function SieveScreen() {
             ...prev,
             { id: `a-${Date.now()}`, role: "assistant", content: responseText },
           ]);
+
+          try {
+            if (
+              Array.isArray(data.suggested_actions) &&
+              data.suggested_actions.length
+            ) {
+              setSuggestedActions(
+                data.suggested_actions
+                  .map((a: any) =>
+                    typeof a === "string" ? a : a?.label || a?.message || ""
+                  )
+                  .filter(Boolean)
+              );
+            }
+          } catch {
+            // Non-critical
+          }
         } else {
           const err = await res.json().catch(() => ({}));
           setMessages((prev) => [
@@ -71,7 +121,9 @@ export default function SieveScreen() {
             {
               id: `e-${Date.now()}`,
               role: "assistant",
-              content: (err as any)?.detail || "Sorry, I couldn\u2019t process that.",
+              content:
+                (err as any)?.detail ||
+                "Sorry, I couldn\u2019t process that.",
             },
           ]);
         }
@@ -86,7 +138,10 @@ export default function SieveScreen() {
         ]);
       } finally {
         setSending(false);
-        setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
+        setTimeout(
+          () => scrollRef.current?.scrollToEnd({ animated: true }),
+          100
+        );
       }
     },
     [messages, sending]
@@ -102,6 +157,7 @@ export default function SieveScreen() {
           try {
             await api.delete("/api/sieve/history");
             setMessages([]);
+            setSuggestedActions([]);
           } catch {
             Alert.alert("Error", "Could not clear history.");
           }
@@ -121,22 +177,41 @@ export default function SieveScreen() {
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerRow}>
-          <View>
-            <Text style={styles.headerTitle}>Sieve</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.headerTitle}>
+              Sieve <Text style={styles.headerPronunciation}>/siv/</Text>
+            </Text>
             <Text style={styles.headerSubtitle}>Your Personal Concierge</Text>
           </View>
-          <TouchableOpacity style={styles.headerBtn} onPress={handleClear}>
-            <Ionicons name="trash-outline" size={16} color="rgba(232, 200, 74, 0.7)" />
-          </TouchableOpacity>
+          <Image
+            source={GoldenSieveStatic}
+            style={styles.headerLogo}
+            resizeMode="contain"
+          />
+          <View style={styles.headerRight}>
+            <TouchableOpacity style={styles.headerBtn} onPress={handleClear}>
+              <Ionicons
+                name="trash-outline"
+                size={14}
+                color="rgba(232, 200, 74, 0.7)"
+              />
+            </TouchableOpacity>
+            <View style={styles.onlineRow}>
+              <View style={styles.onlineDot} />
+              <Text style={styles.onlineText}>Online</Text>
+            </View>
+          </View>
         </View>
       </View>
 
       {/* Messages */}
       <ScrollView
         ref={scrollRef}
-        style={styles.messages}
+        style={styles.messageArea}
         contentContainerStyle={styles.messagesContent}
-        onContentSizeChange={() => scrollRef.current?.scrollToEnd({ animated: true })}
+        onContentSizeChange={() =>
+          scrollRef.current?.scrollToEnd({ animated: true })
+        }
       >
         {messages.length === 0 && (
           <View style={styles.greetingBubble}>
@@ -148,19 +223,25 @@ export default function SieveScreen() {
             key={msg.id}
             style={[
               styles.msgRow,
-              msg.role === "user" ? styles.msgRowUser : styles.msgRowAssistant,
+              msg.role === "user"
+                ? styles.msgRowUser
+                : styles.msgRowAssistant,
             ]}
           >
             <View
               style={[
                 styles.msgBubble,
-                msg.role === "user" ? styles.userBubble : styles.assistantBubble,
+                msg.role === "user"
+                  ? styles.userBubble
+                  : styles.assistantBubble,
               ]}
             >
               <Text
                 style={[
                   styles.msgText,
-                  msg.role === "user" ? styles.userText : styles.assistantText,
+                  msg.role === "user"
+                    ? styles.userText
+                    : styles.assistantText,
                 ]}
               >
                 {msg.content}
@@ -171,11 +252,40 @@ export default function SieveScreen() {
         {sending && (
           <View style={[styles.msgRow, styles.msgRowAssistant]}>
             <View style={[styles.msgBubble, styles.assistantBubble]}>
-              <Text style={styles.assistantText}>Thinking...</Text>
+              <View style={styles.typingDots}>
+                {[0, 1, 2].map((i) => (
+                  <View
+                    key={i}
+                    style={[
+                      styles.typingDot,
+                      { opacity: 0.4 + i * 0.2 },
+                    ]}
+                  />
+                ))}
+              </View>
             </View>
           </View>
         )}
       </ScrollView>
+
+      {/* Suggested actions */}
+      {suggestedActions.length > 0 && !sending && messages.length > 0 && (
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.suggestionsRow}
+        >
+          {suggestedActions.map((action, i) => (
+            <TouchableOpacity
+              key={i}
+              style={styles.suggestionChip}
+              onPress={() => sendMessage(action)}
+            >
+              <Text style={styles.suggestionText}>{action}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      )}
 
       {/* Input */}
       <View style={styles.inputBar}>
@@ -194,7 +304,12 @@ export default function SieveScreen() {
           onPress={() => sendMessage(input)}
           disabled={!canSend}
         >
-          <Text style={[styles.sendArrow, !canSend && styles.sendArrowDisabled]}>
+          <Text
+            style={[
+              styles.sendArrow,
+              !canSend && styles.sendArrowDisabled,
+            ]}
+          >
             {"\u2191"}
           </Text>
         </TouchableOpacity>
@@ -206,50 +321,80 @@ export default function SieveScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#FAF6EE" },
 
+  // Header
   header: {
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
     backgroundColor: "#1B3025",
   },
   headerRow: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
   },
+  headerLeft: { flex: 1 },
   headerTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: "#E8C84A",
+    letterSpacing: 0.5,
+    fontFamily: Platform.OS === "ios" ? "Georgia" : "serif",
+  },
+  headerPronunciation: {
+    fontWeight: "400",
+    fontStyle: "italic",
+    fontSize: 13,
   },
   headerSubtitle: {
     fontSize: 11,
     color: "#FFFFFF",
+    letterSpacing: 0.5,
     marginTop: 2,
   },
+  headerLogo: { width: 120, height: 60, marginHorizontal: 12 },
+  headerRight: { flex: 1, alignItems: "flex-end" },
   headerBtn: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     backgroundColor: "rgba(255,255,255,0.08)",
     justifyContent: "center",
     alignItems: "center",
+    marginBottom: 6,
   },
+  onlineRow: { flexDirection: "row", alignItems: "center" },
+  onlineDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#5CB87A",
+    marginRight: 5,
+  },
+  onlineText: { fontSize: 11, color: "#FFFFFF" },
 
-  messages: { flex: 1 },
-  messagesContent: { padding: 16, paddingBottom: 8 },
-
+  // Messages
+  messageArea: { flex: 1 },
+  messagesContent: { padding: 16, paddingBottom: 8, flexGrow: 1 },
   greetingBubble: {
     backgroundColor: "#FFFFFF",
     borderWidth: 1,
     borderColor: "rgba(196, 149, 40, 0.15)",
-    borderRadius: 16,
     borderTopLeftRadius: 4,
-    padding: 14,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    padding: 12,
+    paddingHorizontal: 16,
     maxWidth: "88%",
     marginBottom: 12,
+    shadowColor: "#8B6318",
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   greetingText: { fontSize: 14, lineHeight: 22, color: "#3E3525" },
 
+  // Message bubbles
   msgRow: { marginBottom: 10 },
   msgRowUser: { alignItems: "flex-end" },
   msgRowAssistant: { alignItems: "flex-start" },
@@ -260,6 +405,11 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 16,
     borderBottomLeftRadius: 16,
     borderBottomRightRadius: 4,
+    shadowColor: "#1B3025",
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 2,
   },
   assistantBubble: {
     backgroundColor: "#FFFFFF",
@@ -269,11 +419,40 @@ const styles = StyleSheet.create({
     borderBottomRightRadius: 16,
     borderWidth: 1,
     borderColor: "rgba(196, 149, 40, 0.12)",
+    shadowColor: "#8B6318",
+    shadowOpacity: 0.06,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
   },
   msgText: { fontSize: 14, lineHeight: 21 },
   userText: { color: "#F0E8D0" },
   assistantText: { color: "#3E3525" },
 
+  // Typing indicator
+  typingDots: { flexDirection: "row", alignItems: "center" },
+  typingDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: "#C49528",
+    marginHorizontal: 2.5,
+  },
+
+  // Suggestions
+  suggestionsRow: { paddingHorizontal: 16, paddingBottom: 8 },
+  suggestionChip: {
+    borderWidth: 1,
+    borderColor: "#E8C84A",
+    borderRadius: 16,
+    paddingHorizontal: 14,
+    paddingVertical: 6,
+    backgroundColor: "transparent",
+    marginRight: 6,
+  },
+  suggestionText: { fontSize: 12, color: "#3E3525" },
+
+  // Input bar
   inputBar: {
     flexDirection: "row",
     alignItems: "flex-end",
@@ -282,7 +461,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFFDF7",
     borderTopWidth: 1,
     borderTopColor: "rgba(196, 149, 40, 0.12)",
-    gap: 8,
   },
   input: {
     flex: 1,
@@ -295,6 +473,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#3E3525",
     maxHeight: 100,
+    marginRight: 8,
   },
   sendBtn: {
     width: 40,
