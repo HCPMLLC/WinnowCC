@@ -58,6 +58,8 @@ export default function Navbar() {
     } catch {
       // Logout even if the API call fails
     }
+    // Clear web-domain session cookie
+    await fetch("/api/auth/session", { method: "DELETE" }).catch(() => {});
     router.push("/login");
   };
 
