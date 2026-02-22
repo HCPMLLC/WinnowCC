@@ -14,6 +14,7 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 interface Metrics {
+  display_name: string | null;
   profile_completeness: number;
   qualified_jobs: number;
   applications: number;
@@ -84,7 +85,12 @@ export default function DashboardScreen() {
       }
     >
       <Text style={styles.greeting}>
-        Welcome back{email ? `, ${email.split("@")[0]}` : ""}
+        Welcome back
+        {metrics?.display_name
+          ? `, ${metrics.display_name}`
+          : email
+            ? `, ${email.split("@")[0]}`
+            : ""}
       </Text>
 
       <View style={styles.grid}>
