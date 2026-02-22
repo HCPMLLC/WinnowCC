@@ -50,6 +50,21 @@ class AdminCandidateResponse(BaseModel):
     resume_filename: str | None
 
 
+ALLOWED_ROLES = {"candidate", "employer", "recruiter", "both", "admin"}
+
+
+class AdminUserRoleUpdate(BaseModel):
+    role: str | None = None
+    is_admin: bool | None = None
+
+
+class AdminUserRoleResponse(BaseModel):
+    user_id: int
+    email: str
+    role: str
+    is_admin: bool
+
+
 class DeleteCandidatesRequest(BaseModel):
     user_ids: list[int]
 
@@ -353,6 +368,40 @@ def merge_candidates(
     return MergeCandidatesResponse(
         merged_count=merged_count,
         message=f"Successfully merged {merged_count} duplicate(s) into primary user.",
+    )
+
+
+@router.patch("/{user_id}/role", response_model=AdminUserRoleResponse)
+def update_user_role(
+    user_id: int,
+    payload: AdminUserRoleUpdate,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> AdminUserRoleResponse:
+    """Update a user's role and/or admin flag (admin only)."""
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if payload.role is not None:
+        if payload.role not in ALLOWED_ROLES:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid role. Must be one of: {', '.join(sorted(ALLOWED_ROLES))}",
+            )
+        user.role = payload.role
+
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
+
+    session.commit()
+    session.refresh(user)
+
+    return AdminUserRoleResponse(
+        user_id=user.id,
+        email=user.email,
+        role=user.role,
+        is_admin=user.is_admin,
     )
 
 
