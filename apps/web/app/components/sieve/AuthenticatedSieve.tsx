@@ -34,7 +34,13 @@ export default function AuthenticatedSieve() {
       .catch(() => {});
   }, []);
 
+  // Hide Sieve on public pages
+  const PUBLIC_PATHS = ["/", "/login", "/signup", "/terms", "/privacy"];
+  const isPublicPage =
+    PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/privacy/");
+
   useEffect(() => {
+    if (isPublicPage) return;
     fetch(`${API_BASE}/api/auth/me`, { credentials: "include" })
       .then((res) => {
         if (res.ok) {
@@ -43,9 +49,9 @@ export default function AuthenticatedSieve() {
         }
       })
       .catch(() => {});
-  }, [fetchTriggers]);
+  }, [fetchTriggers, isPublicPage]);
 
-  if (!isAuthenticated) return null;
+  if (!isAuthenticated || isPublicPage) return null;
 
   // Auto-open Sieve for critical triggers (e.g. profile < 50% complete)
   const hasCriticalTrigger = triggers.some(
