@@ -5,6 +5,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
+import { useProgress } from "../hooks/useProgress";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
 
@@ -83,6 +84,23 @@ type TrustReviewResponse = {
   status: string;
 };
 
+type ResumeUploadResult = {
+  resume_document_id: number;
+  filename: string;
+};
+
+type ParseJobResult = {
+  job_id: string;
+  job_run_id: number;
+  status: string;
+};
+
+type ParseJobStatus = {
+  job_run_id: number;
+  status: string;
+  error_message?: string | null;
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -99,12 +117,6 @@ const WORK_AUTHORIZATION_OPTIONS = [
   "Other Work Visa",
   "Requires Sponsorship",
 ];
-
-const parseCommaList = (value: string) =>
-  value
-    .split(",")
-    .map((item) => item.trim())
-    .filter(Boolean);
 
 // Validates that a name is a full name (not an initial)
 // Returns error message if invalid, null if valid
@@ -310,6 +322,14 @@ function ProfilePageContent() {
   );
   const [isRequestingReview, setIsRequestingReview] = useState(false);
 
+  // Resume upload state
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [resumeResult, setResumeResult] = useState<ResumeUploadResult | null>(null);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+  const [parseStatus, setParseStatus] = useState<string | null>(null);
+  const uploadProg = useProgress();
+  const parseProg = useProgress();
+
   // Validation state for name fields
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
@@ -512,6 +532,121 @@ function ProfilePageContent() {
     setExpandedEducation(null);
   };
 
+  const sleep = (ms: number) =>
+    new Promise<void>((resolve) => {
+      setTimeout(resolve, ms);
+    });
+
+  const handleResumeUpload = async () => {
+    if (!selectedFile) {
+      setResumeError("Please choose a PDF or DOCX file.");
+      return;
+    }
+    uploadProg.start();
+    setResumeError(null);
+    setResumeResult(null);
+    setParseStatus(null);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+
+    try {
+      const response = await fetch(`${API_BASE}/api/resume/upload`, {
+        method: "POST",
+        body: formData,
+        credentials: "include",
+      });
+      if (!response.ok) {
+        let message = "Upload failed. Please try again.";
+        try {
+          const payload = (await response.json()) as { detail?: string };
+          if (payload?.detail) message = payload.detail;
+        } catch {
+          // Keep default message.
+        }
+        throw new Error(message);
+      }
+      const payload = (await response.json()) as ResumeUploadResult;
+      setResumeResult(payload);
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Upload failed.";
+      setResumeError(message);
+    } finally {
+      uploadProg.complete();
+    }
+  };
+
+  const handleParse = async () => {
+    if (!resumeResult) return;
+    parseProg.start();
+    setParseStatus(null);
+    setResumeError(null);
+
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/resume/${resumeResult.resume_document_id}/parse`,
+        { method: "POST", credentials: "include" }
+      );
+      if (!response.ok) {
+        let message = "Failed to start parsing.";
+        try {
+          const payload = (await response.json()) as { detail?: string };
+          if (payload?.detail) message = payload.detail;
+        } catch {
+          // Keep default message.
+        }
+        throw new Error(message);
+      }
+      const payload = (await response.json()) as ParseJobResult;
+      setParseStatus("Parse queued. Waiting for completion...");
+
+      const maxTries = 20;
+      for (let i = 0; i < maxTries; i += 1) {
+        await sleep(1000);
+        const statusResponse = await fetch(
+          `${API_BASE}/api/resume/parse/${payload.job_run_id}`,
+          { credentials: "include" }
+        );
+        if (!statusResponse.ok) {
+          throw new Error("Failed to fetch parse status.");
+        }
+        const statusPayload = (await statusResponse.json()) as ParseJobStatus;
+        if (statusPayload.status === "succeeded") {
+          setParseStatus("Parse complete. Reloading profile...");
+          // Reload the profile to reflect parsed data
+          try {
+            const profileResponse = await fetch(`${API_BASE}/api/profile`, {
+              credentials: "include",
+            });
+            if (profileResponse.ok) {
+              const profilePayload = (await profileResponse.json()) as ProfileResponse;
+              setProfile(profilePayload.profile_json);
+              setVersion(profilePayload.version);
+            }
+          } catch {
+            // Non-critical
+          }
+          setParseStatus("Profile updated from resume.");
+          return;
+        }
+        if (statusPayload.status === "failed") {
+          throw new Error(
+            statusPayload.error_message || "Parse failed. Please retry."
+          );
+        }
+        setParseStatus(`Parsing... (${i + 1}/${maxTries})`);
+      }
+      setParseStatus("Parsing is taking longer than expected. Check back soon.");
+    } catch (caught) {
+      const message =
+        caught instanceof Error ? caught.message : "Failed to start parsing.";
+      setResumeError(message);
+    } finally {
+      parseProg.complete();
+    }
+  };
+
   const handleSave = async () => {
     if (!profile) {
       return;
@@ -709,6 +844,77 @@ function ProfilePageContent() {
           {trustRequestStatus}
         </div>
       ) : null}
+
+      {/* Resume Upload Section */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="text-lg font-semibold">Resume</h2>
+        <p className="mt-2 text-xs text-slate-500">
+          Upload a PDF or DOCX (max 10MB) to auto-fill your profile.
+        </p>
+        <div className="mt-4 flex flex-col gap-4">
+          <div className="flex items-center gap-4">
+            <input
+              type="file"
+              accept=".pdf,.docx"
+              onChange={(e) => setSelectedFile(e.target.files?.[0] ?? null)}
+              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+            />
+            <button
+              type="button"
+              onClick={handleResumeUpload}
+              disabled={!selectedFile || uploadProg.isActive}
+              className="relative overflow-hidden rounded-full bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:bg-slate-500"
+            >
+              {uploadProg.isActive && (
+                <span
+                  className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200"
+                  style={{ width: `${uploadProg.progress}%` }}
+                />
+              )}
+              <span className="relative">
+                {uploadProg.isActive
+                  ? `Uploading... ${uploadProg.pct}%`
+                  : "Upload"}
+              </span>
+            </button>
+          </div>
+
+          {resumeError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {resumeError}
+            </div>
+          )}
+
+          {resumeResult && (
+            <div className="flex flex-col gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              <div>
+                Uploaded: {resumeResult.filename}
+              </div>
+              <button
+                type="button"
+                onClick={handleParse}
+                disabled={parseProg.isActive}
+                className="relative w-fit overflow-hidden rounded-full bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed"
+              >
+                {parseProg.isActive && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-emerald-600 transition-all duration-200"
+                    style={{ width: `${parseProg.progress}%` }}
+                  />
+                )}
+                <span className="relative">
+                  {parseProg.isActive
+                    ? `Building profile... ${parseProg.pct}%`
+                    : "Build my profile"}
+                </span>
+              </button>
+              {parseStatus && (
+                <div className="text-sm text-emerald-900">{parseStatus}</div>
+              )}
+            </div>
+          )}
+        </div>
+      </section>
 
       {/* Basics Section */}
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1207,34 +1413,22 @@ function ProfilePageContent() {
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Preferences</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Target titles
-            <input
-              type="text"
-              value={profile.preferences.target_titles.join(", ")}
-              onChange={(event) =>
-                updatePreferences({
-                  target_titles: parseCommaList(event.target.value),
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Product Manager, Data Analyst"
+            <TagInput
+              value={profile.preferences.target_titles}
+              onChange={(tags) => updatePreferences({ target_titles: tags })}
+              placeholder="Type a title and press Enter"
             />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+          </div>
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Locations
-            <input
-              type="text"
-              value={profile.preferences.locations.join(", ")}
-              onChange={(event) =>
-                updatePreferences({
-                  locations: parseCommaList(event.target.value),
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="New York, Remote"
+            <TagInput
+              value={profile.preferences.locations}
+              onChange={(tags) => updatePreferences({ locations: tags })}
+              placeholder="Type a location and press Enter"
             />
-          </label>
+          </div>
           <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
