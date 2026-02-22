@@ -21,18 +21,32 @@ branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
 
+def _add_column_if_not_exists(table: str, column_name: str, column: sa.Column) -> None:
+    """Add a column only if it does not already exist."""
+    conn = op.get_bind()
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = :table AND column_name = :col"
+        ),
+        {"table": table, "col": column_name},
+    )
+    if not result.fetchone():
+        op.add_column(table, column)
+
+
 def upgrade() -> None:
-    # Add embedding as a plain JSON column (stores array of floats)
-    op.add_column(
-        "jobs",
-        sa.Column("embedding", sa.JSON(), nullable=True),
+    _add_column_if_not_exists(
+        "jobs", "embedding", sa.Column("embedding", sa.JSON(), nullable=True)
     )
-    op.add_column(
+    _add_column_if_not_exists(
         "candidate_profiles",
+        "embedding",
         sa.Column("embedding", sa.JSON(), nullable=True),
     )
-    op.add_column(
+    _add_column_if_not_exists(
         "matches",
+        "semantic_similarity",
         sa.Column("semantic_similarity", sa.Float(), nullable=True),
     )
 
