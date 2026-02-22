@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -77,6 +77,7 @@ def sieve_triggers(
 
 @router.post("/chat", response_model=SieveChatResponse)
 def sieve_chat(
+    request: Request,
     body: SieveChatRequest,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
@@ -98,7 +99,9 @@ def sieve_chat(
             select(Candidate).where(Candidate.user_id == user.id)
         ).scalar_one_or_none()
         tier = get_plan_tier(candidate)
-    check_daily_limit(session, user.id, tier, "sieve_messages", "sieve_messages_per_day")
+    check_daily_limit(session, user.id, tier, "sieve_messages", "sieve_messages_per_day", request=request)
+
+    platform = request.headers.get("X-Client-Platform", "web")
 
     if not body.message.strip():
         return SieveChatResponse(
@@ -117,6 +120,7 @@ def sieve_chat(
         message=body.message,
         conversation_history=history,
         session=session,
+        platform=platform,
     )
 
     # Billing: increment daily counter

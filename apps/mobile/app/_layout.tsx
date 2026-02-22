@@ -316,10 +316,6 @@ export default function RootLayout() {
           options={{ title: "Career Insights", presentation: "card" }}
         />
         <Stack.Screen
-          name="profile/billing"
-          options={{ title: "Billing", presentation: "card" }}
-        />
-        <Stack.Screen
           name="profile/settings"
           options={{ title: "Settings", presentation: "card" }}
         />

@@ -103,6 +103,13 @@ export default function MatchDetailScreen() {
     try {
       const res = await api.post(`/api/tailor/${match.job.id}`);
       if (!res.ok) {
+        if (res.status === 403) {
+          Alert.alert(
+            "Feature Available on Web",
+            "To access this feature, please log in at WinnowCC.ai."
+          );
+          return;
+        }
         const err = await res.json();
         Alert.alert("Error", err.detail || "Failed to generate resume.");
         return;
