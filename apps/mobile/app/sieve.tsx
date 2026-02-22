@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -26,7 +26,48 @@ interface Message {
   content: string;
 }
 
+class SieveErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { hasError: boolean; error: string }
+> {
+  state = { hasError: false, error: "" };
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error: error.message };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View style={{ flex: 1, justifyContent: "center", alignItems: "center", padding: 24, backgroundColor: "#FAF6EE" }}>
+          <Text style={{ fontSize: 16, fontWeight: "600", color: "#3E3525", marginBottom: 8 }}>
+            Sieve ran into an issue
+          </Text>
+          <Text style={{ fontSize: 13, color: "#9CA3AF", textAlign: "center", marginBottom: 16 }}>
+            {this.state.error}
+          </Text>
+          <TouchableOpacity
+            onPress={() => this.setState({ hasError: false, error: "" })}
+            style={{ paddingHorizontal: 20, paddingVertical: 10, backgroundColor: "#1B3025", borderRadius: 8 }}
+          >
+            <Text style={{ color: "#E8C84A", fontWeight: "600" }}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function SieveScreen() {
+  return (
+    <SieveErrorBoundary>
+      <SieveScreenInner />
+    </SieveErrorBoundary>
+  );
+}
+
+function SieveScreenInner() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -38,20 +79,20 @@ export default function SieveScreen() {
       const res = await api.get("/api/sieve/history");
       if (res.ok) {
         const data = await res.json();
-        const history = (data.messages || data || []) as Array<{
-          role: string;
-          content: string;
-        }>;
+        const raw = data.messages || data;
+        const history = Array.isArray(raw) ? raw : [];
         setMessages(
-          history.map((m, i) => ({
-            id: String(i),
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          }))
+          history
+            .filter((m: any) => m && typeof m.content === "string" && typeof m.role === "string")
+            .map((m: any, i: number) => ({
+              id: `h-${i}`,
+              role: m.role as "user" | "assistant",
+              content: m.content,
+            }))
         );
       }
     } catch {
-      // Non-critical
+      // Non-critical — history just won't load
     }
   }, []);
 
@@ -85,19 +126,27 @@ export default function SieveScreen() {
 
       if (res.ok) {
         const data = await res.json();
+        const responseText =
+          (typeof data.response === "string" ? data.response : null) ||
+          (typeof data.message === "string" ? data.message : null) ||
+          "...";
         const assistantMsg: Message = {
           id: `a-${Date.now()}`,
           role: "assistant",
-          content: data.response || data.message || "...",
+          content: responseText,
         };
         setMessages((prev) => [...prev, assistantMsg]);
 
-        if (data.suggested_actions?.length) {
-          setSuggestedActions(
-            data.suggested_actions.map((a: any) =>
-              typeof a === "string" ? a : a.label || a.message || ""
-            )
-          );
+        try {
+          if (Array.isArray(data.suggested_actions) && data.suggested_actions.length) {
+            setSuggestedActions(
+              data.suggested_actions
+                .map((a: any) => (typeof a === "string" ? a : a?.label || a?.message || ""))
+                .filter(Boolean)
+            );
+          }
+        } catch {
+          // Non-critical
         }
       } else {
         const err = await res.json().catch(() => ({}));
@@ -106,7 +155,7 @@ export default function SieveScreen() {
           {
             id: `e-${Date.now()}`,
             role: "assistant",
-            content: (err as any).detail || "Sorry, I couldn\u2019t process that.",
+            content: (err as any)?.detail || "Sorry, I couldn\u2019t process that.",
           },
         ]);
       }
