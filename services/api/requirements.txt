@@ -43,5 +43,8 @@ passlib[bcrypt]>=1.7
 bcrypt>=4.0,<4.1
 python-jose[cryptography]>=3.3
 
+# ---------- Cloud storage ----------
+google-cloud-storage>=2.14
+
 # ---------- Observability ----------
 sentry-sdk[fastapi]>=2.0

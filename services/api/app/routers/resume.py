@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import tempfile
 from pathlib import Path
 from uuid import uuid4
 
@@ -19,6 +20,7 @@ from app.schemas.resume import (
 )
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.resume_parse_job import parse_resume_job
+from app.services.storage import upload_file
 from app.services.trust_scoring import evaluate_trust_for_resume
 
 router = APIRouter(
@@ -29,7 +31,6 @@ router = APIRouter(
 
 ALLOWED_EXTENSIONS = {"pdf", "docx"}
 MAX_UPLOAD_SIZE_BYTES = 10 * 1024 * 1024
-UPLOAD_DIR = Path(__file__).resolve().parents[2] / "data" / "uploads"
 
 
 def _validate_extension(filename: str) -> str:
@@ -51,41 +52,47 @@ async def upload_resume(
     session: Session = Depends(get_session),
 ) -> ResumeUploadResponse:
     original_filename = Path(file.filename or "").name
-    _validate_extension(original_filename)
+    ext = _validate_extension(original_filename)
 
-    UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
     stored_filename = f"{uuid4().hex}_{original_filename}"
-    destination = UPLOAD_DIR / stored_filename
 
+    # Write to a temp file first for SHA256 + size validation
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}")
     size = 0
     digest = hashlib.sha256()
     try:
-        with destination.open("wb") as handle:
-            while True:
-                chunk = await file.read(1024 * 1024)
-                if not chunk:
-                    break
-                size += len(chunk)
-                if size > MAX_UPLOAD_SIZE_BYTES:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="File exceeds 10MB limit.",
-                    )
-                handle.write(chunk)
-                digest.update(chunk)
+        while True:
+            chunk = await file.read(1024 * 1024)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_SIZE_BYTES:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="File exceeds 10MB limit.",
+                )
+            tmp.write(chunk)
+            digest.update(chunk)
+        tmp.close()
     except HTTPException:
-        if destination.exists():
-            destination.unlink(missing_ok=True)
+        tmp.close()
+        Path(tmp.name).unlink(missing_ok=True)
         raise
     finally:
         await file.close()
 
     sha256 = digest.hexdigest()
 
+    # Upload to GCS or copy to local data dir
+    try:
+        stored_path = upload_file(tmp.name, "resumes/", stored_filename)
+    finally:
+        Path(tmp.name).unlink(missing_ok=True)
+
     record = ResumeDocument(
         user_id=user.id,
         filename=original_filename,
-        path=str(destination),
+        path=stored_path,
         sha256=sha256,
     )
     session.add(record)

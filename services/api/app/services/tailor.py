@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import tempfile
 from datetime import datetime
 from pathlib import Path
 
@@ -14,8 +15,7 @@ from app.models.match import Match
 from app.models.tailored_resume import TailoredResume
 from app.services.cover_letter_scoring import compute_cover_letter_score
 from app.services.matching import recalculate_interview_probability
-
-TAILORED_DIR = Path(__file__).resolve().parents[2] / "data" / "tailored"
+from app.services.storage import upload_file
 
 
 def create_tailored_docs(
@@ -29,22 +29,29 @@ def create_tailored_docs(
     if profile is None:
         raise ValueError("Candidate profile not found.")
 
-    TAILORED_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S")
+    resume_fname = f"resume_{user_id}_{job_id}_{timestamp}.docx"
+    cover_fname = f"cover_{user_id}_{job_id}_{timestamp}.docx"
 
-    resume_path = TAILORED_DIR / f"resume_{user_id}_{job_id}_{timestamp}.docx"
-    cover_path = TAILORED_DIR / f"cover_{user_id}_{job_id}_{timestamp}.docx"
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp = Path(tmpdir)
+        resume_local = tmp / resume_fname
+        cover_local = tmp / cover_fname
 
-    _build_resume_doc(resume_path, job, profile.profile_json)
-    _build_cover_letter_doc(cover_path, job, profile.profile_json)
+        _build_resume_doc(resume_local, job, profile.profile_json)
+        _build_cover_letter_doc(cover_local, job, profile.profile_json)
 
-    # Compute cover letter score
-    cover_letter_score = compute_cover_letter_score(
-        cover_letter_path=cover_path,
-        job_description=job.description_text,
-        company_name=job.company,
-        hiring_manager_name=job.hiring_manager_name,
-    )
+        # Compute cover letter score on local temp file before upload
+        cover_letter_score = compute_cover_letter_score(
+            cover_letter_path=cover_local,
+            job_description=job.description_text,
+            company_name=job.company,
+            hiring_manager_name=job.hiring_manager_name,
+        )
+
+        # Upload to GCS or copy to local data dir
+        resume_stored = upload_file(resume_local, "tailored/", resume_fname)
+        cover_stored = upload_file(cover_local, "tailored/", cover_fname)
 
     # Update match with cover letter score if exists
     match = session.execute(
@@ -62,8 +69,8 @@ def create_tailored_docs(
         user_id=user_id,
         job_id=job_id,
         profile_version=profile.version,
-        docx_url=str(resume_path),
-        cover_letter_url=str(cover_path),
+        docx_url=resume_stored,
+        cover_letter_url=cover_stored,
         change_log={
             "job_title": job.title,
             "matched_skills": profile.profile_json.get("skills", []),

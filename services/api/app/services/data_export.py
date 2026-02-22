@@ -21,6 +21,7 @@ from app.models.tailored_resume import TailoredResume
 from app.models.trust_audit_log import TrustAuditLog
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
+from app.services.storage import download_as_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -36,35 +37,6 @@ def _dump(data: object) -> str:
     return json.dumps(data, indent=2, default=_json_default)
 
 
-def _try_read_file(path: str) -> bytes | None:
-    """Read a local file; return bytes or None."""
-    if path and os.path.isfile(path):
-        try:
-            with open(path, "rb") as fh:
-                return fh.read()
-        except OSError:
-            logger.warning("Could not read file %s", path)
-    return None
-
-
-def _download_gcs_file(gcs_url: str) -> bytes | None:
-    """Download a file from GCS. Returns None on failure or if GCS unavailable."""
-    try:
-        from google.cloud import storage  # type: ignore[import-untyped]
-
-        bucket_name = os.environ.get("GCS_BUCKET", "winnow-resumes")
-        client = storage.Client()
-        bucket = client.bucket(bucket_name)
-        blob_name = (
-            gcs_url.split(f"{bucket_name}/")[-1] if bucket_name in gcs_url else gcs_url
-        )
-        blob = bucket.blob(blob_name)
-        return blob.download_as_bytes()
-    except Exception:
-        logger.warning("Failed to download GCS file %s", gcs_url)
-        return None
-
-
 def _add_file_to_zip(
     zf: zipfile.ZipFile,
     folder: str,
@@ -74,14 +46,9 @@ def _add_file_to_zip(
     """Add a file to the ZIP from local disk or GCS."""
     if not source_path:
         return
-    if source_path.startswith("gs://") or "storage.googleapis.com" in source_path:
-        data = _download_gcs_file(source_path)
-        if data:
-            zf.writestr(f"{folder}/{archive_path}", data)
-    else:
-        data = _try_read_file(source_path)
-        if data:
-            zf.writestr(f"{folder}/{archive_path}", data)
+    data = download_as_bytes(source_path)
+    if data:
+        zf.writestr(f"{folder}/{archive_path}", data)
 
 
 def export_user_data(user_id: int, db: Session) -> io.BytesIO:
