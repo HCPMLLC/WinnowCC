@@ -75,6 +75,14 @@ export async function GET(request: NextRequest) {
         path: "/",
         maxAge: 60 * 60 * 24 * 7, // 7 days
       });
+      // Also set a JS-readable cookie for the middleware (Bearer token auth)
+      res.cookies.set("rm_token", data.session_token, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        maxAge: 60 * 60 * 24 * 7,
+      });
     }
 
     return res;

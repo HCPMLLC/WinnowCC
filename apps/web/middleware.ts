@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
-
 const PUBLIC_PREFIXES = [
   "/login",
   "/signup",
@@ -10,10 +8,29 @@ const PUBLIC_PREFIXES = [
   "/terms",
   "/_next",
   "/favicon.ico",
-  "/api/",
+  "/api",
 ];
 
 const PUBLIC_EXACT = ["/"];
+
+/**
+ * Decode a JWT payload without signature verification.
+ * Middleware is not a security boundary — the API validates tokens on every
+ * request.  We only need to check that a non-expired token exists so
+ * unauthenticated users are redirected before the page shell loads.
+ */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    // base64url → base64 → decode
+    const b64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const json = atob(b64);
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
 
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
@@ -24,34 +41,27 @@ export async function middleware(req: NextRequest) {
   const isPublicExact = PUBLIC_EXACT.includes(pathname);
   if (isPublicPrefix || isPublicExact) return NextResponse.next();
 
-  // Forward browser cookies to the API (critical for HttpOnly sessions)
-  const cookie = req.headers.get("cookie") ?? "";
-  
-
-
-  // Auth + onboarding status (authoritative)
-  const authResp = await fetch(`${API_BASE}/api/auth/me`, {
-    method: "GET",
-    headers: { cookie },
-    cache: "no-store",
-  });
-
-  if (!authResp.ok) {
+  // Read JWT from web-domain cookie
+  const token = req.cookies.get("rm_token")?.value;
+  if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = "/";
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  const authData: any = await authResp.json().catch(() => null);
-
-  // This field is in your auth/me response (your tests referenced it)
-  const completed = authData?.onboarding_complete === true;
-
-  if (!completed) {
+  // Lightweight check: decode the JWT and verify it hasn't expired.
+  // No server-to-server API call needed — the client-side auth guard
+  // (fetchAuthMe) and the API itself handle full validation.
+  const payload = decodeJwtPayload(token);
+  if (!payload || (typeof payload.exp === "number" && payload.exp * 1000 < Date.now())) {
+    // Token is malformed or expired — clear it and redirect
     const url = req.nextUrl.clone();
-    url.pathname = "/onboarding";
-    return NextResponse.redirect(url);
+    url.pathname = "/";
+    url.searchParams.set("redirect", pathname);
+    const resp = NextResponse.redirect(url);
+    resp.cookies.delete("rm_token");
+    return resp;
   }
 
   return NextResponse.next();

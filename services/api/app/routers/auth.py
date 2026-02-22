@@ -223,7 +223,9 @@ def verify_otp_endpoint(
     session.commit()
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
-    return _me_response(user)
+    resp = _me_response(user)
+    resp.token = make_token(user_id=user.id, email=user.email)
+    return resp
 
 
 @router.post("/resend-otp")

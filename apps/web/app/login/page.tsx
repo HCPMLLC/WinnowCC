@@ -9,6 +9,17 @@ import { normalizeRedirect, withRedirectParam } from "../lib/redirects";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
+/** Store the JWT via the web-domain session endpoint (server-side Set-Cookie). */
+async function setAuthCookie(token: string, redirect: string): Promise<string> {
+  const res = await fetch("/api/auth/session", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, redirect }),
+  });
+  const data = await res.json();
+  return data.redirect || redirect;
+}
+
 function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -65,6 +76,8 @@ function LoginForm() {
           }
           throw new Error(detail);
         }
+        const signupData = await res.json();
+        if (signupData.token) await setAuthCookie(signupData.token, withRedirectParam("/onboarding", redirectTarget));
         window.location.href = withRedirectParam("/onboarding", redirectTarget);
       } else {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
@@ -94,11 +107,11 @@ function LoginForm() {
           return;
         }
 
-        if (data.onboarding_complete) {
-          window.location.href = redirectTarget;
-        } else {
-          window.location.href = withRedirectParam("/onboarding", redirectTarget);
-        }
+        const dest = data.onboarding_complete
+          ? redirectTarget
+          : withRedirectParam("/onboarding", redirectTarget);
+        if (data.token) await setAuthCookie(data.token, dest);
+        window.location.href = dest;
       }
     } catch (e: any) {
       setErr(e?.message || (isSignUp ? "Signup failed" : "Login failed"));
@@ -124,13 +137,12 @@ function LoginForm() {
         try { detail = JSON.parse(body).detail || detail; } catch {}
         throw new Error(detail);
       }
-      // Cookie is set — use response data to redirect (avoids cookie race condition)
       const data = await res.json();
-      if (data.onboarding_complete) {
-        window.location.href = redirectTarget;
-      } else {
-        window.location.href = withRedirectParam("/onboarding", redirectTarget);
-      }
+      const dest = data.onboarding_complete
+        ? redirectTarget
+        : withRedirectParam("/onboarding", redirectTarget);
+      if (data.token) await setAuthCookie(data.token, dest);
+      window.location.href = dest;
     } catch (e: any) {
       setErr(e?.message || "Verification failed");
     } finally {
