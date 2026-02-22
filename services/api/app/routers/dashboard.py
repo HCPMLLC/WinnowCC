@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
@@ -28,6 +29,7 @@ router = APIRouter(
 class DashboardMetricsResponse(BaseModel):
     """Dashboard metrics for the current user."""
 
+    display_name: str | None = None
     profile_completeness_score: int
     qualified_jobs_count: int
     submitted_applications_count: int
@@ -49,6 +51,15 @@ def get_dashboard_metrics(
         - interviews_requested_count: Jobs where user marked status as 'interviewing'
         - offers_received_count: Jobs where user marked status as 'offer'
     """
+    # Display name from candidate record
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    display_name = None
+    if candidate:
+        parts = [candidate.first_name, candidate.last_name]
+        display_name = " ".join(p for p in parts if p) or None
+
     # Profile completeness
     profile_stmt = (
         select(CandidateProfile)
@@ -95,6 +106,7 @@ def get_dashboard_metrics(
     ).scalar() or 0
 
     return DashboardMetricsResponse(
+        display_name=display_name,
         profile_completeness_score=profile_completeness_score,
         qualified_jobs_count=qualified_jobs_count,
         submitted_applications_count=submitted_applications_count,
