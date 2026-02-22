@@ -70,8 +70,8 @@ jobs:
               --set-secrets=DB_URL=db-url:latest \
               --set-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
               --vpc-connector=winnow-connector \
-              --command=alembic \
-              --args=upgrade,head
+              --command=python \
+              --args=-m,alembic,upgrade,head
           else
             gcloud run jobs create winnow-migrate \
               --image=${{ env.API_IMAGE }}:${{ github.sha }} \
@@ -79,8 +79,8 @@ jobs:
               --set-secrets=DB_URL=db-url:latest \
               --set-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
               --vpc-connector=winnow-connector \
-              --command=alembic \
-              --args=upgrade,head
+              --command=python \
+              --args=-m,alembic,upgrade,head
           fi
           gcloud run jobs execute winnow-migrate --region=${{ env.REGION }} --wait
 
