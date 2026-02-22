@@ -24,22 +24,14 @@ export default function DashboardScreen() {
   const { email } = useAuth();
   const router = useRouter();
   const [metrics, setMetrics] = useState<Metrics | null>(null);
-  const [planTier, setPlanTier] = useState("free");
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const loadData = async () => {
     try {
-      const [metricsRes, billingRes] = await Promise.all([
-        api.get("/api/dashboard/metrics"),
-        api.get("/api/billing/status"),
-      ]);
+      const metricsRes = await api.get("/api/dashboard/metrics");
       if (metricsRes.ok) {
         setMetrics(await metricsRes.json());
-      }
-      if (billingRes.ok) {
-        const billing = await billingRes.json();
-        setPlanTier(billing.plan_tier || "free");
       }
     } catch {
       // Silently fail — metrics are non-critical
@@ -95,12 +87,6 @@ export default function DashboardScreen() {
         Welcome back{email ? `, ${email.split("@")[0]}` : ""}
       </Text>
 
-      <View style={styles.planBadge}>
-        <Text style={styles.planText}>
-          {planTier === "free" ? "Free Plan" : "Pro Plan"}
-        </Text>
-      </View>
-
       <View style={styles.grid}>
         {cards.map((card) => (
           <View key={card.label} style={styles.card}>
@@ -130,19 +116,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.gray900,
     marginBottom: spacing.sm,
-  },
-  planBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  planText: {
-    color: colors.gold,
-    fontSize: fontSize.xs,
-    fontWeight: "600",
   },
   grid: {
     flexDirection: "row",

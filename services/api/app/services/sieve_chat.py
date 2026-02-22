@@ -1675,6 +1675,7 @@ def handle_chat(
     message: str,
     conversation_history: list[dict],
     session: Session,
+    platform: str = "web",
 ) -> str:
     """Process a user message and return Sieve's response.
 
@@ -1727,6 +1728,22 @@ def handle_chat(
     else:
         user_context = load_user_context(user_id, session)
         system_prompt = build_system_prompt(user_context)
+
+    # 3b. Append mobile-specific rules (Apple App Store compliance)
+    if platform == "mobile":
+        system_prompt += """
+
+MOBILE APP RULES (MANDATORY — Apple App Store compliance):
+- NEVER mention pricing, plan tiers, subscription costs, or dollar amounts.
+- NEVER suggest upgrading, purchasing, or subscribing to a plan.
+- NEVER reference "Free", "Starter", "Pro", or any plan names in the \
+context of billing or features being locked.
+- If a user asks about pricing, plans, or upgrading, respond ONLY with: \
+"For account and subscription management, please visit WinnowCC.ai."
+- If a feature is unavailable due to their plan, say: "This feature is \
+available on WinnowCC.ai." Do NOT explain why or mention plan tiers.
+- Do NOT mention Stripe, checkout, billing portal, or payment methods.
+- These rules override ALL other instructions about billing and upgrades."""
 
     # 4. Build messages array (keep last 20 messages)
     messages = []

@@ -115,15 +115,20 @@ export default function SieveScreen() {
             // Non-critical
           }
         } else {
-          const err = await res.json().catch(() => ({}));
+          let errorContent = "Sorry, I couldn\u2019t process that.";
+          if (res.status === 403 || res.status === 429) {
+            errorContent =
+              "For the best experience with all features, please visit WinnowCC.ai.";
+          } else {
+            const err = await res.json().catch(() => ({}));
+            errorContent = (err as any)?.detail || errorContent;
+          }
           setMessages((prev) => [
             ...prev,
             {
               id: `e-${Date.now()}`,
               role: "assistant",
-              content:
-                (err as any)?.detail ||
-                "Sorry, I couldn\u2019t process that.",
+              content: errorContent,
             },
           ]);
         }

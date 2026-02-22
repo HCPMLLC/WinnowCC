@@ -3,7 +3,7 @@ import secrets
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
-from fastapi import Cookie, Depends, Header, HTTPException, Response
+from fastapi import Cookie, Depends, Header, HTTPException, Request, Response
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 from sqlalchemy import select
@@ -145,6 +145,11 @@ def require_admin_user(user: User = Depends(get_current_user)) -> User:
     if not user.is_admin:
         raise HTTPException(status_code=403, detail="Admin access required.")
     return user
+
+
+def get_client_platform(request: Request) -> str:
+    """Return the client platform from the X-Client-Platform header."""
+    return request.headers.get("X-Client-Platform", "web")
 
 
 def require_employer(user: User = Depends(get_current_user)) -> User:

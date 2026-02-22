@@ -20,6 +20,13 @@ export class AuthError extends Error {
   }
 }
 
+export class FeatureGateError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FeatureGateError";
+  }
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -37,6 +44,7 @@ export async function apiFetch(
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
+    "X-Client-Platform": "mobile",
     ...options.headers,
   };
 
@@ -92,7 +100,9 @@ export async function uploadFile(
     type: mimeType,
   } as any);
 
-  const headers: Record<string, string> = {};
+  const headers: Record<string, string> = {
+    "X-Client-Platform": "mobile",
+  };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }

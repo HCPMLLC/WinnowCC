@@ -16,7 +16,6 @@ import * as Sharing from "expo-sharing";
 import { api } from "../../lib/api";
 import { getToken } from "../../lib/auth";
 import { useAuth } from "../../lib/auth";
-import { useBilling } from "../../lib/billing";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 import LoadingSpinner from "../../components/LoadingSpinner";
 
@@ -25,7 +24,6 @@ const API_BASE =
 
 export default function SettingsScreen() {
   const { logout } = useAuth();
-  const billing = useBilling();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [openToIntros, setOpenToIntros] = useState(false);
@@ -176,34 +174,26 @@ export default function SettingsScreen() {
       {/* Data Export */}
       <Text style={styles.sectionTitle}>Export My Data</Text>
       <View style={styles.card}>
-        {!billing.features.data_export ? (
-          <View>
-            <Text style={styles.lockedText}>
-              Data export requires a Starter or Pro plan.
+        <View>
+          {exportPreview && (
+            <Text style={styles.previewText}>
+              {exportPreview.profile_versions} profile versions,{" "}
+              {exportPreview.resume_documents} resumes,{" "}
+              {exportPreview.matches} matches,{" "}
+              {exportPreview.tailored_resumes} tailored documents
             </Text>
-          </View>
-        ) : (
-          <View>
-            {exportPreview && (
-              <Text style={styles.previewText}>
-                {exportPreview.profile_versions} profile versions,{" "}
-                {exportPreview.resume_documents} resumes,{" "}
-                {exportPreview.matches} matches,{" "}
-                {exportPreview.tailored_resumes} tailored documents
-              </Text>
-            )}
-            <TouchableOpacity
-              style={[styles.exportBtn, exporting && styles.disabled]}
-              onPress={handleExport}
-              disabled={exporting}
-            >
-              <Ionicons name="download-outline" size={18} color={colors.primary} />
-              <Text style={styles.exportBtnText}>
-                {exporting ? "Exporting..." : "Download My Data"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
+          )}
+          <TouchableOpacity
+            style={[styles.exportBtn, exporting && styles.disabled]}
+            onPress={handleExport}
+            disabled={exporting}
+          >
+            <Ionicons name="download-outline" size={18} color={colors.primary} />
+            <Text style={styles.exportBtnText}>
+              {exporting ? "Exporting..." : "Download My Data"}
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Danger Zone */}

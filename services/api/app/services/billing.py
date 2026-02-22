@@ -333,25 +333,36 @@ def check_daily_limit(
     tier: str,
     counter_name: str,
     limit_key: str,
+    request=None,
 ) -> None:
     """Raise 429 if the user has exceeded a daily limit for their tier."""
     from app.models.daily_usage_counter import DailyUsageCounter
+
+    is_mobile = (
+        request is not None
+        and getattr(request, "headers", None) is not None
+        and request.headers.get("X-Client-Platform") == "mobile"
+    )
 
     limit = get_tier_limit(tier, limit_key)
     if isinstance(limit, int) and limit >= 9999:
         return  # unlimited
     if isinstance(limit, int) and limit == 0:
-        raise HTTPException(
-            status_code=403,
-            detail=f"This feature requires a Starter or Pro plan.",
+        detail = (
+            "This feature is available on WinnowCC.ai."
+            if is_mobile
+            else "This feature requires a Starter or Pro plan."
         )
+        raise HTTPException(status_code=403, detail=detail)
 
     current = DailyUsageCounter.get_today_count(session, user_id, counter_name)
     if current >= int(limit):
-        raise HTTPException(
-            status_code=429,
-            detail=f"Daily limit reached ({limit} per day). Upgrade your plan for more.",
+        detail = (
+            "For the best experience with all features, please visit WinnowCC.ai."
+            if is_mobile
+            else f"Daily limit reached ({limit} per day). Upgrade your plan for more."
         )
+        raise HTTPException(status_code=429, detail=detail)
 
 
 def increment_daily_counter(session: Session, user_id: int, counter_name: str) -> int:

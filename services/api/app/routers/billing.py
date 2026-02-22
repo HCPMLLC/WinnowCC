@@ -22,7 +22,7 @@ from app.schemas.billing import (
     UnifiedCheckoutRequest,
     UsageSummary,
 )
-from app.services.auth import get_current_user
+from app.services.auth import get_client_platform, get_current_user
 from app.services.billing import (
     CANDIDATE_PLAN_LIMITS,
     EMPLOYER_PLAN_LIMITS,
@@ -57,13 +57,20 @@ def _get_candidate(session: Session, user_id: int) -> Candidate | None:
 
 
 # ---------- GET /api/billing/status ----------
-@router.get("/status", response_model=BillingStatusResponse)
+@router.get("/status")
 def billing_status(
+    request: Request,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
-) -> BillingStatusResponse:
+):
     candidate = _get_candidate(session, user.id)
     tier = get_plan_tier(candidate)
+
+    # Mobile clients get a minimal response (Apple App Store compliance)
+    platform = get_client_platform(request)
+    if platform == "mobile":
+        return {"plan_tier": tier, "platform": "mobile"}
+
     usage = get_or_create_usage(session, user.id)
 
     # Daily counters

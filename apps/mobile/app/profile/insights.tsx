@@ -9,10 +9,8 @@ import {
   RefreshControl,
   Alert,
 } from "react-native";
-import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../../lib/api";
-import { useBilling } from "../../lib/billing";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import SkillTag from "../../components/SkillTag";
@@ -49,8 +47,6 @@ function formatSalary(val?: number): string {
 }
 
 export default function InsightsScreen() {
-  const router = useRouter();
-  const billing = useBilling();
   const [trajectory, setTrajectory] = useState<Trajectory | null>(null);
   const [salary, setSalary] = useState<SalaryData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -74,12 +70,8 @@ export default function InsightsScreen() {
   }, []);
 
   useEffect(() => {
-    if (billing.features.career_intelligence) {
-      loadTrajectory();
-    } else {
-      setLoading(false);
-    }
-  }, [billing.features.career_intelligence, loadTrajectory]);
+    loadTrajectory();
+  }, [loadTrajectory]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -108,27 +100,7 @@ export default function InsightsScreen() {
     }
   }
 
-  if (billing.loading || loading) return <LoadingSpinner />;
-
-  // Pro gate
-  if (!billing.features.career_intelligence) {
-    return (
-      <View style={styles.gateContainer}>
-        <Ionicons name="lock-closed" size={48} color={colors.gray300} />
-        <Text style={styles.gateTitle}>Career Intelligence</Text>
-        <Text style={styles.gateText}>
-          Get AI-powered career trajectory predictions, salary benchmarks, and
-          growth recommendations with a Pro plan.
-        </Text>
-        <TouchableOpacity
-          style={styles.upgradeBtn}
-          onPress={() => router.push("/profile/billing")}
-        >
-          <Text style={styles.upgradeBtnText}>Upgrade to Pro</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
+  if (loading) return <LoadingSpinner />;
 
   return (
     <ScrollView
@@ -289,38 +261,6 @@ export default function InsightsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray50 },
   content: { padding: spacing.md, paddingBottom: spacing.xxl },
-  gateContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    padding: spacing.xl,
-    backgroundColor: colors.gray50,
-  },
-  gateTitle: {
-    fontSize: fontSize.xxl,
-    fontWeight: "700",
-    color: colors.gray900,
-    marginTop: spacing.md,
-  },
-  gateText: {
-    fontSize: fontSize.sm,
-    color: colors.gray500,
-    marginTop: spacing.sm,
-    textAlign: "center",
-    lineHeight: 20,
-  },
-  upgradeBtn: {
-    backgroundColor: colors.gold,
-    paddingVertical: spacing.md,
-    paddingHorizontal: spacing.xl,
-    borderRadius: borderRadius.md,
-    marginTop: spacing.lg,
-  },
-  upgradeBtnText: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.primary,
-  },
   sectionTitle: {
     fontSize: fontSize.lg,
     fontWeight: "700",

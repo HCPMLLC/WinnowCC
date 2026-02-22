@@ -306,20 +306,6 @@ export default function ProfileScreen() {
         onPress={() => router.push("/profile/references")}
       />
       <ProfileMenuItem
-        icon="trending-up-outline"
-        label="Career Insights"
-        subtitle="Trajectory & salary intelligence"
-        onPress={() => router.push("/profile/insights")}
-        badge="Pro"
-        badgeColor={colors.gold}
-      />
-      <ProfileMenuItem
-        icon="card-outline"
-        label="Billing"
-        subtitle="Plan, usage & upgrades"
-        onPress={() => router.push("/profile/billing")}
-      />
-      <ProfileMenuItem
         icon="settings-outline"
         label="Settings"
         subtitle="Export data, manage account"
@@ -416,6 +402,10 @@ export default function ProfileScreen() {
           {saving ? "Saving..." : "Save Preferences"}
         </Text>
       </TouchableOpacity>
+
+      <Text style={styles.webManageText}>
+        Manage your account and subscription at WinnowCC.ai
+      </Text>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
         <Text style={styles.logoutBtnText}>Log Out</Text>
@@ -616,6 +606,13 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: "600",
     color: colors.primary,
+  },
+  webManageText: {
+    fontSize: 12,
+    color: colors.gray400,
+    textAlign: "center",
+    marginTop: spacing.lg,
+    marginBottom: spacing.xs,
   },
   logoutBtn: {
     borderRadius: borderRadius.md,
