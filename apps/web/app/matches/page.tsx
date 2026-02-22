@@ -103,7 +103,7 @@ function JobDescription({ text, html }: { text: string; html?: string }) {
   );
 }
 
-const SCORE_THRESHOLD = 50;
+const SCORE_THRESHOLD = 45;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 function MatchCard({
