@@ -3,7 +3,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.candidate_profile import CandidateProfile
 from app.models.candidate_trust import CandidateTrust
+from app.models.resume_document import ResumeDocument
 from app.models.trust_audit_log import TrustAuditLog
 from app.models.user import User
 from app.schemas.trust import (
@@ -16,30 +18,57 @@ from app.services.auth import require_admin_user
 router = APIRouter(prefix="/api/admin/trust", tags=["admin-trust"])
 
 
+def _candidate_name_for_user(session: Session, user_id: int) -> str | None:
+    """Return the candidate's display name from their latest profile."""
+    profile = session.execute(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user_id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+    if profile and profile.profile_json:
+        basics = profile.profile_json.get("basics", {})
+        name = basics.get("name") or profile.profile_json.get("name")
+        if name:
+            return name
+        first = basics.get("first_name", "")
+        last = basics.get("last_name", "")
+        full = f"{first} {last}".strip()
+        if full:
+            return full
+    return None
+
+
 @router.get("/queue", response_model=list[AdminTrustRecordResponse])
 def get_trust_queue(
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ) -> list[AdminTrustRecordResponse]:
     stmt = (
-        select(CandidateTrust)
+        select(CandidateTrust, ResumeDocument, User)
+        .join(ResumeDocument, CandidateTrust.resume_document_id == ResumeDocument.id)
+        .join(User, ResumeDocument.user_id == User.id)
         .where(CandidateTrust.status != "allowed")
         .order_by(CandidateTrust.updated_at.desc())
     )
-    records = session.execute(stmt).scalars().all()
-    return [
-        AdminTrustRecordResponse(
-            id=record.id,
-            resume_document_id=record.resume_document_id,
-            score=record.score,
-            status=record.status,
-            reasons=record.reasons,
-            user_message=record.user_message,
-            internal_notes=record.internal_notes,
-            updated_at=record.updated_at,
+    rows = session.execute(stmt).all()
+    results = []
+    for record, _doc, user in rows:
+        results.append(
+            AdminTrustRecordResponse(
+                id=record.id,
+                resume_document_id=record.resume_document_id,
+                candidate_name=_candidate_name_for_user(session, user.id),
+                candidate_email=user.email,
+                score=record.score,
+                status=record.status,
+                reasons=record.reasons,
+                user_message=record.user_message,
+                internal_notes=record.internal_notes,
+                updated_at=record.updated_at,
+            )
         )
-        for record in records
-    ]
+    return results
 
 
 @router.post("/{trust_id}/set", response_model=AdminTrustUpdateResponse)

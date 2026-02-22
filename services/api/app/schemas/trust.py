@@ -16,6 +16,8 @@ class TrustReviewRequestResponse(BaseModel):
 class AdminTrustRecordResponse(BaseModel):
     id: int
     resume_document_id: int
+    candidate_name: str | None = None
+    candidate_email: str | None = None
     score: int
     status: str
     reasons: list[dict]

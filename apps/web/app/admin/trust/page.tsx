@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 type TrustRecord = {
   id: number;
   resume_document_id: number;
+  candidate_name: string | null;
+  candidate_email: string | null;
   score: number;
   status: "allowed" | "soft_quarantine" | "hard_quarantine";
   reasons: { code: string; severity: string; message: string; points?: number }[];
@@ -150,7 +152,7 @@ export default function AdminTrustPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">
-                    Trust #{record.id} - Resume {record.resume_document_id}
+                    {record.candidate_name ?? record.candidate_email ?? `Trust #${record.id}`}
                   </div>
                   <div className="text-xs text-slate-500">
                     Score {record.score} - Status {record.status}
