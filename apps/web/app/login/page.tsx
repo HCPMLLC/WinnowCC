@@ -4,7 +4,7 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
-import { fetchAuthMe } from "../lib/auth";
+
 import { normalizeRedirect, withRedirectParam } from "../lib/redirects";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -94,8 +94,7 @@ function LoginForm() {
           return;
         }
 
-        const me = await fetchAuthMe();
-        if (me?.onboarding_complete) {
+        if (data.onboarding_complete) {
           window.location.href = redirectTarget;
         } else {
           window.location.href = withRedirectParam("/onboarding", redirectTarget);
@@ -125,9 +124,9 @@ function LoginForm() {
         try { detail = JSON.parse(body).detail || detail; } catch {}
         throw new Error(detail);
       }
-      // Cookie is set — full reload so Navbar picks up auth state
-      const me = await fetchAuthMe();
-      if (me?.onboarding_complete) {
+      // Cookie is set — use response data to redirect (avoids cookie race condition)
+      const data = await res.json();
+      if (data.onboarding_complete) {
         window.location.href = redirectTarget;
       } else {
         window.location.href = withRedirectParam("/onboarding", redirectTarget);
