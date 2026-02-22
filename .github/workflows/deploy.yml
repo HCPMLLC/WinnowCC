@@ -144,7 +144,7 @@ jobs:
         run: |
           cd apps/web
           docker build --no-cache \
-            --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.winnowcc.ai \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=https://winnow-api-cdn2d6pc5q-uc.a.run.app \
             --build-arg NEXT_PUBLIC_APP_URL=https://winnowcc.ai \
             --build-arg NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_WEB_DSN }} \
             --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
