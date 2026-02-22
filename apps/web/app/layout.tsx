@@ -7,7 +7,7 @@ export const metadata: Metadata = {
   title: "Winnow Career Concierge",
   description: "Match resumes to roles with confidence.",
   icons: {
-    icon: "/Winnow Favico.ico",
+    icon: "/logo.png",
   },
 };
 
