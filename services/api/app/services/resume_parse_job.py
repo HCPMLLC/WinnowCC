@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 
 from sqlalchemy import func, select
@@ -11,6 +12,8 @@ from app.models.job_run import JobRun
 from app.models.resume_document import ResumeDocument
 from app.services.profile_parser import extract_text, parse_profile_from_text
 from app.services.trust_scoring import evaluate_trust_for_resume
+
+logger = logging.getLogger(__name__)
 
 
 def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
@@ -27,7 +30,19 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             _set_job_status(session, job_run_id, "failed", "No text could be extracted.")
             return
 
-        profile_json = parse_profile_from_text(text)
+        # Try LLM parser first (rich extraction), fall back to regex
+        profile_json = None
+        try:
+            from app.services.llm_parser import is_llm_parser_available, parse_with_llm
+
+            if is_llm_parser_available():
+                logger.info("Using LLM parser for resume %s", resume_document_id)
+                profile_json = parse_with_llm(text)
+        except Exception as exc:
+            logger.warning("LLM parser failed, falling back to regex: %s", exc)
+
+        if profile_json is None:
+            profile_json = parse_profile_from_text(text)
         next_version = _get_next_version(session, resume.user_id)
 
         profile = CandidateProfile(
