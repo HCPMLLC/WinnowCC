@@ -10,6 +10,7 @@ import {
   Platform,
   Alert,
   Switch,
+  Linking,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useAuth } from "../lib/auth";
@@ -313,7 +314,14 @@ export default function CandidateOnboardingScreen() {
                 thumbColor={colors.white}
               />
               <Text style={styles.consentText}>
-                I accept the Terms of Service *
+                I accept the{" "}
+                <Text
+                  style={styles.consentLink}
+                  onPress={() => Linking.openURL("https://winnowcc.ai/terms")}
+                >
+                  Terms of Service
+                </Text>{" "}
+                *
               </Text>
             </View>
 
@@ -325,7 +333,14 @@ export default function CandidateOnboardingScreen() {
                 thumbColor={colors.white}
               />
               <Text style={styles.consentText}>
-                I accept the Privacy Policy *
+                I accept the{" "}
+                <Text
+                  style={styles.consentLink}
+                  onPress={() => Linking.openURL("https://winnowcc.ai/privacy")}
+                >
+                  Privacy Policy
+                </Text>{" "}
+                *
               </Text>
             </View>
 
@@ -446,6 +461,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.gray700,
     flex: 1,
+  },
+  consentLink: {
+    textDecorationLine: "underline" as const,
+    fontWeight: "600" as const,
+    color: colors.gray700,
   },
   navRow: { flexDirection: "row", gap: spacing.sm, marginTop: spacing.md },
   button: {
