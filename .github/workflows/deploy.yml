@@ -66,7 +66,12 @@ jobs:
           if gcloud run jobs describe winnow-migrate --region=${{ env.REGION }} >/dev/null 2>&1; then
             gcloud run jobs update winnow-migrate \
               --image=${{ env.API_IMAGE }}:${{ github.sha }} \
-              --region=${{ env.REGION }}
+              --region=${{ env.REGION }} \
+              --set-secrets=DB_URL=db-url:latest \
+              --set-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
+              --vpc-connector=winnow-connector \
+              --command=alembic \
+              --args=upgrade,head
           else
             gcloud run jobs create winnow-migrate \
               --image=${{ env.API_IMAGE }}:${{ github.sha }} \
