@@ -117,3 +117,39 @@
 ### 18. The navbar logo on the landing page uses `Winnow CC Masthead TBGC.png` at `h-12`
 - **Pattern**: The landing page navbar logo was changed from `Winnow Masthead Gold Shadow.png` (h-8) to `Winnow CC Masthead TBGC.png` (h-12) for better legibility.
 - **Rule**: When referencing the Winnow logo, use `Winnow CC Masthead TBGC.png` unless the user specifies otherwise. Available logos in `apps/web/public/`: `Winnow CC Masthead TBGC.png`, `Winnow Masthead Gold Shadow.png`, `Winnow Masthead Wheat Shadow.png`.
+
+## Mobile App Deployment (2026-02-22)
+
+### 19. bcrypt 4.1+ breaks passlib — pin bcrypt<4.1
+- **Problem**: `passlib` uses `bcrypt.__about__.__version__` for backend detection. `bcrypt>=4.1` removed that attribute, causing `AttributeError` on every `hash_password()` / `verify_password()` call — 500 on both login and signup in production.
+- **Fix**: Pin `bcrypt>=4.0,<4.1` in `requirements.txt`.
+- **Rule**: When using `passlib[bcrypt]`, always pin `bcrypt<4.1`. Check Cloud Run logs (`gcloud logging read`) for production errors — don't assume the API works just because `/health` returns 200.
+
+### 20. Verify custom domain mapping before using it in builds
+- **Problem**: `api.winnowcc.ai` was set as `EXPO_PUBLIC_API_BASE_URL` in EAS builds, but no Cloud Run domain mapping or SSL cert existed. Mobile app couldn't reach the API.
+- **Fix**: Point directly at the Cloud Run URL (`winnow-api-cdn2d6pc5q-uc.a.run.app`) in `eas.json`, `.env.production`, and the deploy workflow's `NEXT_PUBLIC_API_BASE_URL` build arg.
+- **Rule**: Always verify the API URL is reachable (`curl -s <url>/health`) before building a mobile release. Don't assume custom domains are configured.
+
+### 21. Production database is empty — dev seed accounts don't exist
+- **Problem**: Tried logging in with dev seed accounts (`akshitha@test.com`, etc.) on production. They don't exist.
+- **Rule**: After deploying to a fresh production database, accounts must be created via signup. Dev seed data doesn't carry over. Consider adding an admin seed script.
+
+### 22. Pushing to main triggers deploy which can reset the database
+- **Problem**: Every push to `main` triggers the deploy workflow which re-runs migrations. User accounts created between deploys can be lost.
+- **Rule**: Be aware that pushing to `main` triggers a full redeploy. Manually created accounts may need to be recreated. The `promote-admin` Cloud Run job pattern (SQL via env var) is useful for post-deploy setup.
+
+### 23. FlatList causes native crashes on iOS production builds in Expo
+- **Problem**: Sieve chat screen used two `FlatList` components (messages + horizontal suggested actions). This caused a native crash on iOS production builds. Expo's error boundary showed "Winnow Career Concierge Crashed" with no useful JS error. React error boundaries could NOT catch it — it was a native-level crash.
+- **Fix**: Replace `FlatList` with `ScrollView` + `.map()` for both messages and suggestions.
+- **Rule**: In Expo production iOS builds, prefer `ScrollView` over `FlatList` for chat-style UIs with <50 items. `FlatList` virtualization can cause native crashes invisible to JS error boundaries. Only use `FlatList` for genuinely large datasets (hundreds+ items).
+- **Debugging approach**: When a crash bypasses React error boundaries, strip the screen to a bare minimum, confirm it works, then add features back incrementally. This is faster than guessing.
+
+### 24. Cloud Run job args: use env vars, not inline scripts
+- **Problem**: Multi-line Python scripts via `--args` silently fail — newlines get stripped, `exec()` with escaped newlines produces `SyntaxError`. Jobs exit(0) without actually running the script.
+- **Fix**: Use single-line Python with semicolons. Pass dynamic values via `--set-env-vars` instead of embedding in the script. Always check logs to verify execution.
+- **Rule**: For Cloud Run jobs: (1) single-line Python with semicolons, (2) variable data in env vars, (3) verify with `gcloud logging read` that the script printed expected output.
+
+### 25. EAS preview profile needs interactive Apple auth; use production for CI
+- **Problem**: `eas build --profile preview --non-interactive` failed because iOS internal distribution (ad-hoc) requires Apple credentials not cached on the EAS server.
+- **Fix**: Use `--profile production` for non-interactive/CI builds — App Store distribution creds were already configured.
+- **Rule**: For automated builds, use the `production` profile. The `preview` profile (internal distribution) needs interactive Apple login.
