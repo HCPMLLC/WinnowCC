@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
@@ -442,8 +443,15 @@ function OnboardingPageContent() {
                   required
                 />
                 <span>
-                  I accept the <span className="font-semibold">Terms of Service</span> and{" "}
-                  <span className="font-semibold">Privacy Policy</span>. *
+                  I accept the{" "}
+                  <Link href="/terms" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Privacy Policy
+                  </Link>
+                  . *
                 </span>
               </label>
               <label className="flex items-start gap-3">
