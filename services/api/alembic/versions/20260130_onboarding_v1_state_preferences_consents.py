@@ -24,8 +24,6 @@ def upgrade() -> None:
         "auto_apply_limited",
         name="application_mode",
     )
-    application_mode_enum.create(op.get_bind(), checkfirst=True)
-
     op.create_table(
         "onboarding_state",
         sa.Column(
@@ -110,7 +108,7 @@ def upgrade() -> None:
         sa.Column(
             "data_processing_consent_at", sa.DateTime(timezone=True), nullable=True
         ),
-        sa.Column("application_mode", sa.Enum(name="application_mode"), nullable=False),
+        sa.Column("application_mode", application_mode_enum, nullable=False),
         sa.Column(
             "active", sa.Boolean(), nullable=False, server_default=sa.text("true")
         ),
