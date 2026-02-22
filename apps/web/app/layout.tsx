@@ -4,7 +4,7 @@ import Navbar from "./components/Navbar";
 import AuthenticatedSieve from "./components/sieve/AuthenticatedSieve";
 
 export const metadata: Metadata = {
-  title: "Winnow",
+  title: "Winnow Career Concierge",
   description: "Match resumes to roles with confidence.",
   icons: {
     icon: "/Winnow Favico.ico",
