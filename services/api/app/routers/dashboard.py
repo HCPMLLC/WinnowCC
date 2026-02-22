@@ -10,10 +10,12 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
+from app.models.job import Job
 from app.models.match import Match
 from app.models.user import User
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.profile_parser import default_profile_json
+from app.services.matching import MIN_MATCH_SCORE
 from app.services.profile_scoring import compute_profile_completeness
 
 router = APIRouter(
@@ -63,9 +65,14 @@ def get_dashboard_metrics(
     completeness = compute_profile_completeness(profile_json)
     profile_completeness_score = completeness.score
 
-    # Qualified jobs count (total matches for user)
+    # Qualified jobs count (matches above minimum score with valid jobs)
     qualified_jobs_count = session.execute(
-        select(func.count(Match.id)).where(Match.user_id == user.id)
+        select(func.count(Match.id))
+        .join(Job, Match.job_id == Job.id)
+        .where(
+            Match.user_id == user.id,
+            Match.match_score >= MIN_MATCH_SCORE,
+        )
     ).scalar() or 0
 
     # Application status counts

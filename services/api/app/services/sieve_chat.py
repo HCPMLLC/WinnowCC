@@ -206,8 +206,10 @@ def load_user_context(user_id: int, session: Session) -> dict:
     experience = pj.get("experience", [])
     prefs = pj.get("preferences", {})
 
-    # Compute completeness score
-    completeness = _compute_completeness(pj)
+    # Compute completeness score (same algorithm as dashboard)
+    from app.services.profile_scoring import compute_profile_completeness
+
+    completeness = compute_profile_completeness(pj).score
 
     # Target titles from profile preferences or candidate record
     target_titles = prefs.get("target_titles", [])
@@ -413,44 +415,6 @@ def load_user_context(user_id: int, session: Session) -> dict:
             logger.warning("Failed to load job recommendations for Sieve: %s", exc)
 
     return context
-
-
-def _compute_completeness(pj: dict) -> int:
-    """Quick profile completeness score (0-100)."""
-    score = 0
-    basics = pj.get("basics", {})
-    if basics.get("first_name"):
-        score += 5
-    if basics.get("email"):
-        score += 5
-    if basics.get("phone"):
-        score += 5
-    if basics.get("location"):
-        score += 5
-
-    experience = pj.get("experience", [])
-    if experience:
-        score += 25
-        if len(experience) >= 2:
-            score += 10
-
-    education = pj.get("education", [])
-    if education:
-        score += 10
-
-    skills = pj.get("skills", [])
-    if skills:
-        score += 15
-        if len(skills) >= 5:
-            score += 10
-
-    prefs = pj.get("preferences", {})
-    if prefs.get("target_titles"):
-        score += 5
-    if prefs.get("salary_min") or prefs.get("salary_max"):
-        score += 5
-
-    return min(score, 100)
 
 
 # ---------------------------------------------------------------------------

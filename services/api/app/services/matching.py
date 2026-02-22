@@ -12,6 +12,8 @@ from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
 
+MIN_MATCH_SCORE = 45
+
 
 @dataclass(frozen=True)
 class MatchResult:
