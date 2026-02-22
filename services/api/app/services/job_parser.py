@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.job import Job
 from app.models.job_parsed_detail import JobParsedDetail
 from app.services.industry_map import infer_industry
+from app.services.location_utils import normalize_city, normalize_state
 from app.services.salary_reference import estimate_salary
 
 logger = logging.getLogger(__name__)
@@ -563,6 +564,10 @@ class JobParserService:
             re.I,
         ):
             relocation = True
+
+        # Normalize city/state for consistent storage
+        city = normalize_city(city) or None
+        state = normalize_state(state) or state  # preserve non-US states as-is
 
         return city, state, country, work_mode, travel_pct, relocation
 

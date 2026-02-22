@@ -251,6 +251,14 @@ function OnboardingPageContent() {
                 type="text"
                 value={locationCity}
                 onChange={(e) => setLocationCity(e.target.value)}
+                onBlur={() =>
+                  setLocationCity((v) =>
+                    v
+                      .trim()
+                      .toLowerCase()
+                      .replace(/\b\w/g, (c) => c.toUpperCase())
+                  )
+                }
                 placeholder="Chicago"
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
@@ -261,7 +269,11 @@ function OnboardingPageContent() {
                 type="text"
                 value={locationState}
                 onChange={(e) => setLocationState(e.target.value)}
+                onBlur={() =>
+                  setLocationState((v) => v.trim().toUpperCase().slice(0, 2))
+                }
                 placeholder="IL"
+                maxLength={2}
                 className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
               />
             </label>

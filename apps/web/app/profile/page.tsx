@@ -799,6 +799,28 @@ function ProfilePageContent() {
               type="text"
               value={profile.basics.location ?? ""}
               onChange={(e) => updateBasics({ location: e.target.value })}
+              onBlur={(e) => {
+                const val = e.target.value.trim();
+                if (!val) return;
+                const parts = val.split(",");
+                if (parts.length >= 2) {
+                  const city = parts[0]
+                    .trim()
+                    .toLowerCase()
+                    .replace(/\b\w/g, (c) => c.toUpperCase());
+                  const st = parts[1].trim().toUpperCase().slice(0, 2);
+                  const rest = parts.slice(2).map((p) => p.trim());
+                  updateBasics({
+                    location: [city, st, ...rest].join(", "),
+                  });
+                } else {
+                  updateBasics({
+                    location: val
+                      .toLowerCase()
+                      .replace(/\b\w/g, (c) => c.toUpperCase()),
+                  });
+                }
+              }}
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
               placeholder="New York, NY"
             />
