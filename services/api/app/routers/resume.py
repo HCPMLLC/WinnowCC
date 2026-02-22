@@ -18,7 +18,6 @@ from app.schemas.resume import (
     ResumeUploadResponse,
 )
 from app.services.auth import get_current_user, require_onboarded_user
-from app.services.queue import get_queue
 from app.services.resume_parse_job import parse_resume_job
 from app.services.trust_scoring import evaluate_trust_for_resume
 
@@ -137,15 +136,12 @@ def parse_resume(
     session.commit()
     session.refresh(job_run)
 
-    try:
-        job = get_queue().enqueue(parse_resume_job, resume_id, job_run.id)
-    except Exception as exc:
-        job_run.status = "failed"
-        job_run.error_message = str(exc)[:500]
-        session.commit()
-        raise HTTPException(status_code=500, detail="Failed to enqueue parse job.")
+    # Run parse synchronously — parse_profile_from_text is regex-based and
+    # fast, and on Cloud Run the worker can't access the API's local files.
+    parse_resume_job(resume_id, job_run.id)
+    session.refresh(job_run)
 
-    return ParseJobResponse(job_id=job.id, job_run_id=job_run.id, status=job_run.status)
+    return ParseJobResponse(job_id="sync", job_run_id=job_run.id, status=job_run.status)
 
 
 @router.get("/parse/{job_run_id}", response_model=ParseJobStatusResponse)
