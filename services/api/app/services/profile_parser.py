@@ -117,6 +117,9 @@ def parse_profile_from_text(text: str) -> dict:
     basics: dict[str, str] = {}
     if name:
         basics["name"] = name
+        parts = name.strip().split(None, 1)
+        basics["first_name"] = parts[0] if parts else ""
+        basics["last_name"] = parts[1] if len(parts) > 1 else ""
     if email:
         basics["email"] = email
     if phone:

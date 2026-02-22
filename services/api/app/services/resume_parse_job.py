@@ -38,12 +38,43 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
         )
         session.add(profile)
         session.commit()
-        evaluate_trust_for_resume(
-            session,
-            resume,
-            profile_json=profile_json,
-            action="recompute_after_parse",
-        )
+
+        # Trust eval is best-effort — don't fail the job if it errors
+        try:
+            evaluate_trust_for_resume(
+                session,
+                resume,
+                profile_json=profile_json,
+                action="recompute_after_parse",
+            )
+        except Exception:
+            session.rollback()
+
+        # Enqueue post-parse jobs (embed, match, refresh) to match manual save behavior
+        try:
+            from app.services.job_pipeline import embed_profile
+            from app.services.queue import get_queue
+
+            get_queue().enqueue(embed_profile, resume.user_id, next_version)
+        except Exception:
+            pass
+
+        try:
+            from app.services.job_pipeline import refresh_candidates_for_profile
+            from app.services.queue import get_queue
+
+            get_queue().enqueue(refresh_candidates_for_profile, resume.user_id)
+        except Exception:
+            pass
+
+        try:
+            from app.services.job_pipeline import match_jobs_job
+            from app.services.queue import get_queue
+
+            get_queue().enqueue(match_jobs_job, resume.user_id, next_version)
+        except Exception:
+            pass
+
         _set_job_status(session, job_run_id, "succeeded")
     except Exception as exc:
         session.rollback()
