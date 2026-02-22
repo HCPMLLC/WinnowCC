@@ -142,79 +142,13 @@ def parse_resume_with_claude(resume_text: str) -> dict:
 # Mapper: PROMPT9 output → profile_json
 # ---------------------------------------------------------------------------
 
-# State name → abbreviation lookup
-_STATE_ABBREVIATIONS: dict[str, str] = {
-    "alabama": "AL",
-    "alaska": "AK",
-    "arizona": "AZ",
-    "arkansas": "AR",
-    "california": "CA",
-    "colorado": "CO",
-    "connecticut": "CT",
-    "delaware": "DE",
-    "florida": "FL",
-    "georgia": "GA",
-    "hawaii": "HI",
-    "idaho": "ID",
-    "illinois": "IL",
-    "indiana": "IN",
-    "iowa": "IA",
-    "kansas": "KS",
-    "kentucky": "KY",
-    "louisiana": "LA",
-    "maine": "ME",
-    "maryland": "MD",
-    "massachusetts": "MA",
-    "michigan": "MI",
-    "minnesota": "MN",
-    "mississippi": "MS",
-    "missouri": "MO",
-    "montana": "MT",
-    "nebraska": "NE",
-    "nevada": "NV",
-    "new hampshire": "NH",
-    "new jersey": "NJ",
-    "new mexico": "NM",
-    "new york": "NY",
-    "north carolina": "NC",
-    "north dakota": "ND",
-    "ohio": "OH",
-    "oklahoma": "OK",
-    "oregon": "OR",
-    "pennsylvania": "PA",
-    "rhode island": "RI",
-    "south carolina": "SC",
-    "south dakota": "SD",
-    "tennessee": "TN",
-    "texas": "TX",
-    "utah": "UT",
-    "vermont": "VT",
-    "virginia": "VA",
-    "washington": "WA",
-    "west virginia": "WV",
-    "wisconsin": "WI",
-    "wyoming": "WY",
-    "district of columbia": "DC",
-}
-
-
-def _normalize_state(state: str | None) -> str:
-    """Convert full state name to 2-letter abbreviation.
-
-    Returns as-is if already short.
-    """
-    if not state:
-        return ""
-    state = state.strip()
-    if len(state) == 2:
-        return state.upper()
-    return _STATE_ABBREVIATIONS.get(state.lower(), state)
+from app.services.location_utils import normalize_city, normalize_state
 
 
 def _format_location(city: str | None, state: str | None) -> str:
     """Format city and state into 'City, ST' string."""
-    city = (city or "").strip()
-    st = _normalize_state(state)
+    city = normalize_city(city)
+    st = normalize_state(state)
     if city and st:
         return f"{city}, {st}"
     return city or st

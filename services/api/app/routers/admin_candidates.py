@@ -26,6 +26,7 @@ from app.schemas.matches import MatchResponse
 from app.schemas.tailor import TailoredDocumentResponse
 from app.services.auth import require_admin_user
 from app.services.cascade_delete import cascade_delete_user
+from app.services.location_utils import normalize_city, normalize_state
 
 
 class AdminCandidateResponse(BaseModel):
@@ -173,10 +174,10 @@ def get_all_candidates(
         if location:
             parts = [p.strip() for p in location.split(",")]
             if len(parts) >= 2:
-                city = parts[0]
-                state = parts[1]
+                city = normalize_city(parts[0])
+                state = normalize_state(parts[1]) or parts[1]
             elif len(parts) == 1:
-                city = parts[0]
+                city = normalize_city(parts[0])
 
         # Get resume info
         resume_info = resume_map.get(user.id)

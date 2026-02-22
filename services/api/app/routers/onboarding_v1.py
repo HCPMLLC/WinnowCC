@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.services.auth import get_current_user
+from app.services.location_utils import normalize_city, normalize_state
 
 router = APIRouter(prefix="/api/onboarding", tags=["onboarding-v1"])
 
@@ -134,6 +135,14 @@ def put_preferences(
     salary_max = payload.get("salary_max")
     if salary_min is not None and salary_max is not None and int(salary_min) > int(salary_max):
         raise HTTPException(status_code=400, detail="salary_min cannot be greater than salary_max")
+
+    # Normalize city/state in each location entry
+    for loc in locations:
+        if isinstance(loc, dict):
+            if loc.get("city"):
+                loc["city"] = normalize_city(loc["city"])
+            if loc.get("state"):
+                loc["state"] = normalize_state(loc["state"]) or loc["state"]
 
     # Deactivate old active row(s)
     session.execute(

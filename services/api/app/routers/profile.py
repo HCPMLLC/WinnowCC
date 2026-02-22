@@ -17,6 +17,7 @@ from app.schemas.introduction import (
     IntroductionResponseAction,
 )
 from app.services.auth import get_current_user, require_onboarded_user
+from app.services.location_utils import normalize_city, normalize_state
 from app.services.profile_parser import default_profile_json
 from app.services.profile_scoring import compute_profile_completeness
 
@@ -62,6 +63,19 @@ def update_profile(
     current_profile = session.execute(current_stmt).scalars().first()
 
     profile_json = payload.profile_json
+
+    # Normalize city/state in basics.location ("City, ST" format)
+    basics = profile_json.get("basics")
+    if isinstance(basics, dict) and basics.get("location"):
+        loc = basics["location"]
+        parts = [p.strip() for p in loc.split(",")]
+        if len(parts) >= 2:
+            city = normalize_city(parts[0])
+            st = normalize_state(parts[1]) or parts[1].strip()
+            rest = parts[2:]
+            basics["location"] = ", ".join([city, st] + rest)
+        elif len(parts) == 1:
+            basics["location"] = normalize_city(parts[0])
 
     # Preserve skill_categories from current profile if the incoming payload
     # doesn't include them (prevents main "Save Profile" from overwriting
