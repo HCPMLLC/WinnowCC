@@ -11,6 +11,7 @@ from app.models.candidate_profile import CandidateProfile
 from app.models.job_run import JobRun
 from app.models.resume_document import ResumeDocument
 from app.services.profile_parser import extract_text, parse_profile_from_text
+from app.services.storage import download_to_tempfile, is_gcs_path
 from app.services.trust_scoring import evaluate_trust_for_resume
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,13 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             _set_job_status(session, job_run_id, "failed", "Resume document not found.")
             return
 
-        text = extract_text(Path(resume.path))
+        suffix = Path(resume.path).suffix if resume.path else ""
+        local_path = download_to_tempfile(resume.path, suffix=suffix)
+        try:
+            text = extract_text(local_path)
+        finally:
+            if is_gcs_path(resume.path):
+                local_path.unlink(missing_ok=True)
         if not text.strip():
             _set_job_status(session, job_run_id, "failed", "No text could be extracted.")
             return

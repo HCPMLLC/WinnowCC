@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from rq.job import Job
 from sqlalchemy import select
@@ -22,6 +22,7 @@ from app.schemas.tailor import (
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.job_pipeline import tailor_job
 from app.services.queue import get_queue, get_redis_connection
+from app.services.storage import file_response_path, is_gcs_path
 from app.services.trust_gate import require_allowed_trust
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
@@ -56,10 +57,12 @@ def list_documents(
     rows = session.execute(stmt).all()
     items: list[DocumentListItem] = []
     for tailored, job_title, company in rows:
-        has_resume = bool(tailored.docx_url and Path(tailored.docx_url).exists())
-        has_cover = bool(
-            tailored.cover_letter_url
-            and Path(tailored.cover_letter_url).exists()
+        has_resume = bool(tailored.docx_url) and (
+            is_gcs_path(tailored.docx_url) or Path(tailored.docx_url).exists()
+        )
+        has_cover = bool(tailored.cover_letter_url) and (
+            is_gcs_path(tailored.cover_letter_url)
+            or Path(tailored.cover_letter_url).exists()
         )
         items.append(
             DocumentListItem(
@@ -131,21 +134,34 @@ def get_tailor_status(
     )
 
 
+def _cleanup_temp(path: Path, stored_path: str) -> None:
+    """Remove temp file only if it was downloaded from GCS."""
+    if is_gcs_path(stored_path):
+        path.unlink(missing_ok=True)
+
+
 @router.get(
     "/files/{tailored_id}/resume",
     dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
 )
 def download_resume(
     tailored_id: int,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> FileResponse:
     tailored = session.get(TailoredResume, tailored_id)
     if tailored is None or tailored.user_id != user.id:
         raise HTTPException(status_code=404, detail="File not found.")
-    path = Path(tailored.docx_url)
+    if not tailored.docx_url:
+        raise HTTPException(status_code=404, detail="File not found.")
+    try:
+        path = file_response_path(tailored.docx_url, suffix=".docx")
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found.")
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
+    background_tasks.add_task(_cleanup_temp, path, tailored.docx_url)
     return FileResponse(path, filename=path.name)
 
 
@@ -155,13 +171,20 @@ def download_resume(
 )
 def download_cover_letter(
     tailored_id: int,
+    background_tasks: BackgroundTasks,
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> FileResponse:
     tailored = session.get(TailoredResume, tailored_id)
     if tailored is None or tailored.user_id != user.id:
         raise HTTPException(status_code=404, detail="File not found.")
-    path = Path(tailored.cover_letter_url)
+    if not tailored.cover_letter_url:
+        raise HTTPException(status_code=404, detail="File not found.")
+    try:
+        path = file_response_path(tailored.cover_letter_url, suffix=".docx")
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found.")
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
+    background_tasks.add_task(_cleanup_temp, path, tailored.cover_letter_url)
     return FileResponse(path, filename=path.name)

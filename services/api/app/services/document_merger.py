@@ -8,14 +8,14 @@ import logging
 import platform
 import re
 import subprocess
+import tempfile
 from pathlib import Path
 
 from PyPDF2 import PdfMerger
 
-logger = logging.getLogger(__name__)
+from app.services.storage import download_to_tempfile, is_gcs_path, upload_file
 
-FORMS_DIR = Path(__file__).resolve().parents[2] / "generated" / "forms"
-PACKETS_DIR = Path(__file__).resolve().parents[2] / "generated" / "packets"
+logger = logging.getLogger(__name__)
 
 
 def merge_documents_to_pdf(
@@ -37,50 +37,61 @@ def merge_documents_to_pdf(
     Returns:
         Absolute path to the merged PDF.
     """
-    PACKETS_DIR.mkdir(parents=True, exist_ok=True)
-
     if naming_convention:
         output_filename = apply_naming_convention(naming_convention, **kwargs)
 
     if not output_filename.endswith(".pdf"):
         output_filename += ".pdf"
 
-    output_path = PACKETS_DIR / output_filename
-
     merger = PdfMerger()
-    temp_pdfs: list[Path] = []
+    temp_files: list[Path] = []  # Track all temp files for cleanup
 
     try:
         for doc in documents:
-            doc_path = Path(doc["path"])
-            if not doc_path.exists():
-                logger.warning("Document not found, skipping: %s", doc_path)
+            raw_path = doc["path"]
+            # Download from GCS if needed
+            suffix = Path(raw_path).suffix if not is_gcs_path(raw_path) else (
+                ".pdf" if doc.get("type") == "pdf" else ".docx"
+            )
+            local_path = download_to_tempfile(raw_path, suffix=suffix)
+            if is_gcs_path(raw_path):
+                temp_files.append(local_path)
+
+            if not local_path.exists():
+                logger.warning("Document not found, skipping: %s", raw_path)
                 continue
 
-            if doc_path.suffix.lower() == ".pdf":
-                merger.append(str(doc_path))
-            elif doc_path.suffix.lower() == ".docx":
-                pdf_path = convert_docx_to_pdf(str(doc_path))
+            if local_path.suffix.lower() == ".pdf":
+                merger.append(str(local_path))
+            elif local_path.suffix.lower() == ".docx":
+                pdf_path = convert_docx_to_pdf(str(local_path))
                 if pdf_path:
                     merger.append(pdf_path)
-                    temp_pdfs.append(Path(pdf_path))
+                    temp_files.append(Path(pdf_path))
                 else:
-                    logger.warning("DOCX conversion failed, skipping: %s", doc_path)
+                    logger.warning("DOCX conversion failed, skipping: %s", raw_path)
             else:
-                logger.warning("Unsupported document type: %s", doc_path.suffix)
+                logger.warning("Unsupported document type: %s", local_path.suffix)
 
-        merger.write(str(output_path))
+        # Write merged PDF to a temp file, then upload to storage
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
+            tmp_out_path = Path(tmp_out.name)
+        merger.write(str(tmp_out_path))
     finally:
         merger.close()
-        # Clean up temporary PDF conversions
-        for tmp in temp_pdfs:
+        for tmp in temp_files:
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:
                 pass
 
-    logger.info("Merged %d documents into %s", len(documents), output_path)
-    return str(output_path)
+    try:
+        stored_path = upload_file(tmp_out_path, "packets/", output_filename)
+    finally:
+        tmp_out_path.unlink(missing_ok=True)
+
+    logger.info("Merged %d documents into %s", len(documents), stored_path)
+    return stored_path
 
 
 def convert_docx_to_pdf(docx_path: str) -> str | None:

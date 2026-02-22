@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
@@ -27,6 +27,7 @@ from app.schemas.tailor import TailoredDocumentResponse
 from app.services.auth import require_admin_user
 from app.services.cascade_delete import cascade_delete_user
 from app.services.location_utils import normalize_city, normalize_state
+from app.services.storage import file_response_path, is_gcs_path
 
 
 class AdminCandidateResponse(BaseModel):
@@ -405,9 +406,16 @@ def update_user_role(
     )
 
 
+def _cleanup_temp(path: Path, stored_path: str) -> None:
+    """Remove temp file only if it was downloaded from GCS."""
+    if is_gcs_path(stored_path):
+        path.unlink(missing_ok=True)
+
+
 @router.get("/resume/{resume_id}")
 def get_resume_file(
     resume_id: int,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ) -> FileResponse:
@@ -415,23 +423,28 @@ def get_resume_file(
     Download/view a candidate's resume file (admin only).
     """
     resume = session.get(ResumeDocument, resume_id)
-    if resume is None:
+    if resume is None or not resume.path:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
-    file_path = Path(resume.path)
-    if not file_path.exists():
+    try:
+        suffix = Path(resume.path).suffix if not is_gcs_path(resume.path) else Path(resume.filename).suffix
+        local_path = file_response_path(resume.path, suffix=suffix)
+    except Exception:
+        raise HTTPException(status_code=404, detail="Resume file not found.")
+
+    if not local_path.exists():
         raise HTTPException(status_code=404, detail="Resume file not found on disk.")
 
-    # Determine media type based on extension
-    extension = file_path.suffix.lower()
+    extension = local_path.suffix.lower()
     media_type = (
         "application/pdf"
         if extension == ".pdf"
         else "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     )
 
+    background_tasks.add_task(_cleanup_temp, local_path, resume.path)
     return FileResponse(
-        path=file_path,
+        path=local_path,
         filename=resume.filename,
         media_type=media_type,
     )
@@ -532,6 +545,7 @@ def get_candidate_documents(
 def download_candidate_resume(
     user_id: int,
     doc_id: int,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ) -> FileResponse:
@@ -539,9 +553,15 @@ def download_candidate_resume(
     tailored = session.get(TailoredResume, doc_id)
     if tailored is None or tailored.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found.")
-    path = Path(tailored.docx_url)
+    if not tailored.docx_url:
+        raise HTTPException(status_code=404, detail="File not found.")
+    try:
+        path = file_response_path(tailored.docx_url, suffix=".docx")
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found.")
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk.")
+    background_tasks.add_task(_cleanup_temp, path, tailored.docx_url)
     return FileResponse(path, filename=path.name)
 
 
@@ -549,6 +569,7 @@ def download_candidate_resume(
 def download_candidate_cover_letter(
     user_id: int,
     doc_id: int,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ) -> FileResponse:
@@ -556,7 +577,13 @@ def download_candidate_cover_letter(
     tailored = session.get(TailoredResume, doc_id)
     if tailored is None or tailored.user_id != user_id:
         raise HTTPException(status_code=404, detail="Document not found.")
-    path = Path(tailored.cover_letter_url)
+    if not tailored.cover_letter_url:
+        raise HTTPException(status_code=404, detail="File not found.")
+    try:
+        path = file_response_path(tailored.cover_letter_url, suffix=".docx")
+    except Exception:
+        raise HTTPException(status_code=404, detail="File not found.")
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk.")
+    background_tasks.add_task(_cleanup_temp, path, tailored.cover_letter_url)
     return FileResponse(path, filename=path.name)
