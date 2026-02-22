@@ -9,6 +9,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.user import User
 from app.services.auth import get_current_user
 from app.services.location_utils import normalize_city, normalize_state
 
@@ -90,6 +91,12 @@ def status(
     ).mappings().first()
 
     completed = bool(st and st["completed_at"]) and len(missing) == 0
+
+    # Backfill: sync onboarding_completed_at on the user record if missing
+    if completed:
+        user_record = session.get(User, user.id)
+        if user_record and not user_record.onboarding_completed_at:
+            user_record.onboarding_completed_at = st["completed_at"]
 
     # Normalize step for UI
     current_step = "done" if completed else ("preferences" if "preferences" in missing else ("consent" if "consent" in missing else (st["current_step"] if st else "welcome")))
@@ -283,6 +290,11 @@ def put_consent(
         ),
         {"uid": user.id, "completed_at": now},
     )
+
+    # Also mark the user record so auth/me returns onboarding_complete=true
+    user_record = session.get(User, user.id)
+    if user_record and not user_record.onboarding_completed_at:
+        user_record.onboarding_completed_at = now
 
     session.commit()
     return {"ok": True}
