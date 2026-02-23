@@ -236,6 +236,36 @@ Only populate if the resume explicitly states proficiency (e.g., "Expert in Pyth
 
 ---
 
+## Critical Extraction Rules
+
+These rules are **mandatory** and override any other behavior. Violations will break downstream processing.
+
+### Skills — Always Separate Entries
+- Each skill MUST be its own separate string in the array. **NEVER** concatenate multiple skills into a single entry.
+- **WRONG:** `"technical_skills": [{"name": "Python, Java, React, SQL"}]`
+- **RIGHT:** `"technical_skills": [{"name": "Python"}, {"name": "Java"}, {"name": "React"}, {"name": "SQL"}]`
+- The same applies to `methodologies`, `soft_skills`, `industry_knowledge`, `domain_skills`, `environments_supported`, and `technologies_used`.
+
+### Education — Separate Fields
+- `institution`, `degree_type`, and `field_of_study` MUST be separate fields. **NEVER** merge them.
+- **WRONG:** `{"institution": "MIT, Bachelor of Science in Computer Science"}`
+- **RIGHT:** `{"institution": "MIT", "degree_type": "Bachelor of Science", "field_of_study": "Computer Science"}`
+- If the resume puts school and degree on one line (e.g., "University of Texas — B.S. Computer Science"), you MUST split them into the correct fields.
+
+### Experience — Required Fields
+- Every `work_experience` entry MUST have `company_name` and `job_title` populated whenever the information exists in the resume text.
+- `duties` and `accomplishments` MUST be arrays of strings, never a single concatenated string.
+- Do NOT create experience entries that have no company name, no job title, and no duties — omit them entirely.
+
+### Handling Garbled/Multi-Column Text
+- PDF text extraction may garble multi-column layouts, sidebars, and tables. When you see interleaved or jumbled text:
+  - Use **date patterns** (e.g., "Jan 2020 – Present") to anchor and separate experience entries.
+  - Use **section headings** (Experience, Education, Skills) to identify boundaries.
+  - Reconstruct the logical reading order using contextual clues rather than taking garbled text literally.
+  - If a skills sidebar is interleaved with experience bullets, separate them into the correct sections.
+
+---
+
 ## Processing Steps
 
 Follow these steps in order for every resume:
