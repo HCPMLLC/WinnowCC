@@ -9,3 +9,4 @@ data/uploads/
 tests/
 scripts/
 *.md
+!PROMPT9_Resume_Parser.md
