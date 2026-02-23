@@ -42,13 +42,32 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
         try:
             from app.services.llm_parser import is_llm_parser_available, parse_with_llm
 
-            if is_llm_parser_available():
-                logger.info("Using LLM parser for resume %s", resume_document_id)
+            avail = is_llm_parser_available()
+            if avail:
+                logger.warning("LLM_PARSE: using LLM parser for resume %s", resume_document_id)
                 profile_json = parse_with_llm(text)
+                logger.warning("LLM_PARSE: succeeded for resume %s", resume_document_id)
+            else:
+                import os
+                from app.services.llm_parser import PROMPT9_PATH
+
+                logger.warning(
+                    "LLM_PARSE: not available — "
+                    "OPENAI_KEY=%s ANTHROPIC_KEY=%s PROMPT9=%s ENABLED=%s",
+                    bool(os.getenv("OPENAI_API_KEY", "").strip()),
+                    bool(os.getenv("ANTHROPIC_API_KEY", "").strip()),
+                    PROMPT9_PATH.exists(),
+                    os.getenv("LLM_PARSER_ENABLED", "true"),
+                )
         except Exception as exc:
-            logger.warning("LLM parser failed, falling back to regex: %s", exc)
+            logger.warning(
+                "LLM_PARSE: failed — %s: %s",
+                type(exc).__name__,
+                exc,
+            )
 
         if profile_json is None:
+            logger.info("Using regex parser for resume %s", resume_document_id)
             profile_json = parse_profile_from_text(text)
 
         # Merge parsed data with existing profile to preserve manual edits
