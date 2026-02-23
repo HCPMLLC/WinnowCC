@@ -111,6 +111,10 @@ function validateFullName(value: string): string | null {
   return null;
 }
 
+function toTitleCase(s: string): string {
+  return s.replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
 function CompletenesssBadge({
   score,
   onClick,
@@ -168,23 +172,47 @@ function TagInput({
   value,
   onChange,
   placeholder,
+  titleCase,
 }: {
   value: string[];
   onChange: (tags: string[]) => void;
   placeholder?: string;
+  titleCase?: boolean;
 }) {
   const [inputValue, setInputValue] = useState("");
+
+  const normalize = (s: string): string => {
+    const trimmed = s.trim();
+    return titleCase ? toTitleCase(trimmed) : trimmed;
+  };
+
+  const addTags = (raw: string[]) => {
+    const next = [...value];
+    for (const r of raw) {
+      const tag = normalize(r);
+      if (tag && !next.includes(tag)) {
+        next.push(tag);
+      }
+    }
+    if (next.length !== value.length) onChange(next);
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" || e.key === ",") {
       e.preventDefault();
-      const newTag = inputValue.trim();
-      if (newTag && !value.includes(newTag)) {
-        onChange([...value, newTag]);
-      }
+      addTags([inputValue]);
       setInputValue("");
     } else if (e.key === "Backspace" && !inputValue && value.length > 0) {
       onChange(value.slice(0, -1));
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData("text");
+    if (text.includes(",")) {
+      e.preventDefault();
+      addTags(text.split(","));
+      setInputValue("");
     }
   };
 
@@ -214,10 +242,61 @@ function TagInput({
         value={inputValue}
         onChange={(e) => setInputValue(e.target.value)}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         placeholder={value.length === 0 ? placeholder : "Add more..."}
         className="min-w-[120px] flex-1 border-none bg-transparent px-1 py-1 text-sm outline-none"
       />
     </div>
+  );
+}
+
+function CurrencyInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: number | null;
+  onChange: (v: number | null) => void;
+  placeholder?: string;
+}) {
+  const [display, setDisplay] = useState(() =>
+    value ? `$${value.toLocaleString("en-US")}` : ""
+  );
+  const [focused, setFocused] = useState(false);
+
+  useEffect(() => {
+    if (!focused) {
+      setDisplay(value ? `$${value.toLocaleString("en-US")}` : "");
+    }
+  }, [value, focused]);
+
+  const handleFocus = () => {
+    setFocused(true);
+    setDisplay(value ? String(value) : "");
+  };
+
+  const handleBlur = () => {
+    setFocused(false);
+    setDisplay(value ? `$${value.toLocaleString("en-US")}` : "");
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value.replace(/[^0-9]/g, "");
+    setDisplay(raw);
+    onChange(raw ? Number(raw) : null);
+  };
+
+  return (
+    <input
+      type="text"
+      inputMode="numeric"
+      value={display}
+      onChange={handleChange}
+      onFocus={handleFocus}
+      onBlur={handleBlur}
+      placeholder={placeholder}
+      className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+    />
   );
 }
 
@@ -1117,35 +1196,24 @@ export default function AdminProfileEditorPage() {
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <h2 className="text-lg font-semibold">Preferences</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Target titles
-            <input
-              type="text"
-              value={profile.preferences.target_titles.join(", ")}
-              onChange={(event) =>
-                updatePreferences({
-                  target_titles: parseCommaList(event.target.value),
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Product Manager, Data Analyst"
+            <TagInput
+              value={profile.preferences.target_titles}
+              onChange={(tags) => updatePreferences({ target_titles: tags })}
+              placeholder="Type a title and press Enter"
+              titleCase
             />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+          </div>
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Locations
-            <input
-              type="text"
-              value={profile.preferences.locations.join(", ")}
-              onChange={(event) =>
-                updatePreferences({
-                  locations: parseCommaList(event.target.value),
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="Austin, San Diego, Detroit, Alexandria"
-              title="Enter city names separated by commas. Use full city names (e.g. San Francisco, not SF). Leave blank to match all locations."
+            <TagInput
+              value={profile.preferences.locations}
+              onChange={(tags) => updatePreferences({ locations: tags })}
+              placeholder="Type a location and press Enter"
+              titleCase
             />
-          </label>
+          </div>
           <label className="flex items-center gap-3 text-sm font-medium text-slate-700">
             <input
               type="checkbox"
@@ -1192,36 +1260,28 @@ export default function AdminProfileEditorPage() {
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Salary minimum
-            <input
-              type="number"
-              value={profile.preferences.salary_min ?? ""}
-              onChange={(event) =>
-                updatePreferences({
-                  salary_min: event.target.value
-                    ? Number(event.target.value)
-                    : null,
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="80000"
+            <CurrencyInput
+              value={profile.preferences.salary_min}
+              onChange={(v) => updatePreferences({ salary_min: v })}
+              placeholder="$80,000"
             />
           </label>
           <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
             Salary maximum
-            <input
-              type="number"
-              value={profile.preferences.salary_max ?? ""}
-              onChange={(event) =>
-                updatePreferences({
-                  salary_max: event.target.value
-                    ? Number(event.target.value)
-                    : null,
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="120000"
+            <CurrencyInput
+              value={profile.preferences.salary_max}
+              onChange={(v) => updatePreferences({ salary_max: v })}
+              placeholder="$150,000"
             />
           </label>
+          <div className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+            Minimum hourly
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              {profile.preferences.salary_min
+                ? `$${(profile.preferences.salary_min / 2080).toFixed(2)}`
+                : "\u2014"}
+            </div>
+          </div>
         </div>
       </section>
 
