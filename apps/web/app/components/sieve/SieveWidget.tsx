@@ -58,7 +58,13 @@ function getDemoResponse(input: string): string {
 
 // ─── Simple markdown renderer ────────────────────────────────────────────────
 function renderMarkdown(text: string): string {
+  // Bold
   let html = text.replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>");
+  // Markdown links [text](url)
+  html = html.replace(
+    /\[([^\]]+)\]\(([^)]+)\)/g,
+    '<a href="$2" style="color:#2563eb;text-decoration:underline" target="_blank" rel="noopener noreferrer">$1</a>',
+  );
   const lines = html.split("\n");
   let inList = false;
   const rendered = lines
