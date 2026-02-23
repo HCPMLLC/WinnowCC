@@ -30,10 +30,12 @@ from app.services.billing import (
 )
 from app.services.sieve_chat import (
     generate_conversation_id,
+    get_admin_suggested_actions,
     get_employer_suggested_actions,
     get_recruiter_suggested_actions,
     get_suggested_actions,
     handle_chat,
+    load_admin_context,
     load_employer_context,
     load_recruiter_context,
     load_user_context,
@@ -144,9 +146,12 @@ def sieve_chat(
     )
     session.commit()
 
-    # Get suggested actions (recruiter vs employer vs candidate)
+    # Get suggested actions (admin > recruiter > employer > candidate)
     try:
-        if recruiter_profile:
+        if user.is_admin:
+            admin_ctx = load_admin_context(session)
+            suggestions = get_admin_suggested_actions(admin_ctx)
+        elif recruiter_profile:
             rec_ctx = load_recruiter_context(user.id, session)
             suggestions = get_recruiter_suggested_actions(rec_ctx)
         elif employer_profile:
