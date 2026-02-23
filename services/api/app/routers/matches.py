@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+import logging
+from datetime import UTC, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -16,16 +17,27 @@ from app.schemas.jobs import JobResponse
 from app.schemas.matches import (
     ApplicationStatusUpdateRequest,
     ApplicationStatusUpdateResponse,
-    MatchResponse,
     MatchesRefreshResponse,
+    MatchResponse,
     ReferralUpdateRequest,
     ReferralUpdateResponse,
 )
 from app.services.auth import get_current_user, require_onboarded_user
-from app.services.queue import get_queue
+from app.services.billing import (
+    check_daily_limit,
+    get_plan_tier,
+    increment_daily_counter,
+)
 from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
+from app.services.matching import (
+    _get_embedding_list,
+    compute_cosine_similarity,
+    recalculate_interview_probability,
+)
+from app.services.queue import get_queue
 from app.services.trust_gate import require_allowed_trust
-from app.services.matching import recalculate_interview_probability
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/matches", tags=["matches"])
 
@@ -94,8 +106,7 @@ def _refresh_skill_analysis(
     jobs_by_id: dict,
 ) -> list[MatchResponse]:
     """Build MatchResponse list, refreshing skill analysis against current profile."""
-    import re as _re
-    from app.services.matching import _top_keywords, _tokenize
+    from app.services.matching import _tokenize, _top_keywords
 
     profile_skills = [
         s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)
@@ -127,6 +138,7 @@ def _refresh_skill_analysis(
                 referred=match.referred,
                 interview_probability=match.interview_probability,
                 application_status=match.application_status,
+                semantic_similarity=match.semantic_similarity,
             )
         )
     return results
@@ -161,6 +173,107 @@ def refresh_matches(
 
 
 @router.get(
+    "/search",
+    response_model=list[MatchResponse],
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def search_matches(
+    request: Request,
+    q: str = Query(..., min_length=2, max_length=500),
+    limit: int = Query(20, ge=1, le=50),
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[MatchResponse]:
+    """Semantic search over jobs using embedding similarity.
+
+    Requires starter or pro tier (gated by semantic_searches_per_day limit).
+    """
+    from app.services.embedding import generate_embedding
+
+    # Check billing tier
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    check_daily_limit(
+        session, user.id, tier, "semantic_searches", "semantic_searches_per_day",
+        request=request,
+    )
+
+    # Generate embedding for query
+    query_embedding = generate_embedding(q)
+
+    # Try pgvector cosine distance operator first, fall back to Python
+    results: list[tuple] = []
+    try:
+        rows = session.execute(
+            text(
+                """
+                SELECT j.id, j.embedding <=> cast(:emb as vector) AS distance
+                FROM jobs j
+                WHERE j.embedding IS NOT NULL
+                ORDER BY distance ASC
+                LIMIT :lim
+                """
+            ),
+            {"emb": str(query_embedding), "lim": limit},
+        ).fetchall()
+        job_ids_with_sim = [(row[0], 1.0 - row[1]) for row in rows]
+    except Exception:
+        logger.info("pgvector <=> not available, falling back to Python cosine sim")
+        # Fall back: load all job embeddings and compute in Python
+        jobs_with_emb = (
+            session.execute(
+                select(Job.id, Job.embedding).where(Job.embedding.is_not(None))
+            ).all()
+        )
+        scored = []
+        for job_id, job_emb in jobs_with_emb:
+            emb_list = _get_embedding_list(job_emb)
+            sim = compute_cosine_similarity(query_embedding, emb_list)
+            if sim is not None:
+                scored.append((job_id, sim))
+        scored.sort(key=lambda x: x[1], reverse=True)
+        job_ids_with_sim = scored[:limit]
+
+    if not job_ids_with_sim:
+        increment_daily_counter(session, user.id, "semantic_searches")
+        return []
+
+    # Load full job objects
+    job_id_list = [jid for jid, _ in job_ids_with_sim]
+    sim_by_id = {jid: sim for jid, sim in job_ids_with_sim}
+
+    jobs = session.execute(
+        select(Job).where(Job.id.in_(job_id_list))
+    ).scalars().all()
+    jobs_by_id = {j.id: j for j in jobs}
+
+    # Build response in similarity order
+    response = []
+    for job_id in job_id_list:
+        job = jobs_by_id.get(job_id)
+        if job is None:
+            continue
+        sim = sim_by_id[job_id]
+        response.append(
+            MatchResponse(
+                id=0,
+                job=JobResponse.model_validate(job),
+                match_score=int(sim * 100),
+                interview_readiness_score=0,
+                offer_probability=0,
+                reasons={},
+                created_at=datetime.now(UTC),
+                semantic_similarity=round(sim, 4),
+            )
+        )
+
+    increment_daily_counter(session, user.id, "semantic_searches")
+    return response
+
+
+@router.get(
     "",
     response_model=list[MatchResponse],
     dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
@@ -169,7 +282,7 @@ def list_matches(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[MatchResponse]:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
@@ -195,6 +308,7 @@ def list_matches(
             referred=match.referred,
             interview_probability=match.interview_probability,
             application_status=match.application_status,
+            semantic_similarity=match.semantic_similarity,
         )
         for match, job in rows
     ]
@@ -232,6 +346,7 @@ def list_all_matches(
             referred=match.referred,
             interview_probability=match.interview_probability,
             application_status=match.application_status,
+            semantic_similarity=match.semantic_similarity,
         )
         for match, job in rows
     ]
@@ -247,7 +362,7 @@ def get_match(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> MatchResponse:
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
@@ -276,6 +391,7 @@ def get_match(
         referred=match.referred,
         interview_probability=match.interview_probability,
         application_status=match.application_status,
+        semantic_similarity=match.semantic_similarity,
     )
 
 

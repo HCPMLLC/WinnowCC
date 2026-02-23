@@ -3,6 +3,15 @@ from datetime import datetime
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
+try:
+    from pgvector.sqlalchemy import Vector as _Vector
+
+    _EmbeddingType = _Vector(384)
+except ImportError:
+    import sqlalchemy as _sa
+
+    _EmbeddingType = _sa.JSON()
+
 from app.db.base import Base
 
 
@@ -33,3 +42,4 @@ class Job(Base):
     hiring_manager_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hiring_manager_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hiring_manager_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    embedding = mapped_column(_EmbeddingType, nullable=True)

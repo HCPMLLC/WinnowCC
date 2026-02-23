@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
@@ -24,6 +25,44 @@ class MatchResult:
     resume_score: int
     application_logistics_score: int
     interview_probability: int
+    semantic_similarity: float | None = None
+
+
+def compute_cosine_similarity(
+    vec_a: list[float] | None, vec_b: list[float] | None
+) -> float | None:
+    """Compute cosine similarity between two embedding vectors.
+
+    Returns a value between 0.0 and 1.0, or None if either vector is missing.
+    Uses pure Python math (no numpy dependency).
+    """
+    if vec_a is None or vec_b is None:
+        return None
+    if len(vec_a) != len(vec_b) or len(vec_a) == 0:
+        return None
+
+    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    mag_a = math.sqrt(sum(a * a for a in vec_a))
+    mag_b = math.sqrt(sum(b * b for b in vec_b))
+    if mag_a == 0 or mag_b == 0:
+        return None
+    similarity = dot / (mag_a * mag_b)
+    return max(0.0, min(1.0, similarity))
+
+
+def compute_blended_match_score(
+    deterministic: int, semantic: float | None
+) -> int:
+    """Blend deterministic keyword score with semantic similarity.
+
+    65% deterministic + 35% semantic. Falls back to deterministic-only
+    when semantic similarity is not available.
+    """
+    if semantic is None:
+        return deterministic
+    semantic_score = int(semantic * 100)
+    blended = int(deterministic * 0.65 + semantic_score * 0.35)
+    return max(0, min(100, blended))
 
 
 def compute_matches(session: Session, user_id: int, profile_version: int) -> list[Match]:
@@ -33,6 +72,8 @@ def compute_matches(session: Session, user_id: int, profile_version: int) -> lis
     candidate = session.execute(
         select(Candidate).where(Candidate.user_id == user_id)
     ).scalar_one_or_none()
+
+    profile_embedding = _get_embedding_list(profile.embedding)
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
     jobs = (
@@ -44,7 +85,24 @@ def compute_matches(session: Session, user_id: int, profile_version: int) -> lis
     )
     scored: list[tuple[Job, MatchResult]] = []
     for job in jobs:
-        scored.append((job, _score_job(job, profile.profile_json, candidate)))
+        result = _score_job(job, profile.profile_json, candidate)
+
+        # Blend in semantic similarity when embeddings are available
+        job_embedding = _get_embedding_list(job.embedding)
+        semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
+        blended = compute_blended_match_score(result.match_score, semantic_sim)
+
+        result = MatchResult(
+            match_score=blended,
+            interview_readiness_score=result.interview_readiness_score,
+            offer_probability=result.offer_probability,
+            reasons=result.reasons,
+            resume_score=result.resume_score,
+            application_logistics_score=result.application_logistics_score,
+            interview_probability=result.interview_probability,
+            semantic_similarity=semantic_sim,
+        )
+        scored.append((job, result))
 
     scored.sort(key=lambda item: item[1].match_score, reverse=True)
     top = scored[:50]
@@ -70,6 +128,7 @@ def compute_matches(session: Session, user_id: int, profile_version: int) -> lis
             cover_letter_score=50,  # Default until cover letter is generated
             referred=False,
             interview_probability=result.interview_probability,
+            semantic_similarity=result.semantic_similarity,
         )
         session.add(match)
         matches.append(match)
@@ -361,6 +420,22 @@ def _compute_interview_probability(
     p_i = int(raw_score * m_net)
     # Cap at 100 for display
     return max(0, min(100, p_i))
+
+
+def _get_embedding_list(value) -> list[float] | None:
+    """Normalize an embedding value to a plain list of floats.
+
+    pgvector returns numpy arrays, JSON columns return lists, and None stays None.
+    """
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    # pgvector / numpy array
+    try:
+        return list(value)
+    except TypeError:
+        return None
 
 
 def recalculate_interview_probability(match: Match) -> int:
