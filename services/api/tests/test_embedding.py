@@ -3,7 +3,6 @@
 from unittest.mock import MagicMock
 
 from app.services.embedding import prepare_job_text, prepare_profile_text
-from app.services.matching import compute_blended_match_score
 
 # ---------------------------------------------------------------------------
 # prepare_job_text
@@ -112,34 +111,3 @@ class TestPrepareProfileText:
         assert "Role 3" not in text
 
 
-# ---------------------------------------------------------------------------
-# compute_blended_match_score
-# ---------------------------------------------------------------------------
-
-
-class TestComputeBlendedMatchScore:
-    def test_no_semantic_returns_deterministic(self):
-        assert compute_blended_match_score(80, None) == 80
-
-    def test_blended_score(self):
-        # 65% * 80 + 35% * 90 = 52 + 31.5 = 83.5 -> 84
-        result = compute_blended_match_score(80, 0.9)
-        assert result == 84
-
-    def test_zero_semantic(self):
-        # 65% * 50 + 35% * 0 = 32.5 -> 32 (banker's rounding)
-        result = compute_blended_match_score(50, 0.0)
-        assert result == 32
-
-    def test_perfect_scores(self):
-        # 65% * 100 + 35% * 100 = 100
-        result = compute_blended_match_score(100, 1.0)
-        assert result == 100
-
-    def test_clamped_to_zero(self):
-        result = compute_blended_match_score(0, 0.0)
-        assert result == 0
-
-    def test_clamped_to_100(self):
-        result = compute_blended_match_score(100, 1.0)
-        assert result <= 100

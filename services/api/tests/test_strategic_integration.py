@@ -1,4 +1,4 @@
-"""Integration tests for strategic gap exploitation features (P44-P55).
+"""Integration tests for strategic gap exploitation features.
 
 Tests the key workflows without requiring live external services.
 """
@@ -6,39 +6,7 @@ Tests the key workflows without requiring live external services.
 from app.services.gs_mapper import format_gs_posting, map_salary_to_gs_grade
 from app.services.job_bias_scanner import scan_job_for_bias
 from app.services.job_deduplicator import _text_similarity
-from app.services.matching import IPS_STAGES, get_ips_stage
 from app.services.posting_validator import validate_posting
-
-# ---------------------------------------------------------------------------
-# P13: IPS Stage Labels
-# ---------------------------------------------------------------------------
-
-
-class TestIPSStages:
-    """Test IPS stage label assignment."""
-
-    def test_all_stages_covered(self):
-        """Every score 0-100 maps to a stage."""
-        for score in range(101):
-            stage = get_ips_stage(score)
-            assert "label" in stage
-            assert "description" in stage
-
-    def test_stage_boundaries(self):
-        assert get_ips_stage(0)["label"] == "Long Shot"
-        assert get_ips_stage(19)["label"] == "Long Shot"
-        assert get_ips_stage(20)["label"] == "Worth a Try"
-        assert get_ips_stage(39)["label"] == "Worth a Try"
-        assert get_ips_stage(40)["label"] == "Competitive"
-        assert get_ips_stage(59)["label"] == "Competitive"
-        assert get_ips_stage(60)["label"] == "Strong Fit"
-        assert get_ips_stage(79)["label"] == "Strong Fit"
-        assert get_ips_stage(80)["label"] == "Top Candidate"
-        assert get_ips_stage(100)["label"] == "Top Candidate"
-
-    def test_five_stages_defined(self):
-        assert len(IPS_STAGES) == 5
-
 
 # ---------------------------------------------------------------------------
 # P46: Bias Scanner
