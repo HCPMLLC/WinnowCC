@@ -50,6 +50,12 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
 
         if profile_json is None:
             profile_json = parse_profile_from_text(text)
+
+        # Merge parsed data with existing profile to preserve manual edits
+        profile_json = _merge_with_existing_profile(
+            session, resume.user_id, profile_json
+        )
+
         next_version = _get_next_version(session, resume.user_id)
 
         profile = CandidateProfile(
@@ -103,6 +109,74 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
         _set_job_status(session, job_run_id, "failed", _safe_error_message(exc))
     finally:
         session.close()
+
+
+def _merge_with_existing_profile(
+    session: Session, user_id: int | None, parsed: dict
+) -> dict:
+    """Merge parsed resume data with the user's latest existing profile.
+
+    - Overwrite from parse: experience, skills, education, certifications
+    - Preserve from existing (if populated): basics fields, preferences,
+      skill_years, llm_enrichment
+    - Always update summary from parse (it comes from resume text)
+    """
+    if user_id is None:
+        return parsed
+
+    # Fetch the latest existing profile for this user
+    stmt = (
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user_id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    existing_profile = session.execute(stmt).scalar_one_or_none()
+    if existing_profile is None:
+        return parsed
+
+    existing = existing_profile.profile_json or {}
+    existing_basics = existing.get("basics") or {}
+    parsed_basics = parsed.get("basics") or {}
+
+    # For basics: keep existing values if they're populated; only fill blanks
+    # from parsed data. Always take summary from parse.
+    _BASICS_PRESERVE_KEYS = (
+        "first_name",
+        "last_name",
+        "name",
+        "email",
+        "phone",
+        "location",
+        "work_authorization",
+        "total_years_experience",
+    )
+    merged_basics = dict(parsed_basics)
+    for key in _BASICS_PRESERVE_KEYS:
+        existing_val = existing_basics.get(key)
+        if existing_val:
+            merged_basics[key] = existing_val
+
+    # Always overwrite summary from parsed data (it comes from resume text)
+    if parsed_basics.get("summary"):
+        merged_basics["summary"] = parsed_basics["summary"]
+
+    parsed["basics"] = merged_basics
+
+    # Preserve preferences entirely from existing profile
+    existing_prefs = existing.get("preferences")
+    if existing_prefs:
+        parsed["preferences"] = existing_prefs
+
+    # Preserve skill_years if existing has it and parsed doesn't
+    if existing.get("skill_years") and not parsed.get("skill_years"):
+        parsed["skill_years"] = existing["skill_years"]
+
+    # Preserve llm_enrichment if existing has it and parsed doesn't
+    if existing.get("llm_enrichment") and not parsed.get("llm_enrichment"):
+        parsed["llm_enrichment"] = existing["llm_enrichment"]
+
+    return parsed
 
 
 def _get_next_version(session: Session, user_id: int | None) -> int:
