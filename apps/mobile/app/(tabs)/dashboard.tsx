@@ -15,10 +15,10 @@ import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 interface Metrics {
   display_name: string | null;
-  profile_completeness: number;
-  qualified_jobs: number;
-  applications: number;
-  interviews: number;
+  profile_completeness_score: number;
+  qualified_jobs_count: number;
+  submitted_applications_count: number;
+  interviews_requested_count: number;
 }
 
 export default function DashboardScreen() {
@@ -56,22 +56,22 @@ export default function DashboardScreen() {
   const cards = [
     {
       label: "Profile",
-      value: `${metrics?.profile_completeness ?? 0}%`,
+      value: `${metrics?.profile_completeness_score ?? 0}%`,
       color: colors.sage,
     },
     {
       label: "Qualified Jobs",
-      value: String(metrics?.qualified_jobs ?? 0),
+      value: String(metrics?.qualified_jobs_count ?? 0),
       color: colors.green500,
     },
     {
       label: "Applications",
-      value: String(metrics?.applications ?? 0),
+      value: String(metrics?.submitted_applications_count ?? 0),
       color: colors.blue500,
     },
     {
       label: "Interviews",
-      value: String(metrics?.interviews ?? 0),
+      value: String(metrics?.interviews_requested_count ?? 0),
       color: colors.amber500,
     },
   ];

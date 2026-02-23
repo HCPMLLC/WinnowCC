@@ -225,7 +225,7 @@ def _has_quantified_metric(text: str) -> bool:
 
 
 def _calculate_total_years_from_experience(experience: list[dict]) -> int | None:
-    """Calculate total years from earliest start date to today (fallback)."""
+    """Sum actual employment durations, merging overlapping date ranges."""
     month_map = {
         "jan": 1,
         "feb": 2,
@@ -241,29 +241,81 @@ def _calculate_total_years_from_experience(experience: list[dict]) -> int | None
         "dec": 12,
     }
 
+    # Full month name → number mapping
+    full_month_map = {
+        "january": 1,
+        "february": 2,
+        "march": 3,
+        "april": 4,
+        "may": 5,
+        "june": 6,
+        "july": 7,
+        "august": 8,
+        "september": 9,
+        "october": 10,
+        "november": 11,
+        "december": 12,
+    }
+
     def _to_date(val: str | None) -> date | None:
         if not val:
             return None
         val = val.strip()
-        if val.lower() in ("present", "current", "now"):
+        if val.lower() in ("present", "current", "now", "ongoing"):
             return date.today()
-        m = re.match(r"([A-Z][a-z]{2})-(\d{4})", val)
+        # MMM-YYYY (e.g. "Jan-2020")
+        m = re.match(r"([A-Za-z]{3})-(\d{4})", val)
         if m:
             mon = month_map.get(m.group(1).lower(), 1)
             return date(int(m.group(2)), mon, 1)
+        # YYYY-MM (e.g. "2020-01")
+        m = re.match(r"^(\d{4})-(\d{2})$", val)
+        if m:
+            return date(int(m.group(1)), int(m.group(2)), 1)
+        # MM/YYYY (e.g. "01/2020")
+        m = re.match(r"^(\d{1,2})/(\d{4})$", val)
+        if m:
+            return date(int(m.group(2)), int(m.group(1)), 1)
+        # "Month YYYY" (e.g. "January 2020")
+        m = re.match(r"^([A-Za-z]+)\s+(\d{4})$", val)
+        if m:
+            mon = full_month_map.get(m.group(1).lower())
+            if mon:
+                return date(int(m.group(2)), mon, 1)
+        # Bare year
         if re.match(r"^\d{4}$", val):
             return date(int(val), 1, 1)
         return None
 
-    earliest: date | None = None
+    # Collect (start, end) date ranges for each job
+    ranges: list[tuple[date, date]] = []
     for exp in experience:
-        d = _to_date(exp.get("start_date"))
-        if d and (earliest is None or d < earliest):
-            earliest = d
-    if earliest is None:
+        start = _to_date(exp.get("start_date"))
+        if start is None:
+            continue
+        end = _to_date(exp.get("end_date"))
+        if end is None:
+            end = date.today()
+        if end < start:
+            start, end = end, start
+        ranges.append((start, end))
+
+    if not ranges:
         return None
-    delta = date.today() - earliest
-    return math.ceil(delta.days / 365.25)
+
+    # Merge overlapping ranges to avoid double-counting
+    ranges.sort()
+    merged: list[tuple[date, date]] = [ranges[0]]
+    for start, end in ranges[1:]:
+        prev_start, prev_end = merged[-1]
+        if start <= prev_end:
+            merged[-1] = (prev_start, max(prev_end, end))
+        else:
+            merged.append((start, end))
+
+    total_days = sum((end - start).days for start, end in merged)
+    years = math.ceil(total_days / 365.25)
+    return max(1, min(51, years))
 
 
 def map_llm_to_profile_json(llm: dict) -> dict:
@@ -566,11 +618,22 @@ def parse_with_llm(resume_text: str) -> dict:
     llm_output = _call_llm(resume_text)
     profile = map_llm_to_profile_json(llm_output)
 
-    # Fallback: calculate total_years if LLM didn't provide it
+    # Validate and fallback: calculate total_years if LLM didn't provide a valid value
     basics = profile.get("basics", {})
-    if not basics.get("total_years_experience"):
+    tye = basics.get("total_years_experience")
+    needs_calc = tye is None
+    if not needs_calc:
+        try:
+            tye_int = int(tye)
+            if tye_int < 1 or tye_int > 51:
+                needs_calc = True
+        except (ValueError, TypeError):
+            needs_calc = True
+    if needs_calc:
         years = _calculate_total_years_from_experience(profile.get("experience", []))
         if years is not None:
             basics["total_years_experience"] = years
+        else:
+            basics["total_years_experience"] = None
 
     return profile

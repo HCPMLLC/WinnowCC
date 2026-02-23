@@ -64,6 +64,30 @@ def update_profile(
 
     profile_json = payload.profile_json
 
+    # Validate and auto-calc total_years_experience
+    basics = profile_json.get("basics")
+    if isinstance(basics, dict):
+        tye = basics.get("total_years_experience")
+        valid = False
+        if tye is not None:
+            try:
+                tye_int = int(tye)
+                if 1 <= tye_int <= 51:
+                    basics["total_years_experience"] = tye_int
+                    valid = True
+            except (ValueError, TypeError):
+                pass
+        if not valid:
+            # Auto-calculate from experience entries if available
+            from app.services.llm_parser import _calculate_total_years_from_experience
+
+            experience = profile_json.get("experience", [])
+            if experience:
+                years = _calculate_total_years_from_experience(experience)
+                basics["total_years_experience"] = years
+            else:
+                basics["total_years_experience"] = None
+
     # Normalize city/state in basics.location ("City, ST" format)
     basics = profile_json.get("basics")
     if isinstance(basics, dict) and basics.get("location"):
