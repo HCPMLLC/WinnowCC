@@ -1756,9 +1756,12 @@ available on WinnowCC.ai." Do NOT explain why or mention plan tiers.
         messages.append({"role": msg["role"], "content": msg["content"]})
     messages.append({"role": "user", "content": message})
 
-    # 5. Call LLM
+    # 5. Call LLM (admin requests prefer Anthropic for better instruction following)
+    is_admin = bool(user and user.is_admin)
     try:
-        response_text = _call_llm(system_prompt, messages)
+        response_text = _call_llm(
+            system_prompt, messages, prefer_anthropic=is_admin
+        )
     except Exception as exc:
         logger.error("Sieve LLM error: %s", exc)
         return "I'm having trouble connecting right now. Please try again in a moment."
@@ -1819,25 +1822,44 @@ def check_escalation_needed(
     return uncertain_count >= 2  # 2 previous + 1 current = 3 consecutive
 
 
-def _call_llm(system_prompt: str, messages: list[dict]) -> str:
-    """Try OpenAI first, then Anthropic. Raises on total failure."""
+def _call_llm(
+    system_prompt: str,
+    messages: list[dict],
+    *,
+    prefer_anthropic: bool = False,
+) -> str:
+    """Try OpenAI first, then Anthropic. Raises on total failure.
+
+    When *prefer_anthropic* is True (e.g. admin requests), try Anthropic
+    first because Claude follows complex system-prompt instructions more
+    reliably than smaller OpenAI models.
+    """
     last_exc: Exception | None = None
 
     openai_key = os.getenv("OPENAI_API_KEY", "").strip()
-    if openai_key:
-        try:
-            return _call_openai(system_prompt, messages, openai_key)
-        except Exception as exc:
-            last_exc = exc
-            logger.warning("Sieve OpenAI call failed: %s", exc)
-
     anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
-    if anthropic_key:
+
+    providers: list[tuple[str, str]] = []
+    if prefer_anthropic:
+        if anthropic_key:
+            providers.append(("anthropic", anthropic_key))
+        if openai_key:
+            providers.append(("openai", openai_key))
+    else:
+        if openai_key:
+            providers.append(("openai", openai_key))
+        if anthropic_key:
+            providers.append(("anthropic", anthropic_key))
+
+    for name, key in providers:
         try:
-            return _call_anthropic(system_prompt, messages, anthropic_key)
+            if name == "openai":
+                return _call_openai(system_prompt, messages, key)
+            else:
+                return _call_anthropic(system_prompt, messages, key)
         except Exception as exc:
             last_exc = exc
-            logger.warning("Sieve Anthropic call failed: %s", exc)
+            logger.warning("Sieve %s call failed: %s", name, exc)
 
     if last_exc:
         raise last_exc
@@ -1853,7 +1875,7 @@ def _call_openai(system_prompt: str, messages: list[dict], api_key: str) -> str:
         model=model,
         messages=[{"role": "system", "content": system_prompt}] + messages,
         temperature=0.7,
-        max_tokens=512,
+        max_tokens=1024,
     )
     return response.choices[0].message.content or ""
 
@@ -1865,7 +1887,7 @@ def _call_anthropic(system_prompt: str, messages: list[dict], api_key: str) -> s
     model = os.getenv("SIEVE_ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
     response = client.messages.create(
         model=model,
-        max_tokens=512,
+        max_tokens=1024,
         system=system_prompt,
         messages=messages,
         temperature=0.7,
@@ -2346,8 +2368,14 @@ def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
     admin_block = f"""
 
 ---
-ADMIN OPERATIONS CONTEXT
-You are the platform operations advisor for this admin user. \
+ADMIN OPERATIONS CONTEXT — PRIMARY IDENTITY
+IMPORTANT: This user is a PLATFORM ADMIN. When they ask about platform \
+operations, queues, billing issues, user management, or "what needs attention", \
+you MUST respond as the platform operations advisor using the admin page links \
+and API actions below — NOT role-specific links. Only fall back to role-specific \
+context (provided later) if the admin explicitly asks about their own personal \
+recruiter/employer/candidate workflow.
+
 You have access to live system data below and MUST give deeply \
 actionable, specific advice — never vague suggestions.
 
@@ -2420,7 +2448,13 @@ PRIORITY FRAMEWORK:
 trust issues affect platform integrity
 ---"""
 
-    return base_prompt + admin_block
+    admin_reminder = (
+        "\n\n---\nREMINDER: You are responding as the PLATFORM ADMIN "
+        "operations advisor. Use admin page links from the ADMIN PAGE "
+        "DIRECTORY above (e.g. [Queue Monitor], [Billing Diagnostics]). "
+        "Do NOT use role-specific links like /recruiter/ or /employer/.\n---"
+    )
+    return admin_block + "\n\n" + base_prompt + admin_reminder
 
 
 def get_admin_suggested_actions(admin_ctx: dict) -> list[str]:
