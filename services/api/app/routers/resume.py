@@ -6,6 +6,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -110,6 +111,20 @@ async def upload_resume(
         resume_document_id=record.id,
         filename=record.filename,
     )
+
+
+@router.get("/", response_model=list[ResumeDocumentResponse])
+def list_resumes(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[ResumeDocumentResponse]:
+    stmt = (
+        select(ResumeDocument)
+        .where(ResumeDocument.user_id == user.id)
+        .order_by(ResumeDocument.created_at.desc())
+    )
+    records = session.execute(stmt).scalars().all()
+    return [ResumeDocumentResponse.model_validate(r) for r in records]
 
 
 @router.get("/{resume_id}", response_model=ResumeDocumentResponse)
