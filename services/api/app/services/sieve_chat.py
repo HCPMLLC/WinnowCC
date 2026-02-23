@@ -1729,6 +1729,11 @@ def handle_chat(
         user_context = load_user_context(user_id, session)
         system_prompt = build_system_prompt(user_context)
 
+    # Admin overlay — append platform ops context
+    if user and user.is_admin:
+        admin_ctx = load_admin_context(session)
+        system_prompt = build_admin_system_prompt(admin_ctx, system_prompt)
+
     # 3b. Append mobile-specific rules (Apple App Store compliance)
     if platform == "mobile":
         system_prompt += """
@@ -2032,6 +2037,277 @@ def get_recruiter_suggested_actions(ctx: dict) -> list[str]:
             "Help me prioritize my pipeline",
             "How do I generate a candidate brief?",
         ]
+
+    return suggestions[:4]
+
+
+# ---------------------------------------------------------------------------
+# Admin context — platform operations overlay for admin users
+# ---------------------------------------------------------------------------
+
+
+def load_admin_context(session: Session) -> dict:
+    """Load platform-wide operational state for admin Sieve overlay."""
+    from app.models.candidate import Candidate
+    from app.models.candidate_trust import CandidateTrust
+    from app.models.employer import EmployerProfile
+    from app.models.job_run import JobRun
+    from app.models.recruiter import RecruiterProfile
+    from app.services.worker_health import get_queue_stats
+
+    ctx: dict = {}
+    now = datetime.now(UTC)
+
+    # --- Platform stats ---
+    role_counts = {
+        (k or "unknown"): v
+        for k, v in session.execute(
+            select(User.role, func.count()).group_by(User.role)
+        ).all()
+    }
+    total_users = sum(role_counts.values())
+    users_7d = session.scalar(
+        select(func.count()).select_from(User).where(
+            User.created_at >= now - timedelta(days=7)
+        )
+    ) or 0
+    users_30d = session.scalar(
+        select(func.count()).select_from(User).where(
+            User.created_at >= now - timedelta(days=30)
+        )
+    ) or 0
+
+    ctx["platform"] = {
+        "total_users": total_users,
+        "users_by_role": role_counts,
+        "new_users_7d": users_7d,
+        "new_users_30d": users_30d,
+    }
+
+    # --- Billing distribution ---
+    candidate_tiers = {
+        (k or "free"): v
+        for k, v in session.execute(
+            select(Candidate.plan_tier, func.count())
+            .group_by(Candidate.plan_tier)
+        ).all()
+    }
+    employer_tiers = {
+        (k or "free"): v
+        for k, v in session.execute(
+            select(EmployerProfile.subscription_tier, func.count())
+            .group_by(EmployerProfile.subscription_tier)
+        ).all()
+    }
+    recruiter_tiers = {
+        (k or "free"): v
+        for k, v in session.execute(
+            select(RecruiterProfile.subscription_tier, func.count())
+            .group_by(RecruiterProfile.subscription_tier)
+        ).all()
+    }
+    ctx["billing"] = {
+        "candidates": candidate_tiers,
+        "employers": employer_tiers,
+        "recruiters": recruiter_tiers,
+    }
+
+    # --- Queue stats ---
+    queue_stats = get_queue_stats()
+    total_pending = queue_stats.get("total_pending", 0)
+    total_failed = queue_stats.get("total_failed", 0)
+    per_queue = {}
+    for qdata in queue_stats.get("queues", []):
+        name = qdata.get("name", "unknown")
+        per_queue[name] = {
+            "pending": qdata.get("pending", 0),
+            "failed": qdata.get("failed", 0),
+        }
+    ctx["queues"] = {
+        "total_pending": total_pending,
+        "total_failed": total_failed,
+        "per_queue": per_queue,
+    }
+
+    # --- Alerts ---
+    alerts: list[dict] = []
+
+    if total_failed > 0:
+        alerts.append({
+            "severity": "error",
+            "message": f"{total_failed} failed queue job(s)",
+        })
+
+    past_due_count = session.scalar(
+        select(func.count()).select_from(Candidate).where(
+            Candidate.subscription_status == "past_due"
+        )
+    ) or 0
+    past_due_count += session.scalar(
+        select(func.count()).select_from(EmployerProfile).where(
+            EmployerProfile.subscription_status == "past_due"
+        )
+    ) or 0
+    past_due_count += session.scalar(
+        select(func.count()).select_from(RecruiterProfile).where(
+            RecruiterProfile.subscription_status == "past_due"
+        )
+    ) or 0
+
+    if past_due_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "message": f"{past_due_count} subscription(s) past due",
+        })
+
+    quarantine_count = session.scalar(
+        select(func.count()).select_from(CandidateTrust).where(
+            CandidateTrust.status.in_(["soft_quarantine", "hard_quarantine"])
+        )
+    ) or 0
+
+    if quarantine_count > 0:
+        alerts.append({
+            "severity": "warning",
+            "message": f"{quarantine_count} candidate(s) in trust quarantine",
+        })
+
+    ctx["alerts"] = alerts
+    ctx["past_due_count"] = past_due_count
+    ctx["quarantine_count"] = quarantine_count
+
+    # --- Recent failed job runs ---
+    failed_runs = session.execute(
+        select(JobRun.id, JobRun.job_type, JobRun.status, JobRun.created_at)
+        .where(JobRun.status == "failed")
+        .order_by(JobRun.created_at.desc())
+        .limit(5)
+    ).all()
+    ctx["recent_failures"] = [
+        {"id": r[0], "job_type": r[1], "created_at": r[3].isoformat() if r[3] else None}
+        for r in failed_runs
+    ]
+
+    return ctx
+
+
+def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
+    """Append an admin operations overlay to the existing role-based prompt."""
+    platform = admin_ctx.get("platform", {})
+    queues = admin_ctx.get("queues", {})
+    billing = admin_ctx.get("billing", {})
+    alerts = admin_ctx.get("alerts", [])
+    recent_failures = admin_ctx.get("recent_failures", [])
+
+    # Format billing distribution
+    def _fmt_tiers(tier_dict: dict) -> str:
+        if not tier_dict:
+            return "none"
+        return ", ".join(f"{k}: {v}" for k, v in sorted(tier_dict.items()))
+
+    # Format per-queue stats
+    per_queue = queues.get("per_queue", {})
+    if per_queue:
+        queue_lines = "\n".join(
+            f"  - {name}: {stats.get('pending', 0)} pending, "
+            f"{stats.get('failed', 0)} failed"
+            for name, stats in per_queue.items()
+        )
+    else:
+        queue_lines = "  No queue data available."
+
+    # Format alerts
+    if alerts:
+        alert_lines = "\n".join(
+            f"  [{a['severity'].upper()}] {a['message']}" for a in alerts
+        )
+    else:
+        alert_lines = "  No active alerts."
+
+    # Format recent failures
+    if recent_failures:
+        failure_lines = "\n".join(
+            f"  - #{f['id']} ({f['job_type']}) at {f['created_at']}"
+            for f in recent_failures
+        )
+    else:
+        failure_lines = "  None."
+
+    total_users = platform.get("total_users", 0)
+    roles_str = _fmt_tiers(platform.get("users_by_role", {}))
+    new_7d = platform.get("new_users_7d", 0)
+    new_30d = platform.get("new_users_30d", 0)
+    pending = queues.get("total_pending", 0)
+    failed = queues.get("total_failed", 0)
+    cand_tiers = _fmt_tiers(billing.get("candidates", {}))
+    emp_tiers = _fmt_tiers(billing.get("employers", {}))
+    rec_tiers = _fmt_tiers(billing.get("recruiters", {}))
+
+    admin_block = f"""
+
+---
+ADMIN OPERATIONS CONTEXT
+You are also serving as the platform operations advisor \
+for this admin user.
+
+PLATFORM SNAPSHOT:
+- Total users: {total_users}
+- Users by role: {roles_str}
+- New users (7d): {new_7d} | (30d): {new_30d}
+
+QUEUE HEALTH:
+- Total pending: {pending} | Total failed: {failed}
+{queue_lines}
+
+BILLING DISTRIBUTION:
+- Candidates: {cand_tiers}
+- Employers: {emp_tiers}
+- Recruiters: {rec_tiers}
+
+ACTIVE ALERTS:
+{alert_lines}
+
+RECENT FAILED JOBS:
+{failure_lines}
+
+PRIORITY FRAMEWORK:
+- Sort issues by severity: errors > warnings > info
+- Weigh by user impact: billing affects revenue, \
+queue failures block workflows, trust affects integrity
+- When asked "what needs attention", produce a ranked \
+list with impact assessment and recommended action
+- Be specific and actionable with actual counts
+---"""
+
+    return base_prompt + admin_block
+
+
+def get_admin_suggested_actions(admin_ctx: dict) -> list[str]:
+    """Generate 3-4 admin-focused quick-reply suggestions based on current state."""
+    suggestions: list[str] = ["What needs my attention right now?"]
+
+    past_due = admin_ctx.get("past_due_count", 0)
+    total_failed = admin_ctx.get("queues", {}).get("total_failed", 0)
+    quarantine = admin_ctx.get("quarantine_count", 0)
+
+    if past_due > 0:
+        suggestions.append("Any billing issues?")
+    if total_failed > 0:
+        suggestions.append("Show me queue health")
+    if quarantine > 0:
+        suggestions.append("Any trust issues to review?")
+
+    # Fill remaining slots with general admin suggestions
+    fallbacks = [
+        "How's platform usage today?",
+        "Summarize new user growth",
+        "Show me billing distribution",
+    ]
+    for fb in fallbacks:
+        if len(suggestions) >= 4:
+            break
+        if fb not in suggestions:
+            suggestions.append(fb)
 
     return suggestions[:4]
 
