@@ -2053,7 +2053,7 @@ def load_admin_context(session: Session) -> dict:
     from app.models.employer import EmployerProfile
     from app.models.job_run import JobRun
     from app.models.recruiter import RecruiterProfile
-    from app.services.worker_health import get_queue_stats
+    from app.services.worker_health import get_failed_jobs, get_queue_stats
 
     ctx: dict = {}
     now = datetime.now(UTC)
@@ -2129,6 +2129,55 @@ def load_admin_context(session: Session) -> dict:
         "per_queue": per_queue,
     }
 
+    # --- Failed job details per queue (error messages for diagnosis) ---
+    queue_failed_details: dict[str, list[dict]] = {}
+    for qdata in queue_stats.get("queues", []):
+        name = qdata.get("name", "unknown")
+        if qdata.get("failed", 0) > 0:
+            try:
+                raw = get_failed_jobs(name, 5)
+                queue_failed_details[name] = [
+                    {
+                        "func_name": j.get("func_name", "unknown"),
+                        "exc_info": (j.get("exc_info") or "")[:300],
+                        "ended_at": j.get("ended_at"),
+                    }
+                    for j in raw
+                    if "error" not in j
+                ]
+            except Exception:
+                queue_failed_details[name] = []
+    ctx["queue_failed_details"] = queue_failed_details
+
+    # --- Pending job sample per queue (identify what work is queued) ---
+    queue_pending_sample: dict[str, list[str]] = {}
+    try:
+        from rq import Queue as RQQueue
+        from app.services.worker_health import get_redis_connection
+
+        rq_conn = get_redis_connection()
+        for qdata in queue_stats.get("queues", []):
+            name = qdata.get("name", "unknown")
+            if qdata.get("pending", 0) > 0:
+                try:
+                    q = RQQueue(name, connection=rq_conn)
+                    job_ids = q.job_ids[:5]
+                    funcs = []
+                    for jid in job_ids:
+                        try:
+                            from rq.job import Job as RQJob
+
+                            j = RQJob.fetch(jid, connection=rq_conn)
+                            funcs.append(j.func_name or "unknown")
+                        except Exception:
+                            funcs.append("unknown")
+                    queue_pending_sample[name] = funcs
+                except Exception:
+                    pass
+    except Exception:
+        pass
+    ctx["queue_pending_sample"] = queue_pending_sample
+
     # --- Alerts ---
     alerts: list[dict] = []
 
@@ -2178,13 +2227,26 @@ def load_admin_context(session: Session) -> dict:
 
     # --- Recent failed job runs ---
     failed_runs = session.execute(
-        select(JobRun.id, JobRun.job_type, JobRun.status, JobRun.created_at)
+        select(
+            JobRun.id,
+            JobRun.job_type,
+            JobRun.status,
+            JobRun.created_at,
+            JobRun.error_message,
+            JobRun.resume_document_id,
+        )
         .where(JobRun.status == "failed")
         .order_by(JobRun.created_at.desc())
-        .limit(5)
+        .limit(10)
     ).all()
     ctx["recent_failures"] = [
-        {"id": r[0], "job_type": r[1], "created_at": r[3].isoformat() if r[3] else None}
+        {
+            "id": r[0],
+            "job_type": r[1],
+            "created_at": r[3].isoformat() if r[3] else None,
+            "error_message": (r[4] or "")[:200] if r[4] else None,
+            "resume_document_id": r[5],
+        }
         for r in failed_runs
     ]
 
@@ -2193,11 +2255,14 @@ def load_admin_context(session: Session) -> dict:
 
 def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
     """Append an admin operations overlay to the existing role-based prompt."""
+    frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
     platform = admin_ctx.get("platform", {})
     queues = admin_ctx.get("queues", {})
     billing = admin_ctx.get("billing", {})
     alerts = admin_ctx.get("alerts", [])
     recent_failures = admin_ctx.get("recent_failures", [])
+    queue_failed_details = admin_ctx.get("queue_failed_details", {})
+    queue_pending_sample = admin_ctx.get("queue_pending_sample", {})
 
     # Format billing distribution
     def _fmt_tiers(tier_dict: dict) -> str:
@@ -2224,14 +2289,49 @@ def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
     else:
         alert_lines = "  No active alerts."
 
-    # Format recent failures
+    # Format recent failures with error messages
     if recent_failures:
-        failure_lines = "\n".join(
-            f"  - #{f['id']} ({f['job_type']}) at {f['created_at']}"
-            for f in recent_failures
-        )
+        failure_lines = []
+        for f in recent_failures:
+            line = f"  - #{f['id']} ({f['job_type']}) at {f['created_at']}"
+            if f.get("error_message"):
+                line += f" — error: {f['error_message']}"
+            if f.get("resume_document_id"):
+                line += f" [doc_id={f['resume_document_id']}]"
+            failure_lines.append(line)
+        failure_section = "\n".join(failure_lines)
     else:
-        failure_lines = "  None."
+        failure_section = "  None."
+
+    # Format failed job details per queue (RQ-level errors)
+    if queue_failed_details:
+        failed_detail_lines = []
+        for qname, jobs in queue_failed_details.items():
+            failed_detail_lines.append(f"  [{qname}]:")
+            if not jobs:
+                failed_detail_lines.append("    (details unavailable)")
+                continue
+            for j in jobs:
+                exc = j.get("exc_info", "")
+                fn = j.get("func_name", "unknown")
+                ended = j.get("ended_at", "?")
+                failed_detail_lines.append(
+                    f"    - {fn} (ended {ended}): {exc}"
+                )
+        failed_details_section = "\n".join(failed_detail_lines)
+    else:
+        failed_details_section = "  No failed job details."
+
+    # Format pending job samples
+    if queue_pending_sample:
+        pending_sample_lines = []
+        for qname, funcs in queue_pending_sample.items():
+            pending_sample_lines.append(
+                f"  [{qname}]: {', '.join(funcs)}"
+            )
+        pending_sample_section = "\n".join(pending_sample_lines)
+    else:
+        pending_sample_section = "  No pending job samples available."
 
     total_users = platform.get("total_users", 0)
     roles_str = _fmt_tiers(platform.get("users_by_role", {}))
@@ -2247,8 +2347,31 @@ def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
 
 ---
 ADMIN OPERATIONS CONTEXT
-You are also serving as the platform operations advisor \
-for this admin user.
+You are the platform operations advisor for this admin user. \
+You have access to live system data below and MUST give deeply \
+actionable, specific advice — never vague suggestions.
+
+ADMIN PAGE DIRECTORY (always link to these with markdown):
+- [Queue Monitor]({frontend_url}/admin/support/queues) — view/retry failed jobs, monitor pending
+- [Billing Diagnostics]({frontend_url}/admin/support/billing) — subscription status, past-due, overrides
+- [User Lookup]({frontend_url}/admin/support/lookup) — search users, view profiles, usage
+- [Trust Quarantine]({frontend_url}/admin/trust) — review quarantined candidates
+- [Candidates]({frontend_url}/admin/candidates) — candidate management
+- [Employers]({frontend_url}/admin/employers) — employer management
+- [Recruiters]({frontend_url}/admin/recruiters) — recruiter management
+- [Jobs]({frontend_url}/admin/jobs) — job listing management
+- [Job Quality]({frontend_url}/admin/job-quality) — fraud scores, quality review
+
+ADMIN API ACTION CATALOG (reference these when recommending fixes):
+- POST /admin/retry-queue/{{queue_name}} — retry all failed jobs in a queue (use for transient errors)
+- POST /admin/reparse/{{user_id}} — re-run resume parsing for a user (use when parse jobs failed)
+- POST /admin/clear-daily-counters/{{user_id}} — reset daily rate limits (use when user hit limits incorrectly)
+- POST /admin/tier-override — override a user's billing tier (use for billing mismatches)
+- PUT /admin/trust/{{trust_id}}/set — resolve trust quarantine status
+- POST /admin/jobs/{{job_id}}/reparse — reparse a specific job
+- POST /admin/jobs/reparse-all — reparse all jobs
+- POST /admin/jobs/{{job_id}}/fraud-override — override fraud score for a job
+- POST /admin/embeddings/backfill — backfill missing embeddings
 
 PLATFORM SNAPSHOT:
 - Total users: {total_users}
@@ -2259,6 +2382,12 @@ QUEUE HEALTH:
 - Total pending: {pending} | Total failed: {failed}
 {queue_lines}
 
+PENDING JOB SAMPLES (first 5 jobs per queue — shows what work is queued):
+{pending_sample_section}
+
+FAILED JOB ERROR DETAILS (from RQ — actual error messages):
+{failed_details_section}
+
 BILLING DISTRIBUTION:
 - Candidates: {cand_tiers}
 - Employers: {emp_tiers}
@@ -2267,16 +2396,28 @@ BILLING DISTRIBUTION:
 ACTIVE ALERTS:
 {alert_lines}
 
-RECENT FAILED JOBS:
-{failure_lines}
+RECENT FAILED JOB RUNS (from database — with error messages):
+{failure_section}
+
+MANDATORY RESPONSE RULES:
+1. ALWAYS include markdown hyperlinks to the relevant admin page(s) from the directory above.
+2. For queue issues: identify WHICH queue, examine the error messages above for root cause, \
+categorize as transient (retry will fix), persistent (code/config bug), or data-related \
+(bad input), and recommend the specific API action.
+3. For billing issues: state exact counts from the data above, link to \
+[Billing Diagnostics]({frontend_url}/admin/support/billing), and recommend specific \
+override actions with the API endpoint.
+4. ALWAYS propose a numbered multi-step remediation plan.
+5. Reference exact counts, queue names, func_names, and error patterns from the data above.
+6. NEVER give vague advice like "check your dashboard" or "look into it" — always \
+be specific about what to do, where to do it, and why.
+7. When asked "what needs attention", produce a severity-ranked list \
+(errors > warnings > info) with impact assessment and linked action for each item.
 
 PRIORITY FRAMEWORK:
 - Sort issues by severity: errors > warnings > info
-- Weigh by user impact: billing affects revenue, \
-queue failures block workflows, trust affects integrity
-- When asked "what needs attention", produce a ranked \
-list with impact assessment and recommended action
-- Be specific and actionable with actual counts
+- Weigh by user impact: billing affects revenue, queue failures block user workflows, \
+trust issues affect platform integrity
 ---"""
 
     return base_prompt + admin_block
@@ -2284,21 +2425,58 @@ list with impact assessment and recommended action
 
 def get_admin_suggested_actions(admin_ctx: dict) -> list[str]:
     """Generate 3-4 admin-focused quick-reply suggestions based on current state."""
-    suggestions: list[str] = ["What needs my attention right now?"]
+    suggestions: list[str] = []
 
     past_due = admin_ctx.get("past_due_count", 0)
-    total_failed = admin_ctx.get("queues", {}).get("total_failed", 0)
     quarantine = admin_ctx.get("quarantine_count", 0)
+    queues = admin_ctx.get("queues", {})
+    total_failed = queues.get("total_failed", 0)
+    total_pending = queues.get("total_pending", 0)
+    per_queue = queues.get("per_queue", {})
 
-    if past_due > 0:
-        suggestions.append("Any billing issues?")
+    # Failed jobs — name the worst queue
     if total_failed > 0:
-        suggestions.append("Show me queue health")
+        worst_queue = max(
+            (
+                (name, stats.get("failed", 0))
+                for name, stats in per_queue.items()
+                if stats.get("failed", 0) > 0
+            ),
+            key=lambda x: x[1],
+            default=None,
+        )
+        if worst_queue:
+            suggestions.append(
+                f"Diagnose {worst_queue[1]} failed job(s) in the {worst_queue[0]} queue"
+            )
+        else:
+            suggestions.append(f"Diagnose {total_failed} failed queue job(s)")
+
+    # High pending count
+    if total_pending > 50:
+        suggestions.append(
+            f"Why are {total_pending} jobs pending? Is the worker healthy?"
+        )
+
+    # Past-due subscriptions
+    if past_due > 0:
+        suggestions.append(
+            f"Show me the {past_due} past-due subscription(s) and what to do"
+        )
+
+    # Trust quarantine
     if quarantine > 0:
-        suggestions.append("Any trust issues to review?")
+        suggestions.append(
+            f"Review {quarantine} quarantined candidate(s) — should I clear any?"
+        )
+
+    # Always include a general triage option
+    if not suggestions:
+        suggestions.append("What needs my attention right now?")
 
     # Fill remaining slots with general admin suggestions
     fallbacks = [
+        "What needs my attention right now?",
         "How's platform usage today?",
         "Summarize new user growth",
         "Show me billing distribution",
