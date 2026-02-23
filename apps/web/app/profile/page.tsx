@@ -1035,15 +1035,21 @@ function ProfilePageContent() {
             Total Years of Experience
             <input
               type="number"
-              min="0"
+              min={1}
+              max={51}
+              step={1}
+              inputMode="numeric"
+              pattern="[0-9]*"
               value={profile.basics.total_years_experience ?? ""}
-              onChange={(e) =>
-                updateBasics({
-                  total_years_experience: e.target.value
-                    ? Number(e.target.value)
-                    : null,
-                })
-              }
+              onChange={(e) => {
+                const raw = e.target.value.replace(/[^0-9]/g, "");
+                if (!raw) {
+                  updateBasics({ total_years_experience: null });
+                  return;
+                }
+                const num = Math.min(51, Math.max(1, parseInt(raw, 10)));
+                updateBasics({ total_years_experience: num });
+              }}
               className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
               placeholder="5"
             />
