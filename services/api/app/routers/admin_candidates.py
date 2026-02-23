@@ -27,6 +27,7 @@ from app.schemas.tailor import TailoredDocumentResponse
 from app.services.auth import require_admin_user
 from app.services.cascade_delete import cascade_delete_user
 from app.services.location_utils import normalize_city, normalize_state
+from app.services.resume_parse_job import parse_resume_job
 from app.services.storage import file_response_path, is_gcs_path
 
 
@@ -370,6 +371,63 @@ def merge_candidates(
         merged_count=merged_count,
         message=f"Successfully merged {merged_count} duplicate(s) into primary user.",
     )
+
+
+@router.post("/{user_id}/reparse")
+def reparse_candidate_resume(
+    user_id: int,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """Re-parse the latest resume for a candidate (admin only)."""
+    user = session.get(User, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    # Find the most recent resume document for this user
+    resume_stmt = (
+        select(ResumeDocument)
+        .where(ResumeDocument.user_id == user_id)
+        .order_by(ResumeDocument.created_at.desc())
+        .limit(1)
+    )
+    resume = session.execute(resume_stmt).scalar_one_or_none()
+    if resume is None:
+        raise HTTPException(status_code=404, detail="No resume found for this user.")
+
+    # Create a job run record and parse synchronously
+    job_run = JobRun(
+        job_type="resume_parse",
+        status="queued",
+        resume_document_id=resume.id,
+    )
+    session.add(job_run)
+    session.commit()
+    session.refresh(job_run)
+
+    parse_resume_job(resume.id, job_run.id)
+    session.refresh(job_run)
+
+    # Get the latest profile version and skill count
+    profile = session.execute(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user_id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    skills = []
+    if profile and profile.profile_json:
+        skills = profile.profile_json.get("skills", [])
+
+    return {
+        "status": job_run.status,
+        "user_id": user_id,
+        "resume_document_id": resume.id,
+        "profile_version": profile.version if profile else None,
+        "skill_count": len(skills),
+        "error_message": job_run.error_message,
+    }
 
 
 @router.patch("/{user_id}/role", response_model=AdminUserRoleResponse)
