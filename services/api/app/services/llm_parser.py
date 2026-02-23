@@ -337,6 +337,61 @@ _LOCATION_PATTERN = re.compile(
 )
 
 
+_DEGREE_RE = re.compile(
+    r"\b(?:Bachelor|Master|Doctor|Associate|Diploma|Certificate|Ph\.?D|M\.?[ABSF]\.?[A-Z]?"
+    r"|B\.?[ABSF]\.?[A-Z]?|A\.?[ABS]\.?|D\.?[A-Z]\.?[A-Z]?|MBA|MFA|JD|MD|LLB|LLM"
+    r"|Bachelor's|Master's|Doctorate)\b",
+    re.IGNORECASE,
+)
+
+
+def _split_school_degree_field(
+    school: str | None, degree: str | None, field: str | None
+) -> tuple[str | None, str | None, str | None]:
+    """Detect and fix merged education fields.
+
+    E.g. school="MIT, Bachelor of Science in Computer Science" →
+         school="MIT", degree="Bachelor of Science", field="Computer Science"
+    """
+    if not school:
+        return school, degree, field
+
+    raw = school.strip()
+
+    # Only attempt splitting if the school field looks like it contains degree info
+    if not _DEGREE_RE.search(raw):
+        return school, degree, field
+
+    # Try splitting on comma, dash, pipe
+    for delim_re in [r"\s*,\s*", r"\s+-\s+", r"\s*\|\s*"]:
+        parts = re.split(delim_re, raw, maxsplit=1)
+        if len(parts) == 2:
+            left, right = parts[0].strip(), parts[1].strip()
+            if _DEGREE_RE.search(right) and not _DEGREE_RE.search(left):
+                new_school = left
+                new_degree = right
+                new_field = field
+                if " in " in new_degree:
+                    new_degree, new_field = new_degree.split(" in ", 1)
+                    new_degree, new_field = new_degree.strip(), new_field.strip()
+                return new_school, new_degree or degree, new_field or field
+            elif _DEGREE_RE.search(left) and not _DEGREE_RE.search(right):
+                new_school = right
+                new_degree = left
+                new_field = field
+                if " in " in new_degree:
+                    new_degree, new_field = new_degree.split(" in ", 1)
+                    new_degree, new_field = new_degree.strip(), new_field.strip()
+                return new_school, new_degree or degree, new_field or field
+
+    # Whole school field is a degree string (no school name)
+    if _DEGREE_RE.search(raw) and " in " in raw:
+        new_degree, new_field = raw.split(" in ", 1)
+        return None, new_degree.strip() or degree, new_field.strip() or field
+
+    return school, degree, field
+
+
 def _fix_misplaced_experience_fields(entry: dict) -> None:
     """Detect and fix misplaced data in experience entry fields.
 
@@ -414,6 +469,17 @@ def map_llm_to_profile_json(llm: dict) -> dict:
 
         duties_raw = job.get("duties") or []
         accomplishments_raw = job.get("accomplishments") or []
+        # Normalize string → list before concatenation
+        if isinstance(duties_raw, str):
+            duties_raw = (
+                [duties_raw] if duties_raw.strip() else []
+            )
+        if isinstance(accomplishments_raw, str):
+            accomplishments_raw = (
+                [accomplishments_raw]
+                if accomplishments_raw.strip()
+                else []
+            )
         all_bullets = duties_raw + accomplishments_raw
 
         quantified = [b for b in accomplishments_raw if _has_quantified_metric(b)]
@@ -452,13 +518,38 @@ def map_llm_to_profile_json(llm: dict) -> dict:
         # --- Defensive validation for misplaced field contents ---
         _fix_misplaced_experience_fields(exp_entry)
 
-        experience_out.append(exp_entry)
+        # Normalize duties from string to list if needed
+        if isinstance(exp_entry["duties"], str):
+            raw_d = exp_entry["duties"]
+            exp_entry["duties"] = (
+                [raw_d] if raw_d.strip() else []
+            )
+
+        # Ensure skills_used and technologies_used are lists
+        for key in ("skills_used", "technologies_used"):
+            val = exp_entry.get(key)
+            if isinstance(val, str):
+                exp_entry[key] = [
+                    s.strip()
+                    for s in re.split(r"[,;|]", val)
+                    if s.strip()
+                ]
+
+        # Filter out entries with no useful content
+        has_company = bool(exp_entry.get("company"))
+        has_title = bool(exp_entry.get("title"))
+        has_duties = bool(exp_entry.get("duties"))
+        if has_company or has_title or has_duties:
+            experience_out.append(exp_entry)
+        else:
+            logger.debug("Filtered empty experience entry: %s", exp_entry)
 
     profile["experience"] = experience_out
 
     # ---- Education ----
     education_out: list[dict] = []
     for edu in llm.get("education") or []:
+        school = edu.get("institution")
         degree = edu.get("degree_type")
         field = edu.get("field_of_study")
 
@@ -468,9 +559,12 @@ def map_llm_to_profile_json(llm: dict) -> dict:
             degree = parts[0].strip()
             field = parts[1].strip()
 
+        # Fix merged education fields: school contains degree info
+        school, degree, field = _split_school_degree_field(school, degree, field)
+
         education_out.append(
             {
-                "school": edu.get("institution"),
+                "school": school,
                 "degree": degree,
                 "field": field,
                 "start_date": _normalize_date_to_mmm_yyyy(edu.get("start_date")),
@@ -498,10 +592,25 @@ def map_llm_to_profile_json(llm: dict) -> dict:
     skill_names: list[str] = []
 
     def _add_skill(name: str) -> None:
-        low = name.strip().lower()
+        cleaned = name.strip()
+        if not cleaned:
+            return
+        # Split concatenated skills: "Python, Java, React" or "Python; Java; React"
+        if len(cleaned) > 50 or re.search(r"[,;|]", cleaned):
+            parts = re.split(r"\s*[,;|]\s*", cleaned)
+            if len(parts) > 1:
+                for part in parts:
+                    part = part.strip()
+                    if part:
+                        low = part.lower()
+                        if low not in seen_lower:
+                            seen_lower.add(low)
+                            skill_names.append(part)
+                return
+        low = cleaned.lower()
         if low and low not in seen_lower:
             seen_lower.add(low)
-            skill_names.append(name.strip())
+            skill_names.append(cleaned)
 
     for ts in skills_block.get("technical_skills") or []:
         if isinstance(ts, dict):
