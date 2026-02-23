@@ -54,6 +54,7 @@ type Match = {
   application_logistics_score?: number | null;
   referred?: boolean;
   interview_probability?: number | null;
+  semantic_similarity?: number | null;
   application_status?: string | null;
 };
 
@@ -202,6 +203,10 @@ function MatchesPageContent() {
   const [preparingJobId, setPreparingJobId] = useState<number | null>(null);
   const draftProg = useProgress();
   const [creatingDraftId, setCreatingDraftId] = useState<number | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState<Match[] | null>(null);
+  const [searchLoading, setSearchLoading] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
   const now = Date.now();
@@ -212,7 +217,8 @@ function MatchesPageContent() {
     (m) => !m.job.posted_date || now - new Date(m.job.posted_date).getTime() > SEVEN_DAYS_MS
   );
 
-  const selectedMatch = matches.find((m) => m.id === selectedMatchId) || null;
+  const displayMatches = searchResults !== null ? searchResults : matches;
+  const selectedMatch = displayMatches.find((m) => m.id === selectedMatchId) || null;
 
   useEffect(() => {
     const guard = async () => {
@@ -391,6 +397,53 @@ function MatchesPageContent() {
     }
   };
 
+  const handleSearch = async () => {
+    const trimmed = searchQuery.trim();
+    if (!trimmed) {
+      setSearchResults(null);
+      setSearchError(null);
+      return;
+    }
+    setSearchLoading(true);
+    setSearchError(null);
+    try {
+      const response = await fetch(
+        `${API_BASE}/api/matches/search?q=${encodeURIComponent(trimmed)}&limit=20`,
+        { credentials: "include" }
+      );
+      if (response.status === 403) {
+        setSearchError("Semantic search requires a Starter or Pro plan.");
+        setSearchResults(null);
+        return;
+      }
+      if (response.status === 429) {
+        setSearchError("Daily search limit reached. Upgrade for more searches.");
+        setSearchResults(null);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error("Search failed.");
+      }
+      const payload = (await response.json()) as Match[];
+      setSearchResults(payload);
+      if (payload.length > 0) {
+        setSelectedMatchId(payload[0].id);
+      }
+    } catch (caught) {
+      const message = caught instanceof Error ? caught.message : "Search failed.";
+      setSearchError(message);
+      setSearchResults(null);
+    } finally {
+      setSearchLoading(false);
+    }
+  };
+
+  const clearSearch = () => {
+    setSearchQuery("");
+    setSearchResults(null);
+    setSearchError(null);
+  };
+
   const formatSalary = (job: Job) => {
     if (job.salary) return job.salary;
     if (job.salary_min && job.salary_max) {
@@ -426,6 +479,38 @@ function MatchesPageContent() {
             </span>
           </div>
           <div className="flex items-center gap-2">
+            <div className="relative flex items-center">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
+                placeholder="Search jobs..."
+                className="w-56 rounded-md border border-gray-300 py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+              />
+              <svg className="pointer-events-none absolute left-2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="absolute right-2 text-gray-400 hover:text-gray-600"
+                >
+                  <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={handleSearch}
+              disabled={searchLoading || !searchQuery.trim()}
+              className="rounded-md border border-gray-300 bg-white px-3 py-1.5 text-sm font-medium text-gray-700 shadow-sm hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {searchLoading ? "Searching..." : "Search"}
+            </button>
             <button
               type="button"
               onClick={handleRefresh}
@@ -462,11 +547,57 @@ function MatchesPageContent() {
         </div>
       )}
 
+      {searchError && (
+        <div className="mx-4 mt-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+          {searchError}
+        </div>
+      )}
+
       {/* Two-column layout - ZipRecruiter style */}
       <div className="flex min-h-0 flex-1">
         {/* Left column - Job list */}
         <div className="w-[340px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
-          {qualified.length === 0 ? (
+          {searchResults !== null ? (
+            <>
+              <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-blue-50 px-4 py-2">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                  Search Results
+                  <span className="ml-1.5 rounded-full bg-blue-100 px-1.5 py-0.5 text-xs font-medium text-blue-700">
+                    {searchResults.length}
+                  </span>
+                </h3>
+                <button
+                  type="button"
+                  onClick={clearSearch}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-800"
+                >
+                  Clear
+                </button>
+              </div>
+              {searchResults.length === 0 ? (
+                <div className="px-4 py-8 text-center text-sm text-gray-500">
+                  No matching jobs found. Try a different search.
+                </div>
+              ) : (
+                searchResults.map((match) => (
+                  <div key={`search-${match.job.id}`} className="relative">
+                    {match.semantic_similarity != null && (
+                      <span className="absolute right-2 top-2 rounded bg-blue-500 px-1.5 py-0.5 text-xs font-bold text-white">
+                        {Math.round(match.semantic_similarity * 100)}% sim
+                      </span>
+                    )}
+                    <MatchCard
+                      match={match}
+                      isSelected={selectedMatchId === match.id}
+                      onSelect={setSelectedMatchId}
+                      formatSalary={formatSalary}
+                      getTimeAgo={getTimeAgo}
+                    />
+                  </div>
+                ))
+              )}
+            </>
+          ) : qualified.length === 0 ? (
             <div className="p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
                 <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -587,6 +718,12 @@ function MatchesPageContent() {
                         <span className="text-sm font-bold text-green-700">{selectedMatch.match_score}</span>
                         <span className="text-xs text-green-600">Match</span>
                       </div>
+                      {selectedMatch.semantic_similarity != null && (
+                        <div className="flex items-center gap-1.5 rounded-md bg-blue-100 px-2.5 py-1">
+                          <span className="text-sm font-bold text-blue-700">{Math.round(selectedMatch.semantic_similarity * 100)}</span>
+                          <span className="text-xs text-blue-600">Semantic</span>
+                        </div>
+                      )}
                     </div>
 
                     {/* Disclaimer */}

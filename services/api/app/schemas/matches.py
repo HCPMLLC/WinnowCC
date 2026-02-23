@@ -5,7 +5,6 @@ from pydantic import BaseModel
 
 from app.schemas.jobs import JobResponse
 
-
 # Valid application status values
 ApplicationStatus = Literal["saved", "applied", "interviewing", "rejected", "offer"]
 
@@ -24,6 +23,8 @@ class MatchResponse(BaseModel):
     application_logistics_score: int | None = None
     referred: bool = False
     interview_probability: int | None = None
+    # Semantic search
+    semantic_similarity: float | None = None
     # Application tracking
     application_status: str | None = None
 

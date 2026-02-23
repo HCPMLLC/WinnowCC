@@ -1,11 +1,10 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
-
 
 # Application status values: saved, applied, interviewing, rejected, offer
 APPLICATION_STATUS_VALUES = ["saved", "applied", "interviewing", "rejected", "offer"]
@@ -32,6 +31,9 @@ class Match(Base):
     application_logistics_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     referred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     interview_probability: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    # Semantic search similarity (0.0 – 1.0)
+    semantic_similarity: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     # Application tracking status: saved, applied, interviewing, rejected, offer
     application_status: Mapped[str | None] = mapped_column(String(20), nullable=True)

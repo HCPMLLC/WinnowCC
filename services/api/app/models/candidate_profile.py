@@ -4,6 +4,15 @@ from sqlalchemy import Boolean, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
+try:
+    from pgvector.sqlalchemy import Vector as _Vector
+
+    _EmbeddingType = _Vector(384)
+except ImportError:
+    import sqlalchemy as _sa
+
+    _EmbeddingType = _sa.JSON()
+
 from app.db.base import Base
 
 
@@ -21,6 +30,7 @@ class CandidateProfile(Base):
     profile_visibility: Mapped[str | None] = mapped_column(
         String(50), nullable=True
     )
+    embedding = mapped_column(_EmbeddingType, nullable=True)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
