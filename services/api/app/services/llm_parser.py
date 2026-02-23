@@ -318,6 +318,48 @@ def _calculate_total_years_from_experience(experience: list[dict]) -> int | None
     return max(1, min(51, years))
 
 
+_DATE_PATTERN = re.compile(
+    r"^(?:"
+    r"\d{4}-\d{2}"  # YYYY-MM
+    r"|[A-Z][a-z]{2,8}\s+\d{4}"  # Mon YYYY or Month YYYY
+    r"|[A-Z][a-z]{2}-\d{4}"  # Mon-YYYY
+    r"|\d{1,2}/\d{4}"  # MM/YYYY
+    r"|\d{4}"  # bare YYYY
+    r")"
+    r"(?:\s*[-–—to]+\s*"  # separator
+    r"(?:\d{4}-\d{2}|[A-Z][a-z]{2,8}\s+\d{4}|[A-Z][a-z]{2}-\d{4}"
+    r"|\d{1,2}/\d{4}|\d{4}|[Pp]resent|[Cc]urrent))?"
+    r"$"
+)
+
+_LOCATION_PATTERN = re.compile(
+    r"^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*,\s*[A-Z]{2}$"
+)
+
+
+def _fix_misplaced_experience_fields(entry: dict) -> None:
+    """Detect and fix misplaced data in experience entry fields.
+
+    - If company looks like a date range, clear it
+    - If title looks like a location (City, ST), move it to job_location
+    - If dates are missing but date-like strings exist in company/title, extract
+    """
+    company = entry.get("company") or ""
+    title = entry.get("title") or ""
+
+    # Company contains a date pattern → misplaced, clear it
+    if company and _DATE_PATTERN.match(company.strip()):
+        logger.debug("Experience field fix: date in company field: %r", company)
+        entry["company"] = None
+
+    # Title looks like a location → move to job_location
+    if title and _LOCATION_PATTERN.match(title.strip()):
+        logger.debug("Experience field fix: location in title field: %r", title)
+        if not entry.get("job_location"):
+            entry["job_location"] = title.strip()
+        entry["title"] = None
+
+
 def map_llm_to_profile_json(llm: dict) -> dict:
     """Map PROMPT9 LLM output to the canonical profile_json schema."""
     from app.services.profile_parser import default_profile_json
@@ -406,6 +448,10 @@ def map_llm_to_profile_json(llm: dict) -> dict:
             "skills_used": domain_skills,
             "technologies_used": tech_names,
         }
+
+        # --- Defensive validation for misplaced field contents ---
+        _fix_misplaced_experience_fields(exp_entry)
+
         experience_out.append(exp_entry)
 
     profile["experience"] = experience_out
@@ -413,11 +459,20 @@ def map_llm_to_profile_json(llm: dict) -> dict:
     # ---- Education ----
     education_out: list[dict] = []
     for edu in llm.get("education") or []:
+        degree = edu.get("degree_type")
+        field = edu.get("field_of_study")
+
+        # Split combined degree+field: "Bachelor of Arts in Org Psychology"
+        if degree and not field and " in " in degree:
+            parts = degree.split(" in ", 1)
+            degree = parts[0].strip()
+            field = parts[1].strip()
+
         education_out.append(
             {
                 "school": edu.get("institution"),
-                "degree": edu.get("degree_type"),
-                "field": edu.get("field_of_study"),
+                "degree": degree,
+                "field": field,
                 "start_date": _normalize_date_to_mmm_yyyy(edu.get("start_date")),
                 "end_date": _normalize_date_to_mmm_yyyy(edu.get("graduation_date")),
             }
@@ -616,6 +671,7 @@ def parse_with_llm(resume_text: str) -> dict:
     Returns canonical profile_json.
     """
     llm_output = _call_llm(resume_text)
+    logger.debug("Raw LLM output for resume parse: %s", json.dumps(llm_output, default=str)[:5000])
     profile = map_llm_to_profile_json(llm_output)
 
     # Validate and fallback: calculate total_years if LLM didn't provide a valid value
