@@ -460,11 +460,17 @@ def increment_tailor_requests(session: Session, user_id: int) -> None:
 def get_recruiter_tier(profile) -> str:
     """Derive effective tier from a RecruiterProfile."""
     tier = (profile.subscription_tier or "trial").lower()
+    # Billing-exempt accounts always get their stored tier
+    if getattr(profile, "billing_exempt", False):
+        return tier
     if tier == "trial":
         if profile.is_trial_active:
             return "trial"
         return "trial"  # expired trial still gets trial limits (read-only)
     if profile.subscription_status in ("active", "trialing"):
+        return tier
+    # Admin override: tier set with no subscription means manually set
+    if profile.subscription_status is None:
         return tier
     return "trial"
 
@@ -857,6 +863,10 @@ def _handle_checkout_completed(checkout_session: object, session: Session) -> No
         if rp is None:
             logger.warning("No recruiter for Stripe customer %s", customer_id)
             return
+        if rp.billing_exempt:
+            logger.info("Skipping checkout for billing-exempt recruiter %s",
+                        rp.company_name)
+            return
         rp.stripe_subscription_id = subscription_id
         rp.subscription_status = "active"
         rp.subscription_tier = tier
@@ -918,6 +928,10 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
         )
     ).scalar_one_or_none()
     if rp is not None:
+        if rp.billing_exempt:
+            logger.info("Skipping sub change for billing-exempt recruiter %s",
+                        rp.company_name)
+            return
         rp.stripe_subscription_id = sub_id
         rp.subscription_status = status
         if status in ("canceled", "unpaid"):
@@ -961,6 +975,10 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
         )
     ).scalar_one_or_none()
     if rp is not None:
+        if rp.billing_exempt:
+            logger.info("Skipping payment_failed for billing-exempt recruiter %s",
+                        rp.company_name)
+            return
         rp.subscription_status = "past_due"
         session.flush()
         return

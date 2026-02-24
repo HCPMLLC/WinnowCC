@@ -98,6 +98,7 @@ def list_recruiters(
             subscription_tier=rp.subscription_tier,
             subscription_status=rp.subscription_status,
             billing_interval=rp.billing_interval,
+            billing_exempt=rp.billing_exempt,
             seats_purchased=rp.seats_purchased,
             seats_used=rp.seats_used,
             is_trial_active=rp.is_trial_active,
@@ -235,6 +236,8 @@ def override_recruiter_tier(
 
     recruiter.subscription_tier = body.subscription_tier
     recruiter.subscription_status = body.subscription_status
+    if body.billing_exempt is not None:
+        recruiter.billing_exempt = body.billing_exempt
     # Clear trial dates if moving from trial to a paid tier
     if body.subscription_tier != "trial":
         recruiter.trial_started_at = None
@@ -245,4 +248,5 @@ def override_recruiter_tier(
         id=recruiter.id,
         subscription_tier=recruiter.subscription_tier,
         subscription_status=recruiter.subscription_status,
+        billing_exempt=recruiter.billing_exempt,
     )

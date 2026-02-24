@@ -40,6 +40,11 @@ class RecruiterProfile(Base):
         String(255), nullable=True
     )
 
+    # Billing exemption (admin override — immune to Stripe webhook changes)
+    billing_exempt: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false", default=False
+    )
+
     # Trial tracking
     trial_started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True

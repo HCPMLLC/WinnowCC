@@ -17,6 +17,7 @@ class AdminRecruiterResponse(BaseModel):
     subscription_tier: str
     subscription_status: str | None
     billing_interval: str | None
+    billing_exempt: bool
     seats_purchased: int
     seats_used: int
     is_trial_active: bool
@@ -69,9 +70,11 @@ class DeleteRecruitersResponse(BaseModel):
 class RecruiterTierOverrideRequest(BaseModel):
     subscription_tier: str  # trial, solo, team, agency
     subscription_status: str | None = None
+    billing_exempt: bool | None = None
 
 
 class RecruiterTierOverrideResponse(BaseModel):
     id: int
     subscription_tier: str
     subscription_status: str | None
+    billing_exempt: bool
