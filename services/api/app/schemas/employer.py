@@ -440,6 +440,7 @@ class ResumeUploadFileResult(BaseModel):
     candidate_profile_id: int | None = None
     matched_email: str | None = None
     parsed_name: str | None = None
+    llm_parse_status: str | None = None
     error: str | None = None
 
 
