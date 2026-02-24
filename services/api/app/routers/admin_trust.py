@@ -46,20 +46,23 @@ def get_trust_queue(
 ) -> list[AdminTrustRecordResponse]:
     stmt = (
         select(CandidateTrust, ResumeDocument, User)
-        .join(ResumeDocument, CandidateTrust.resume_document_id == ResumeDocument.id)
-        .join(User, ResumeDocument.user_id == User.id)
+        .outerjoin(ResumeDocument, CandidateTrust.resume_document_id == ResumeDocument.id)
+        .outerjoin(User, ResumeDocument.user_id == User.id)
         .where(CandidateTrust.status != "allowed")
         .order_by(CandidateTrust.updated_at.desc())
     )
     rows = session.execute(stmt).all()
     results = []
-    for record, _doc, user in rows:
+    for record, doc, user in rows:
+        user_id = user.id if user else (doc.user_id if doc else None)
         results.append(
             AdminTrustRecordResponse(
                 id=record.id,
                 resume_document_id=record.resume_document_id,
-                candidate_name=_candidate_name_for_user(session, user.id),
-                candidate_email=user.email,
+                candidate_name=(
+                    _candidate_name_for_user(session, user_id) if user_id else None
+                ),
+                candidate_email=user.email if user else "(deleted user)",
                 score=record.score,
                 status=record.status,
                 reasons=record.reasons,
