@@ -72,6 +72,12 @@ class EmployerProfile(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Hierarchy & contract vehicle
+    parent_employer_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("employer_profiles.id", ondelete="SET NULL"), nullable=True
+    )
+    contract_vehicle: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # Timestamps
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -100,6 +106,10 @@ class EmployerProfile(Base):
         back_populates="employer",
         cascade="all, delete-orphan",
     )
+    parent = relationship(
+        "EmployerProfile", remote_side=[id], back_populates="children"
+    )
+    children = relationship("EmployerProfile", back_populates="parent")
 
 
 class EmployerJob(Base):

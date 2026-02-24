@@ -4,6 +4,7 @@ from app.models.candidate import Candidate
 from app.models.candidate_notification import CandidateNotification
 from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.candidate_profile import CandidateProfile
+from app.models.candidate_submission import CandidateSubmission
 from app.models.candidate_trust import CandidateTrust
 from app.models.career_intelligence import (
     CareerTrajectory,
@@ -66,6 +67,7 @@ __all__ = [
     "CandidateNotification",
     "DailyUsageCounter",
     "CandidateProfile",
+    "CandidateSubmission",
     "CandidateTrust",
     "CareerTrajectory",
     "DistributionEvent",

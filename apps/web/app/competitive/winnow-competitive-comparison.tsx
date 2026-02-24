@@ -239,6 +239,12 @@ const CATEGORIES = [
         winnow: "full", linkedin: "partial", indeed: "partial", ziprecruiter: "partial",
         monster: "partial", glassdoor: "partial", scalejobs: "partial",
       },
+      {
+        name: "Recruiter representation visibility",
+        tooltip: "See which recruiters have submitted you to jobs and track the status of each submission.",
+        winnow: "full", linkedin: "none", indeed: "none", ziprecruiter: "none",
+        monster: "none", glassdoor: "none", scalejobs: "none",
+      },
     ],
   },
 ];

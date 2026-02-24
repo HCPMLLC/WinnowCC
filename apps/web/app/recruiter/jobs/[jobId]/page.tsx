@@ -29,11 +29,35 @@ interface RecruiterJob {
   positions_to_fill: number;
   positions_filled: number;
   department: string | null;
+  job_id_external: string | null;
+  job_category: string | null;
   matched_candidates_count: number;
   posted_at: string | null;
   closes_at: string | null;
   start_at: string | null;
   created_at: string;
+  employer_job_id: number | null;
+  employer_company_name: string | null;
+}
+
+interface SubmissionCheck {
+  already_submitted: boolean;
+  submission_count: number;
+  first_submitted_at: string | null;
+  first_submitted_by: string | null;
+}
+
+interface Submission {
+  id: number;
+  recruiter_job_id: number;
+  employer_job_id: number | null;
+  candidate_profile_id: number;
+  candidate_name: string;
+  job_title: string | null;
+  status: string;
+  is_first_submission: boolean;
+  submitted_at: string;
+  employer_notes: string | null;
 }
 
 interface ClientOption {
@@ -91,6 +115,9 @@ export default function RecruiterJobDetailPage() {
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
+  const [submissionChecks, setSubmissionChecks] = useState<Record<number, SubmissionCheck>>({});
+  const [submittingId, setSubmittingId] = useState<number | null>(null);
 
   const [form, setForm] = useState({
     title: "",
@@ -107,6 +134,8 @@ export default function RecruiterJobDetailPage() {
     priority: "normal",
     positions_to_fill: "1",
     department: "",
+    job_id_external: "",
+    job_category: "",
     application_url: "",
     start_at: "",
     closes_at: "",
@@ -129,6 +158,8 @@ export default function RecruiterJobDetailPage() {
       priority: j.priority || "normal",
       positions_to_fill: j.positions_to_fill?.toString() || "1",
       department: j.department || "",
+      job_id_external: j.job_id_external || "",
+      job_category: j.job_category || "",
       application_url: j.application_url || "",
       start_at: j.start_at ? j.start_at.slice(0, 10) : "",
       closes_at: j.closes_at ? j.closes_at.slice(0, 10) : "",
@@ -152,10 +183,14 @@ export default function RecruiterJobDetailPage() {
       fetch(`${API_BASE}/api/recruiter/profile`, {
         credentials: "include",
       }).then((r) => (r.ok ? r.json() : null)),
+      fetch(`${API_BASE}/api/recruiter/submissions?job_id=${jobId}`, {
+        credentials: "include",
+      }).then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([jobData, candData, clientData, profileData]) => {
+      .then(([jobData, candData, clientData, profileData, subsData]) => {
         setJob(jobData);
         setClients(clientData || []);
+        setSubmissions(subsData || []);
         if (candData) {
           setCandidates(candData.candidates);
           setTotalCached(candData.total_cached);
@@ -327,6 +362,10 @@ export default function RecruiterJobDetailPage() {
       body.positions_to_fill = parseInt(form.positions_to_fill);
     if (form.department) body.department = form.department;
     else body.department = null;
+    if (form.job_id_external) body.job_id_external = form.job_id_external;
+    else body.job_id_external = null;
+    if (form.job_category) body.job_category = form.job_category;
+    else body.job_category = null;
     if (form.application_url) body.application_url = form.application_url;
     else body.application_url = null;
     body.start_at = form.start_at
@@ -371,6 +410,72 @@ export default function RecruiterJobDetailPage() {
       }
     } catch (err) {
       console.error("Delete failed:", err);
+    }
+  }
+
+  async function handleCheckAndSubmit(candidate: CandidateMatch) {
+    if (!job?.employer_job_id) return;
+    setSubmittingId(candidate.id);
+
+    // Pre-submit check
+    try {
+      const checkRes = await fetch(
+        `${API_BASE}/api/recruiter/jobs/${jobId}/submission-check/${candidate.id}`,
+        { credentials: "include" },
+      );
+      if (checkRes.ok) {
+        const check: SubmissionCheck = await checkRes.json();
+        setSubmissionChecks((prev) => ({ ...prev, [candidate.id]: check }));
+        if (check.already_submitted) {
+          const proceed = confirm(
+            `This candidate was already submitted by ${check.first_submitted_by} on ${check.first_submitted_at ? new Date(check.first_submitted_at).toLocaleDateString() : "unknown date"}. Submit anyway?`
+          );
+          if (!proceed) {
+            setSubmittingId(null);
+            return;
+          }
+        }
+      }
+    } catch {
+      // continue with submission even if check fails
+    }
+
+    // Submit
+    try {
+      const res = await fetch(`${API_BASE}/api/recruiter/submissions`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          recruiter_job_id: parseInt(jobId),
+          candidate_profile_id: candidate.id,
+        }),
+      });
+      if (res.ok) {
+        const sub = await res.json();
+        setSubmissions((prev) => [
+          {
+            id: sub.id,
+            recruiter_job_id: sub.recruiter_job_id,
+            employer_job_id: sub.employer_job_id,
+            candidate_profile_id: sub.candidate_profile_id,
+            candidate_name: candidate.name,
+            job_title: job?.title || null,
+            status: sub.status,
+            is_first_submission: sub.is_first_submission,
+            submitted_at: sub.submitted_at,
+            employer_notes: null,
+          },
+          ...prev,
+        ]);
+      } else {
+        const data = await res.json();
+        setPipelineError(data.detail || "Failed to submit candidate");
+      }
+    } catch {
+      setPipelineError("Network error");
+    } finally {
+      setSubmittingId(null);
     }
   }
 
@@ -432,6 +537,11 @@ export default function RecruiterJobDetailPage() {
                 className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${job.priority === "urgent" ? "bg-red-100 text-red-700" : job.priority === "high" ? "bg-amber-100 text-amber-700" : "bg-slate-100 text-slate-600"}`}
               >
                 {job.priority}
+              </span>
+            )}
+            {job.employer_job_id && (
+              <span className="rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">
+                Linked: {job.employer_company_name || `Employer Job #${job.employer_job_id}`}
               </span>
             )}
           </div>
@@ -511,6 +621,51 @@ export default function RecruiterJobDetailPage() {
             </div>
           )}
           <form onSubmit={handleSave} className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Job ID / Solicitation #
+                </label>
+                <input
+                  type="text"
+                  value={form.job_id_external}
+                  onChange={(e) =>
+                    setForm({ ...form, job_id_external: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="e.g. DIR-CPO-TMP-445"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Category
+                </label>
+                <select
+                  value={form.job_category}
+                  onChange={(e) =>
+                    setForm({ ...form, job_category: e.target.value })
+                  }
+                  className={inputCls}
+                >
+                  <option value="">Select...</option>
+                  <option value="Engineering">Engineering</option>
+                  <option value="Sales">Sales</option>
+                  <option value="Marketing">Marketing</option>
+                  <option value="Design">Design</option>
+                  <option value="Product">Product</option>
+                  <option value="Operations">Operations</option>
+                  <option value="Finance">Finance</option>
+                  <option value="Human Resources">Human Resources</option>
+                  <option value="Customer Success">Customer Success</option>
+                  <option value="Customer Support">Customer Support</option>
+                  <option value="Data Science">Data Science</option>
+                  <option value="Legal">Legal</option>
+                  <option value="Executive">Executive</option>
+                  <option value="Other">Other</option>
+                </select>
+              </div>
+            </div>
+
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -859,6 +1014,26 @@ export default function RecruiterJobDetailPage() {
             )}
 
             <div className="grid gap-4 sm:grid-cols-3">
+              {job.job_id_external && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">
+                    Job ID / Solicitation #
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {job.job_id_external}
+                  </p>
+                </div>
+              )}
+              {job.job_category && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">
+                    Category
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-700">
+                    {job.job_category}
+                  </p>
+                </div>
+              )}
               {job.salary_min && job.salary_max && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-500">
@@ -945,6 +1120,59 @@ export default function RecruiterJobDetailPage() {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submissions */}
+      {submissions.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Submission History
+          </h2>
+          <div className="space-y-3">
+            {submissions.map((s) => (
+              <div
+                key={s.id}
+                className="flex items-center justify-between rounded-lg border border-slate-200 p-4"
+              >
+                <div>
+                  <span className="font-medium text-slate-900">
+                    {s.candidate_name}
+                  </span>
+                  {s.job_title && (
+                    <span className="ml-2 text-sm text-slate-500">
+                      for {s.job_title}
+                    </span>
+                  )}
+                  <div className="mt-1 flex gap-2 text-xs text-slate-400">
+                    <span>
+                      {s.submitted_at
+                        ? new Date(s.submitted_at).toLocaleDateString()
+                        : ""}
+                    </span>
+                    {s.is_first_submission && (
+                      <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">
+                        First submission
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                    s.status === "accepted"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : s.status === "rejected"
+                        ? "bg-red-100 text-red-800"
+                        : s.status === "withdrawn"
+                          ? "bg-slate-100 text-slate-600"
+                          : "bg-blue-100 text-blue-800"
+                  }`}
+                >
+                  {s.status}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -1050,6 +1278,20 @@ export default function RecruiterJobDetailPage() {
                       {addingId === c.id ? "Adding..." : "Add to Pipeline"}
                     </button>
                   ) : null}
+                  {job.employer_job_id && !submissions.some(s => s.candidate_profile_id === c.id) && (
+                    <button
+                      onClick={() => handleCheckAndSubmit(c)}
+                      disabled={submittingId === c.id}
+                      className="whitespace-nowrap rounded-md border border-blue-300 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700 transition-colors hover:bg-blue-100 disabled:opacity-50"
+                    >
+                      {submittingId === c.id ? "Submitting..." : "Submit to Employer"}
+                    </button>
+                  )}
+                  {submissions.some(s => s.candidate_profile_id === c.id) && (
+                    <span className="whitespace-nowrap rounded-md bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+                      Submitted
+                    </span>
+                  )}
                 </div>
               </div>
             ))}

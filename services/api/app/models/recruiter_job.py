@@ -39,22 +39,25 @@ class RecruiterJob(Base):
     )
 
     # Client company
-    client_company_name: Mapped[str | None] = mapped_column(
-        String(255), nullable=True
-    )
+    client_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     client_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("recruiter_clients.id", ondelete="SET NULL"), nullable=True
     )
 
     # CRM fields
-    priority: Mapped[str | None] = mapped_column(
-        String(20), server_default="normal"
-    )
+    priority: Mapped[str | None] = mapped_column(String(20), server_default="normal")
     positions_to_fill: Mapped[int] = mapped_column(Integer, server_default="1")
     positions_filled: Mapped[int] = mapped_column(Integer, server_default="0")
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    job_id_external: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    job_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
     assigned_to_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    # Cross-segment link to employer job
+    employer_job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("employer_jobs.id", ondelete="SET NULL"), nullable=True
     )
 
     # Status & application
@@ -89,3 +92,4 @@ class RecruiterJob(Base):
     pipeline_candidates = relationship(
         "RecruiterPipelineCandidate", back_populates="job"
     )
+    employer_job = relationship("EmployerJob")
