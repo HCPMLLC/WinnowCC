@@ -8,6 +8,7 @@ quality of candidate-flow parsing.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 from app.db.session import get_session_factory
@@ -47,13 +48,29 @@ def recruiter_llm_reparse_job(
         cp.llm_parse_status = "running"
         session.commit()
 
+        # Resolve file path — legacy uploads used local paths that may not
+        # exist on the current container.  Fall back to GCS if available.
+        stored_path = resume.path or ""
+        if not is_gcs_path(stored_path) and not Path(stored_path).exists():
+            gcs_bucket = os.environ.get("GCS_BUCKET", "")
+            if gcs_bucket:
+                # Derive GCS path from the local path filename
+                fname = Path(stored_path).name
+                gcs_path = f"gs://{gcs_bucket}/recruiter_resumes/{fname}"
+                logger.info(
+                    "LLM reparse: local path missing, trying GCS: %s", gcs_path,
+                )
+                stored_path = gcs_path
+                # Update the DB record so future lookups use GCS directly
+                resume.path = gcs_path
+
         # Extract text from saved file
         suffix = Path(resume.path).suffix if resume.path else ""
-        local_path = download_to_tempfile(resume.path, suffix=suffix)
+        local_path = download_to_tempfile(stored_path, suffix=suffix)
         try:
             text = extract_text(local_path)
         finally:
-            if is_gcs_path(resume.path):
+            if is_gcs_path(stored_path):
                 local_path.unlink(missing_ok=True)
 
         if not text or len(text.strip()) < 20:
