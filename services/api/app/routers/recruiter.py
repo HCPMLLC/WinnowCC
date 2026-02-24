@@ -557,8 +557,7 @@ async def upload_pipeline_resumes(
                 ),
             )
 
-    upload_dir = Path("data/uploads/recruiter_resumes")
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    from app.services.storage import upload_bytes as _upload_bytes
 
     results: list[ResumeUploadFileResult] = []
     succeeded = 0
@@ -623,17 +622,16 @@ async def upload_pipeline_resumes(
             parsed_email = basics.get("email")
             parsed_name = basics.get("name")
 
-            # 4. Save resume file to permanent location
+            # 4. Save resume file to permanent location (GCS or local)
             file_hash = hashlib.sha256(contents).hexdigest()
             dest_filename = f"{file_hash[:16]}_{filename}"
-            dest_path = upload_dir / dest_filename
-            dest_path.write_bytes(contents)
+            stored_path = _upload_bytes(contents, "recruiter_resumes/", dest_filename)
 
             # 5. Create ResumeDocument record
             resume_doc = ResumeDocument(
                 user_id=None,
                 filename=filename,
-                path=str(dest_path),
+                path=stored_path,
                 sha256=file_hash,
             )
             session.add(resume_doc)
@@ -649,6 +647,7 @@ async def upload_pipeline_resumes(
                 profile_json=profile_json,
                 profile_visibility="private",
                 open_to_opportunities=False,
+                llm_parse_status="pending",
             )
             session.add(new_cp)
             session.flush()
@@ -754,6 +753,26 @@ async def upload_pipeline_resumes(
             # 8. Increment usage counter
             increment_recruiter_counter(profile, "resume_imports_used", session)
 
+            # 9. Queue async LLM re-parse for higher-quality profile
+            try:
+                from app.services.queue import get_queue
+                from app.services.recruiter_llm_reparse import (
+                    recruiter_llm_reparse_job,
+                )
+
+                get_queue().enqueue(
+                    recruiter_llm_reparse_job,
+                    new_cp.id,
+                    resume_doc.id,
+                    job_timeout="10m",
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to enqueue LLM reparse for profile %d",
+                    new_cp.id,
+                    exc_info=True,
+                )
+
             results.append(
                 ResumeUploadFileResult(
                     filename=filename,
@@ -763,6 +782,7 @@ async def upload_pipeline_resumes(
                     candidate_profile_id=new_cp.id,
                     matched_email=parsed_email,
                     parsed_name=parsed_name,
+                    llm_parse_status="pending",
                 )
             )
             succeeded += 1

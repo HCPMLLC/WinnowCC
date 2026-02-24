@@ -31,6 +31,9 @@ class CandidateProfile(Base):
         String(50), nullable=True
     )
     embedding = mapped_column(_EmbeddingType, nullable=True)
+    llm_parse_status: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )  # pending | running | succeeded | failed
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),
