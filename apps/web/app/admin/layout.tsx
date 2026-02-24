@@ -22,6 +22,7 @@ const SUPPORT_NAV = [
   { href: "/admin/support/lookup", label: "User Lookup" },
   { href: "/admin/support/billing", label: "Billing" },
   { href: "/admin/support/queues", label: "Queues" },
+  { href: "/admin/support/scheduler", label: "Scheduler" },
   { href: "/admin/support/usage", label: "Usage" },
   { href: "/admin/support/audit", label: "Audit Log" },
 ];
