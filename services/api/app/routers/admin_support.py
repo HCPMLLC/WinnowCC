@@ -68,20 +68,20 @@ def overview(
         "status": "ok" if queue_stats.get("redis_connected") else "error"
     }
 
-    total_pending = 0
-    total_failed = 0
+    total_pending = queue_stats.get("total_pending", 0)
+    total_failed = queue_stats.get("total_failed", 0)
     queues_dict = {}
-    for qname, qdata in queue_stats.get("queues", {}).items():
-        total_pending += qdata.get("pending", 0)
-        total_failed += qdata.get("failed", 0)
-        queues_dict[qname] = qdata
+    for qdata in queue_stats.get("queues", []):
+        name = qdata.get("name", "unknown")
+        queues_dict[name] = qdata
 
     # --- Platform stats ---
-    role_counts = dict(
-        db.execute(
+    role_counts = {
+        (k or "unknown"): v
+        for k, v in db.execute(
             select(User.role, func.count()).group_by(User.role)
         ).all()
-    )
+    }
     total_users = sum(role_counts.values())
 
     now = datetime.now(UTC)
@@ -97,25 +97,29 @@ def overview(
     ) or 0
 
     # --- Billing stats ---
-    candidate_tiers = dict(
-        db.execute(
-            select(Candidate.plan_tier, func.count()).group_by(Candidate.plan_tier)
+    candidate_tiers = {
+        (k or "free"): v
+        for k, v in db.execute(
+            select(Candidate.plan_tier, func.count())
+            .group_by(Candidate.plan_tier)
         ).all()
-    )
-    employer_tiers = dict(
-        db.execute(
+    }
+    employer_tiers = {
+        (k or "free"): v
+        for k, v in db.execute(
             select(
                 EmployerProfile.subscription_tier, func.count()
             ).group_by(EmployerProfile.subscription_tier)
         ).all()
-    )
-    recruiter_tiers = dict(
-        db.execute(
+    }
+    recruiter_tiers = {
+        (k or "free"): v
+        for k, v in db.execute(
             select(
                 RecruiterProfile.subscription_tier, func.count()
             ).group_by(RecruiterProfile.subscription_tier)
         ).all()
-    )
+    }
 
     # --- Alerts ---
     alerts = []
@@ -489,7 +493,8 @@ def queue_monitor(
     stats = get_queue_stats()
     queues = []
 
-    for qname, qdata in stats.get("queues", {}).items():
+    for qdata in stats.get("queues", []):
+        qname = qdata.get("name", "unknown")
         failed_count = qdata.get("failed", 0)
         failed_jobs = []
         if failed_count > 0:
@@ -498,7 +503,7 @@ def queue_monitor(
                 failed_jobs.append({
                     "job_id": fj.get("job_id", ""),
                     "func_name": fj.get("func_name"),
-                    "error": fj.get("error"),
+                    "error": fj.get("exc_info") or fj.get("error"),
                     "enqueued_at": fj.get("enqueued_at"),
                     "ended_at": fj.get("ended_at"),
                 })
