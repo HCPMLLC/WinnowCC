@@ -15,6 +15,7 @@ from app.services.auth import (
     get_current_user,
     hash_password,
     make_token,
+    require_admin_user,
     set_auth_cookie,
     verify_otp,
     verify_password,
@@ -309,6 +310,31 @@ def reset_password(
 
     set_auth_cookie(response, user_id=user.id, email=user.email)
     return {"status": "ok"}
+
+
+class AdminResetPasswordRequest(BaseModel):
+    email: EmailStr
+    new_password: str
+
+
+@router.post("/admin-reset-password")
+def admin_reset_password(
+    payload: AdminResetPasswordRequest,
+    admin: User = Depends(require_admin_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Admin-only: reset any user's password directly."""
+    _validate_password(payload.new_password)
+    user = session.execute(
+        select(User).where(User.email == payload.email.lower().strip())
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    user.password_hash = hash_password(payload.new_password)
+    user.password_reset_token = None
+    user.password_reset_expires_at = None
+    session.commit()
+    return {"status": "ok", "email": user.email}
 
 
 @router.post("/logout")
