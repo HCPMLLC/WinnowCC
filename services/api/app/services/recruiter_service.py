@@ -46,13 +46,20 @@ def list_clients(
     session: Session,
     profile: RecruiterProfile,
     status_filter: str | None = None,
+    contract_vehicle: str | None = None,
 ) -> list[RecruiterClient]:
     stmt = select(RecruiterClient).where(
         RecruiterClient.recruiter_profile_id == profile.id
     )
     if status_filter:
         stmt = stmt.where(RecruiterClient.status == status_filter)
-    stmt = stmt.order_by(RecruiterClient.created_at.desc())
+    if contract_vehicle:
+        stmt = stmt.where(RecruiterClient.contract_vehicle == contract_vehicle)
+    # Order: parent clients first, then children, then by name
+    stmt = stmt.order_by(
+        RecruiterClient.parent_client_id.asc().nulls_first(),
+        RecruiterClient.company_name.asc(),
+    )
     return list(session.execute(stmt).scalars().all())
 
 
@@ -83,9 +90,7 @@ def update_client(
     return client
 
 
-def delete_client(
-    session: Session, profile: RecruiterProfile, client_id: int
-) -> bool:
+def delete_client(session: Session, profile: RecruiterProfile, client_id: int) -> bool:
     client = get_client(session, profile, client_id)
     if client is None:
         return False
@@ -267,9 +272,7 @@ def bulk_update_pipeline_stage(
     return updated
 
 
-def resolve_candidate_name(
-    session: Session, pc: RecruiterPipelineCandidate
-) -> str:
+def resolve_candidate_name(session: Session, pc: RecruiterPipelineCandidate) -> str:
     """Public version of name resolution."""
     return _resolve_candidate_name(session, pc)
 
@@ -344,9 +347,7 @@ def invite_team_member(
         return None
 
     # Find or create the user
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
         return None  # User must exist on the platform
 
@@ -446,19 +447,16 @@ def get_dashboard_stats(session: Session, profile: RecruiterProfile) -> dict:
     )
 
     # Pipeline by stage
-    stage_rows = (
-        session.execute(
-            select(
-                RecruiterPipelineCandidate.stage,
-                func.count(RecruiterPipelineCandidate.id),
-            )
-            .where(
-                RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
-            )
-            .group_by(RecruiterPipelineCandidate.stage)
+    stage_rows = session.execute(
+        select(
+            RecruiterPipelineCandidate.stage,
+            func.count(RecruiterPipelineCandidate.id),
         )
-        .all()
-    )
+        .where(
+            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+        )
+        .group_by(RecruiterPipelineCandidate.stage)
+    ).all()
     pipeline_by_stage = [
         {"stage": stage, "count": count} for stage, count in stage_rows
     ]
@@ -482,9 +480,7 @@ def get_dashboard_stats(session: Session, profile: RecruiterProfile) -> dict:
 # ---------------------------------------------------------------------------
 
 
-def _resolve_candidate_name(
-    session: Session, pc: RecruiterPipelineCandidate
-) -> str:
+def _resolve_candidate_name(session: Session, pc: RecruiterPipelineCandidate) -> str:
     """Resolve a display name from internal profile or external fields."""
     if pc.external_name:
         return pc.external_name

@@ -188,7 +188,9 @@ def create_job(
     """Create a new job posting (respects subscription tier limits)."""
     tier = get_employer_tier(employer)
     raw_limit = get_employer_limit(tier, "active_jobs")
-    limit = None if (isinstance(raw_limit, int) and raw_limit >= 999) else int(raw_limit)
+    limit = (
+        None if (isinstance(raw_limit, int) and raw_limit >= 999) else int(raw_limit)
+    )
     if limit is not None:
         active_count = (
             session.execute(
@@ -231,14 +233,19 @@ def create_job(
     # Pre-compute candidate matches and sync to candidate-facing jobs table
     if job.status == "active":
         try:
-            from app.services.job_pipeline import populate_job_candidates, sync_employer_job_to_jobs
+            from app.services.job_pipeline import (
+                populate_job_candidates,
+                sync_employer_job_to_jobs,
+            )
             from app.services.queue import get_queue
 
             q = get_queue()
             q.enqueue(populate_job_candidates, job.id)
             q.enqueue(sync_employer_job_to_jobs, job.id)
         except Exception:
-            logger.debug("Failed to enqueue background jobs for employer job %s", job.id)
+            logger.debug(
+                "Failed to enqueue background jobs for employer job %s", job.id
+            )
 
     return job
 
@@ -313,7 +320,9 @@ _COMPANY_SORT_COLUMNS = {
 def list_company_jobs(
     sort_by: str = Query("created_at", enum=list(_COMPANY_SORT_COLUMNS)),
     sort_dir: str = Query("desc", enum=["asc", "desc"]),
-    group_by: str | None = Query(None, enum=["poster_email", "status", "job_category", "location"]),
+    group_by: str | None = Query(
+        None, enum=["poster_email", "status", "job_category", "location"]
+    ),
     status_filter: str | None = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -367,7 +376,12 @@ def list_company_jobs(
     )
     if status_filter:
         count_base = count_base.where(EmployerJob.status == status_filter)
-    total = session.execute(select(func.count()).select_from(count_base.subquery())).scalar() or 0
+    total = (
+        session.execute(
+            select(func.count()).select_from(count_base.subquery())
+        ).scalar()
+        or 0
+    )
 
     # Sorting
     col = _COMPANY_SORT_COLUMNS.get(sort_by, EmployerJob.created_at)
@@ -634,7 +648,9 @@ async def bulk_upload_job_documents(
             "for automated bulk ingestion."
         )
     elif tier in ("free", "starter"):
-        if len(files) >= batch_limit or (remaining is not None and succeeded >= remaining):
+        if len(files) >= batch_limit or (
+            remaining is not None and succeeded >= remaining
+        ):
             upgrade_recommendation = (
                 f"Upgrade from {tier.capitalize()} to unlock higher batch limits "
                 "and more total job postings."
@@ -668,12 +684,15 @@ def get_job(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
         )
-    count = session.execute(
-        select(func.count(EmployerJobCandidate.id)).where(
-            EmployerJobCandidate.employer_job_id == job.id,
-            EmployerJobCandidate.match_score > 0.5,
-        )
-    ).scalar() or 0
+    count = (
+        session.execute(
+            select(func.count(EmployerJobCandidate.id)).where(
+                EmployerJobCandidate.employer_job_id == job.id,
+                EmployerJobCandidate.match_score > 0.5,
+            )
+        ).scalar()
+        or 0
+    )
     resp = EmployerJobResponse.model_validate(job, from_attributes=True)
     resp.matched_candidates_count = count
     return resp
@@ -942,12 +961,26 @@ async def reparse_job_document(
 
         # Update all parsed fields on existing job
         updatable = (
-            "title", "description", "requirements", "nice_to_haves",
-            "location", "remote_policy", "employment_type",
-            "job_id_external", "start_date", "close_date",
-            "job_category", "department", "certifications_required",
-            "job_type", "salary_min", "salary_max", "salary_currency",
-            "equity_offered", "application_email", "application_url",
+            "title",
+            "description",
+            "requirements",
+            "nice_to_haves",
+            "location",
+            "remote_policy",
+            "employment_type",
+            "job_id_external",
+            "start_date",
+            "close_date",
+            "job_category",
+            "department",
+            "certifications_required",
+            "job_type",
+            "salary_min",
+            "salary_max",
+            "salary_currency",
+            "equity_offered",
+            "application_email",
+            "application_url",
         )
         for field in updatable:
             if field in parsed:
@@ -959,12 +992,15 @@ async def reparse_job_document(
         session.commit()
         session.refresh(job)
 
-        count = session.execute(
-            select(func.count(EmployerJobCandidate.id)).where(
-                EmployerJobCandidate.employer_job_id == job.id,
-                EmployerJobCandidate.match_score > 0.5,
-            )
-        ).scalar() or 0
+        count = (
+            session.execute(
+                select(func.count(EmployerJobCandidate.id)).where(
+                    EmployerJobCandidate.employer_job_id == job.id,
+                    EmployerJobCandidate.match_score > 0.5,
+                )
+            ).scalar()
+            or 0
+        )
         resp = EmployerJobResponse.model_validate(job, from_attributes=True)
         resp.matched_candidates_count = count
         return resp
@@ -1210,9 +1246,13 @@ def _profile_to_search_result(profile: CandidateProfile) -> CandidateSearchResul
         ],
         match_score=None,
         profile_visibility=visibility,
-        preferred_locations=preferred_locations if isinstance(preferred_locations, list) else [],
+        preferred_locations=preferred_locations
+        if isinstance(preferred_locations, list)
+        else [],
         remote_ok=remote_ok if isinstance(remote_ok, bool) else None,
-        willing_to_relocate=willing_to_relocate if isinstance(willing_to_relocate, bool) else None,
+        willing_to_relocate=willing_to_relocate
+        if isinstance(willing_to_relocate, bool)
+        else None,
     )
 
 
@@ -1435,7 +1475,9 @@ def view_candidate_profile(
     # Check subscription view limits
     tier = get_employer_tier(employer)
     raw_limit = get_employer_limit(tier, "candidate_views_per_month")
-    limit = None if (isinstance(raw_limit, int) and raw_limit >= 999) else int(raw_limit)
+    limit = (
+        None if (isinstance(raw_limit, int) and raw_limit >= 999) else int(raw_limit)
+    )
     if limit is not None:
         month_start = datetime.now(UTC).replace(
             day=1, hour=0, minute=0, second=0, microsecond=0
@@ -1569,8 +1611,154 @@ def get_analytics_summary(
         total_job_views=int(total_views),
         total_applications=int(total_applications),
         candidate_views_this_month=candidate_views_this_month,
-        candidate_views_limit=get_employer_limit(get_employer_tier(employer), "candidate_views_per_month"),
+        candidate_views_limit=get_employer_limit(
+            get_employer_tier(employer), "candidate_views_per_month"
+        ),
         saved_candidates=saved_candidates,
         subscription_tier=employer.subscription_tier,
         subscription_status=employer.subscription_status or "active",
     )
+
+
+# ============================================================================
+# RECRUITER SUBMISSIONS (employer view)
+# ============================================================================
+
+
+@router.get("/jobs/{job_id}/submissions")
+def list_job_submissions(
+    job_id: int,
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """View all recruiter submissions for an employer job."""
+    from app.models.candidate_submission import CandidateSubmission
+    from app.models.recruiter import RecruiterProfile
+    from app.services.submission import get_submissions_for_employer_job
+
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == job_id, EmployerJob.employer_id == employer.id
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    # Tier-based enrichment
+    tier = get_employer_tier(employer)
+    submission_view = get_employer_limit(tier, "submission_view")
+    include_duplicates = get_employer_limit(tier, "duplicate_highlighting")
+
+    subs = get_submissions_for_employer_job(session, job.id)
+
+    # Build duplicate map for highlighting (starter+)
+    candidate_counts: dict[int, int] = {}
+    if include_duplicates:
+        for s in subs:
+            cid = s.candidate_profile_id
+            if cid:
+                candidate_counts[cid] = candidate_counts.get(cid, 0) + 1
+
+    results = []
+    for s in subs:
+        # Resolve candidate name
+        candidate_name = f"Candidate #{s.candidate_profile_id}"
+        if s.candidate_profile_id:
+            cp = session.get(CandidateProfile, s.candidate_profile_id)
+            if cp:
+                pj = cp.profile_json or {}
+                basics = pj.get("basics") or {}
+                first = basics.get("first_name", "")
+                last = basics.get("last_name", "")
+                candidate_name = (
+                    basics.get("name") or f"{first} {last}".strip() or candidate_name
+                )
+
+        # Resolve recruiter company
+        recruiter_company = None
+        if s.recruiter_profile_id:
+            rp = session.get(RecruiterProfile, s.recruiter_profile_id)
+            if rp:
+                recruiter_company = rp.company_name
+
+        entry: dict = {
+            "id": s.id,
+            "candidate_profile_id": s.candidate_profile_id,
+            "candidate_name": candidate_name,
+            "recruiter_profile_id": s.recruiter_profile_id,
+            "recruiter_company_name": recruiter_company,
+            "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
+            "status": s.status,
+            "employer_notes": s.employer_notes,
+        }
+
+        # First-submission badges and duplicate highlighting (starter+)
+        if submission_view in ("standard", "full"):
+            entry["is_first_submission"] = s.is_first_submission
+            cid = s.candidate_profile_id
+            entry["is_duplicate_candidate"] = (
+                bool(include_duplicates and cid and candidate_counts.get(cid, 0) > 1)
+            )
+        else:
+            entry["is_first_submission"] = None
+            entry["is_duplicate_candidate"] = None
+
+        results.append(entry)
+    return results
+
+
+@router.patch("/submissions/{submission_id}")
+def update_submission_status(
+    submission_id: int,
+    body: dict,
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Update submission status (accept/reject) — employer only."""
+    from app.models.candidate_submission import CandidateSubmission
+
+    sub = session.execute(
+        select(CandidateSubmission).where(
+            CandidateSubmission.id == submission_id,
+        )
+    ).scalar_one_or_none()
+    if sub is None or sub.employer_job_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Submission not found.",
+        )
+
+    # Verify employer owns the job
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == sub.employer_job_id,
+            EmployerJob.employer_id == employer.id,
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You don't own this job.",
+        )
+
+    allowed_statuses = {"under_review", "accepted", "rejected"}
+    new_status = body.get("status")
+    if new_status and new_status in allowed_statuses:
+        sub.status = new_status
+        sub.employer_response_at = datetime.now(UTC)
+    if "employer_notes" in body:
+        sub.employer_notes = body["employer_notes"]
+
+    session.commit()
+    session.refresh(sub)
+
+    return {
+        "id": sub.id,
+        "status": sub.status,
+        "employer_notes": sub.employer_notes,
+        "employer_response_at": sub.employer_response_at.isoformat()
+        if sub.employer_response_at
+        else None,
+    }

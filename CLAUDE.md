@@ -179,16 +179,19 @@ Winnow serves three user segments with independent pricing and feature gates:
 ### Candidates (free / starter $9/mo / pro $29/mo)
 - **Tiered enforcement** via `CANDIDATE_PLAN_LIMITS` in `services/api/app/services/billing.py`
 - Limits: `matches_visible`, `tailor_requests`, `cover_letters`, `sieve_messages_per_day`, `semantic_searches_per_day`
-- Boolean gates: `data_export`, `career_intelligence`
-- IPS detail levels: `score_only` (free) → `breakdown` (starter) → `full_coaching` (pro)
+- Boolean gates: `data_export`, `career_intelligence`, `submission_notifications`
+- Visibility gates: `submission_details` (`basic` → `standard` → `full`)
+- IPS detail levels: `breakdown` (free/starter) → `full_coaching` (pro)
 - Daily limits tracked via `DailyUsageCounter` model (PostgreSQL upsert + SQLite fallback for tests)
 - Helpers: `get_tier_limit()`, `check_feature_access()`, `check_daily_limit()`, `increment_daily_counter()`
 
 ### Employers (starter $49/mo / pro $149/mo)
 - Job posting, distribution, candidate management, compliance reporting
+- Visibility gates: `submission_view` (`basic` → `standard` → `full`), `duplicate_highlighting`
 
-### Recruiters (solo $79/mo / team $149/mo / agency $299/mo)
+### Recruiters (solo $39/mo / team $89/user/mo / agency $129/user/mo)
 - CRM pipeline, multi-channel outreach, client management, migration toolkit
+- Visibility gates: `cross_vendor_duplicate_check`, `contract_vehicle_management`, `client_hierarchy`, `submission_analytics` (Solo=off, Team/Agency=on)
 
 ### Frontend Audience Toggle
 - Landing page (`apps/web/app/page.tsx`) has seeker/employer/recruiter audience toggle

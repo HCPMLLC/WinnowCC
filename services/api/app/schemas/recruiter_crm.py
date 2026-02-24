@@ -2,7 +2,14 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 # ---------------------------------------------------------------------------
 # Clients
@@ -29,9 +36,7 @@ class ContactEntry(BaseModel):
     @classmethod
     def validate_role(cls, v: str | None) -> str | None:
         if v is not None and v not in ALLOWED_CONTACT_ROLES:
-            raise ValueError(
-                f"role must be one of: {', '.join(ALLOWED_CONTACT_ROLES)}"
-            )
+            raise ValueError(f"role must be one of: {', '.join(ALLOWED_CONTACT_ROLES)}")
         return v
 
 
@@ -52,6 +57,9 @@ class RecruiterClientCreate(BaseModel):
     contract_start: datetime | None = None
     contract_end: datetime | None = None
     notes: str | None = None
+    # Hierarchy & contract vehicle
+    parent_client_id: int | None = None
+    contract_vehicle: str | None = Field(None, max_length=255)
 
     @field_validator("industry")
     @classmethod
@@ -65,7 +73,8 @@ class RecruiterClientCreate(BaseModel):
     @field_validator("contacts")
     @classmethod
     def validate_contacts_limit(
-        cls, v: list[ContactEntry] | None,
+        cls,
+        v: list[ContactEntry] | None,
     ) -> list[ContactEntry] | None:
         if v is not None and len(v) > 10:
             raise ValueError("Maximum 10 contacts per client")
@@ -90,6 +99,9 @@ class RecruiterClientUpdate(BaseModel):
     contract_end: datetime | None = None
     notes: str | None = None
     status: str | None = None
+    # Hierarchy & contract vehicle
+    parent_client_id: int | None = None
+    contract_vehicle: str | None = Field(None, max_length=255)
 
     @field_validator("industry")
     @classmethod
@@ -103,7 +115,8 @@ class RecruiterClientUpdate(BaseModel):
     @field_validator("contacts")
     @classmethod
     def validate_contacts_limit(
-        cls, v: list[ContactEntry] | None,
+        cls,
+        v: list[ContactEntry] | None,
     ) -> list[ContactEntry] | None:
         if v is not None and len(v) > 10:
             raise ValueError("Maximum 10 contacts per client")
@@ -132,6 +145,10 @@ class RecruiterClientResponse(BaseModel):
     contract_end: datetime | None = None
     notes: str | None = None
     status: str = "active"
+    # Hierarchy & contract vehicle
+    parent_client_id: int | None = None
+    contract_vehicle: str | None = None
+    parent_company_name: str | None = None
     job_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
@@ -170,9 +187,7 @@ class PipelineCandidateCreate(BaseModel):
     @model_validator(mode="after")
     def require_candidate_identity(self) -> "PipelineCandidateCreate":
         if not self.candidate_profile_id and not self.external_name:
-            raise ValueError(
-                "Either candidate_profile_id or external_name is required"
-            )
+            raise ValueError("Either candidate_profile_id or external_name is required")
         return self
 
 
@@ -251,9 +266,7 @@ class RecruiterActivityResponse(BaseModel):
     activity_type: str
     subject: str | None = None
     body: str | None = None
-    metadata: dict | None = Field(
-        None, validation_alias="activity_metadata"
-    )
+    metadata: dict | None = Field(None, validation_alias="activity_metadata")
     created_at: datetime | None = None
 
 

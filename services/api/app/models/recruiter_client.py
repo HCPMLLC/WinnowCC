@@ -49,6 +49,12 @@ class RecruiterClient(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(50), server_default="active")
 
+    # Hierarchy & contract vehicle
+    parent_client_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("recruiter_clients.id", ondelete="SET NULL"), nullable=True
+    )
+    contract_vehicle: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
@@ -59,3 +65,7 @@ class RecruiterClient(Base):
     # Relationships
     recruiter_profile = relationship("RecruiterProfile", back_populates="clients")
     jobs = relationship("RecruiterJob", back_populates="client")
+    parent = relationship(
+        "RecruiterClient", remote_side=[id], back_populates="children"
+    )
+    children = relationship("RecruiterClient", back_populates="parent")

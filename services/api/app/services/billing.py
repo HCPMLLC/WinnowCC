@@ -42,6 +42,8 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "ips_detail": "breakdown",
         "data_export": False,
         "career_intelligence": False,
+        "submission_details": "basic",
+        "submission_notifications": False,
     },
     "starter": {
         "matches_visible": 25,
@@ -49,10 +51,12 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "tailor_requests": 10,
         "cover_letters": 10,
         "semantic_searches_per_day": 5,
-        "sieve_messages_per_day": 20,
+        "sieve_messages_per_day": 50,
         "ips_detail": "breakdown",
         "data_export": True,
         "career_intelligence": False,
+        "submission_details": "standard",
+        "submission_notifications": True,
     },
     "pro": {
         "matches_visible": 9999,
@@ -64,6 +68,8 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "ips_detail": "full_coaching",
         "data_export": True,
         "career_intelligence": True,
+        "submission_details": "full",
+        "submission_notifications": True,
     },
 }
 
@@ -78,6 +84,8 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "salary_intelligence": False,
         "bias_detection": False,
         "sieve_messages_per_day": 10,
+        "submission_view": "basic",
+        "duplicate_highlighting": False,
     },
     "starter": {
         "active_jobs": 5,
@@ -89,6 +97,8 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "salary_intelligence": False,
         "bias_detection": "basic",
         "sieve_messages_per_day": 30,
+        "submission_view": "standard",
+        "duplicate_highlighting": True,
     },
     "pro": {
         "active_jobs": 25,
@@ -100,6 +110,8 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "salary_intelligence": True,
         "bias_detection": "full",
         "sieve_messages_per_day": 100,
+        "submission_view": "full",
+        "duplicate_highlighting": True,
     },
     "enterprise": {
         "active_jobs": 999,
@@ -111,6 +123,8 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "salary_intelligence": True,
         "bias_detection": "full",
         "sieve_messages_per_day": 999,
+        "submission_view": "full",
+        "duplicate_highlighting": True,
     },
 }
 
@@ -135,6 +149,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "outreach_sequences": False,
         "active_sequences": 0,
         "enrollments_per_month": 0,
+        "cross_vendor_duplicate_check": True,
+        "contract_vehicle_management": True,
+        "client_hierarchy": True,
+        "submission_analytics": True,
     },
     "solo": {
         "seats": 1,
@@ -155,6 +173,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "outreach_sequences": False,
         "active_sequences": 0,
         "enrollments_per_month": 0,
+        "cross_vendor_duplicate_check": False,
+        "contract_vehicle_management": False,
+        "client_hierarchy": False,
+        "submission_analytics": False,
     },
     "team": {
         "seats": 10,
@@ -175,6 +197,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "outreach_sequences": True,
         "active_sequences": 3,
         "enrollments_per_month": 50,
+        "cross_vendor_duplicate_check": True,
+        "contract_vehicle_management": True,
+        "client_hierarchy": True,
+        "submission_analytics": True,
     },
     "agency": {
         "seats": 999,
@@ -195,6 +221,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "outreach_sequences": True,
         "active_sequences": 10,
         "enrollments_per_month": 200,
+        "cross_vendor_duplicate_check": True,
+        "contract_vehicle_management": True,
+        "client_hierarchy": True,
+        "submission_analytics": True,
     },
 }
 
@@ -240,9 +270,9 @@ PUBLISHED_PRICES: dict[str, dict] = {
     },
     "recruiter": {
         "trial": {"monthly": 0, "annual": 0, "duration_days": 14},
-        "solo": {"monthly": 29, "annual": 249},
-        "team": {"monthly": 69, "annual": 599, "per_seat": True},
-        "agency": {"monthly": 99, "annual": 899, "per_seat": True},
+        "solo": {"monthly": 39, "annual": 349},
+        "team": {"monthly": 89, "annual": 799, "per_seat": True},
+        "agency": {"monthly": 129, "annual": 1159, "per_seat": True},
     },
 }
 

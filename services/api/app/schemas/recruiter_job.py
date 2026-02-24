@@ -32,6 +32,8 @@ class RecruiterJobCreate(BaseModel):
     priority: str | None = Field(default="normal")
     positions_to_fill: int = Field(default=1, ge=1)
     department: str | None = Field(None, max_length=100)
+    job_id_external: str | None = Field(None, max_length=100)
+    job_category: str | None = Field(None, max_length=100)
     assigned_to_user_id: int | None = None
 
     @field_validator("remote_policy")
@@ -97,6 +99,8 @@ class RecruiterJobUpdate(BaseModel):
     positions_to_fill: int | None = Field(None, ge=1)
     positions_filled: int | None = Field(None, ge=0)
     department: str | None = Field(None, max_length=100)
+    job_id_external: str | None = Field(None, max_length=100)
+    job_category: str | None = Field(None, max_length=100)
     assigned_to_user_id: int | None = None
 
     @field_validator("remote_policy")
@@ -155,7 +159,12 @@ class RecruiterJobResponse(BaseModel):
     positions_to_fill: int = 1
     positions_filled: int = 0
     department: str | None = None
+    job_id_external: str | None = None
+    job_category: str | None = None
     assigned_to_user_id: int | None = None
+    # Cross-segment linking
+    employer_job_id: int | None = None
+    employer_company_name: str | None = None
     matched_candidates_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None

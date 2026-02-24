@@ -31,6 +31,9 @@ interface Client {
   status: string;
   job_count: number;
   created_at: string;
+  parent_client_id: number | null;
+  contract_vehicle: string | null;
+  parent_company_name: string | null;
 }
 
 const INDUSTRIES = [
@@ -86,6 +89,7 @@ export default function RecruiterClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
+  const [vehicleFilter, setVehicleFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -97,6 +101,8 @@ export default function RecruiterClientsPage() {
     contract_type: "",
     fee_percentage: "",
     notes: "",
+    parent_client_id: "",
+    contract_vehicle: "",
   });
   const [contacts, setContacts] = useState<ContactEntry[]>([{ ...EMPTY_CONTACT }]);
 
@@ -116,6 +122,7 @@ export default function RecruiterClientsPage() {
     try {
       const url = new URL(`${API_BASE}/api/recruiter/clients`);
       if (statusFilter) url.searchParams.set("status", statusFilter);
+      if (vehicleFilter) url.searchParams.set("contract_vehicle", vehicleFilter);
       const res = await fetch(url.toString(), { credentials: "include" });
       if (res.ok) setClients(await res.json());
     } catch {
@@ -126,7 +133,7 @@ export default function RecruiterClientsPage() {
   useEffect(() => {
     setLoading(true);
     fetchClients().finally(() => setLoading(false));
-  }, [statusFilter]);
+  }, [statusFilter, vehicleFilter]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -138,6 +145,8 @@ export default function RecruiterClientsPage() {
     if (form.contract_type) body.contract_type = form.contract_type;
     if (form.fee_percentage) body.fee_percentage = parseFloat(form.fee_percentage);
     if (form.notes) body.notes = form.notes;
+    if (form.parent_client_id) body.parent_client_id = parseInt(form.parent_client_id);
+    if (form.contract_vehicle) body.contract_vehicle = form.contract_vehicle;
 
     const nonEmpty = contacts.filter((c) => c.first_name || c.last_name || c.email || c.phone || c.role);
     if (nonEmpty.length > 0) body.contacts = nonEmpty;
@@ -151,7 +160,7 @@ export default function RecruiterClientsPage() {
       });
       if (res.ok) {
         setShowForm(false);
-        setForm({ company_name: "", industry: "", website: "", contract_type: "", fee_percentage: "", notes: "" });
+        setForm({ company_name: "", industry: "", website: "", contract_type: "", fee_percentage: "", notes: "", parent_client_id: "", contract_vehicle: "" });
         setContacts([{ ...EMPTY_CONTACT }]);
         fetchClients();
       } else {
@@ -252,6 +261,21 @@ export default function RecruiterClientsPage() {
                 <input type="url" value={form.website} onChange={(e) => setForm({ ...form, website: e.target.value })} className={inputCls} />
               </div>
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Parent Client</label>
+                <select value={form.parent_client_id} onChange={(e) => setForm({ ...form, parent_client_id: e.target.value })} className={inputCls}>
+                  <option value="">None (top-level)</option>
+                  {clients.filter(c => !c.parent_client_id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Contract Vehicle</label>
+                <input type="text" value={form.contract_vehicle} onChange={(e) => setForm({ ...form, contract_vehicle: e.target.value })} className={inputCls} placeholder="e.g. DIR-CPO-TMP-445" />
+              </div>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={2} className={inputCls} />
@@ -265,13 +289,32 @@ export default function RecruiterClientsPage() {
       )}
 
       {/* Status filter */}
-      <div className="mb-6 flex flex-wrap gap-2">
+      <div className="mb-4 flex flex-wrap gap-2">
         {["", "active", "inactive", "prospect"].map((s) => (
           <button key={s} onClick={() => setStatusFilter(s)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
             {s || "All"}
           </button>
         ))}
       </div>
+
+      {/* Contract vehicle filter */}
+      {(() => {
+        const vehicles = [...new Set(clients.map(c => c.contract_vehicle).filter(Boolean))] as string[];
+        if (vehicles.length === 0) return null;
+        return (
+          <div className="mb-6 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-slate-500">Contract Vehicle:</span>
+            <button onClick={() => setVehicleFilter("")} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${!vehicleFilter ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"}`}>
+              All
+            </button>
+            {vehicles.map((v) => (
+              <button key={v} onClick={() => setVehicleFilter(v)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${vehicleFilter === v ? "bg-blue-600 text-white" : "bg-blue-50 text-blue-700 hover:bg-blue-100"}`}>
+                {v}
+              </button>
+            ))}
+          </div>
+        );
+      })()}
 
       {loading ? (
         <div className="space-y-4">
@@ -290,14 +333,20 @@ export default function RecruiterClientsPage() {
             const primaryContact = clientContacts[0];
             return (
               <Link key={c.id} href={`/recruiter/clients/${c.id}`}>
-                <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
+                <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${c.parent_client_id ? "ml-8 border-l-4 border-l-slate-300" : ""}`}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
                       <div className="mb-1 flex items-center gap-3">
                         <h3 className="text-lg font-semibold text-slate-900">{c.company_name}</h3>
                         <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLORS[c.status] ?? "bg-slate-100 text-slate-600"}`}>{c.status}</span>
+                        {c.contract_vehicle && (
+                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                            {c.contract_vehicle}
+                          </span>
+                        )}
                       </div>
                       <div className="flex flex-wrap gap-4 text-sm text-slate-500">
+                        {c.parent_company_name && <span className="text-slate-400">Under: {c.parent_company_name}</span>}
                         {c.industry && <span>{c.industry}</span>}
                         {(primaryContact?.first_name || primaryContact?.last_name) && <span>{[primaryContact.first_name, primaryContact.last_name].filter(Boolean).join(" ")}{primaryContact.role ? ` (${primaryContact.role})` : ""}</span>}
                         {clientContacts.length > 1 && <span>+{clientContacts.length - 1} more contact{clientContacts.length > 2 ? "s" : ""}</span>}

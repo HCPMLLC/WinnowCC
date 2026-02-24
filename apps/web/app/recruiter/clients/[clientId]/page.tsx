@@ -64,6 +64,15 @@ interface Client {
   status: string;
   job_count: number;
   created_at: string;
+  parent_client_id: number | null;
+  contract_vehicle: string | null;
+  parent_company_name: string | null;
+}
+
+interface ClientOption {
+  id: number;
+  company_name: string;
+  parent_client_id: number | null;
 }
 
 interface Activity {
@@ -91,6 +100,7 @@ export default function ClientDetailPage() {
   const clientId = params.clientId as string;
 
   const [client, setClient] = useState<Client | null>(null);
+  const [allClients, setAllClients] = useState<ClientOption[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
@@ -102,6 +112,8 @@ export default function ClientDetailPage() {
     fee_percentage: "",
     notes: "",
     status: "",
+    parent_client_id: "",
+    contract_vehicle: "",
   });
   const [contacts, setContacts] = useState<ContactEntry[]>([{ ...EMPTY_CONTACT }]);
 
@@ -122,10 +134,12 @@ export default function ClientDetailPage() {
     Promise.all([
       fetch(`${API_BASE}/api/recruiter/clients/${clientId}`, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
       fetch(`${API_BASE}/api/recruiter/activities?client_id=${clientId}&limit=20`, { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
+      fetch(`${API_BASE}/api/recruiter/clients`, { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([c, acts]) => {
+      .then(([c, acts, allC]) => {
         setClient(c);
         setActivities(acts || []);
+        setAllClients((allC || []).filter((cl: ClientOption) => cl.id !== parseInt(clientId)));
         if (c) {
           setForm({
             company_name: c.company_name || "",
@@ -134,6 +148,8 @@ export default function ClientDetailPage() {
             fee_percentage: c.fee_percentage?.toString() || "",
             notes: c.notes || "",
             status: c.status || "active",
+            parent_client_id: c.parent_client_id?.toString() || "",
+            contract_vehicle: c.contract_vehicle || "",
           });
           const existing = getClientContacts(c);
           setContacts(existing.length > 0 ? existing : [{ ...EMPTY_CONTACT }]);
@@ -152,6 +168,8 @@ export default function ClientDetailPage() {
     if (form.fee_percentage) body.fee_percentage = parseFloat(form.fee_percentage);
     body.notes = form.notes;
     body.status = form.status;
+    body.parent_client_id = form.parent_client_id ? parseInt(form.parent_client_id) : null;
+    body.contract_vehicle = form.contract_vehicle || null;
 
     const nonEmpty = contacts.filter((c) => c.first_name || c.last_name || c.email || c.phone || c.role);
     body.contacts = nonEmpty;
@@ -290,6 +308,21 @@ export default function ClientDetailPage() {
                 </select>
               </div>
             </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Parent Client</label>
+                <select value={form.parent_client_id} onChange={(e) => setForm({ ...form, parent_client_id: e.target.value })} className={inputCls}>
+                  <option value="">None (top-level)</option>
+                  {allClients.filter(c => !c.parent_client_id).map((c) => (
+                    <option key={c.id} value={c.id}>{c.company_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Contract Vehicle</label>
+                <input type="text" value={form.contract_vehicle} onChange={(e) => setForm({ ...form, contract_vehicle: e.target.value })} className={inputCls} placeholder="e.g. DIR-CPO-TMP-445" />
+              </div>
+            </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">Notes</label>
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} rows={3} className={inputCls} />
@@ -302,6 +335,20 @@ export default function ClientDetailPage() {
       ) : (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <h2 className="mb-4 text-lg font-semibold text-slate-900">Client Details</h2>
+          {(client.parent_company_name || client.contract_vehicle) && (
+            <div className="mb-4 flex flex-wrap gap-3">
+              {client.parent_company_name && (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-600">
+                  Parent: {client.parent_company_name}
+                </span>
+              )}
+              {client.contract_vehicle && (
+                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-medium text-blue-700">
+                  {client.contract_vehicle}
+                </span>
+              )}
+            </div>
+          )}
           <div className="grid gap-6 sm:grid-cols-2">
             <div>
               <h3 className="text-sm font-medium text-slate-500">Contacts</h3>

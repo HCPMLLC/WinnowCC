@@ -3,6 +3,8 @@
 Provides aggregated metrics for the user's job search dashboard.
 """
 
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import func, select
@@ -15,9 +17,10 @@ from app.models.job import Job
 from app.models.match import Match
 from app.models.user import User
 from app.services.auth import get_current_user, require_onboarded_user
-from app.services.profile_parser import default_profile_json
 from app.services.matching import MIN_MATCH_SCORE
+from app.services.profile_parser import default_profile_json
 from app.services.profile_scoring import compute_profile_completeness
+from app.services.submission import get_candidate_submissions
 
 router = APIRouter(
     prefix="/api/dashboard",
@@ -77,33 +80,45 @@ def get_dashboard_metrics(
     profile_completeness_score = completeness.score
 
     # Qualified jobs count (matches above minimum score with valid jobs)
-    qualified_jobs_count = session.execute(
-        select(func.count(Match.id))
-        .join(Job, Match.job_id == Job.id)
-        .where(
-            Match.user_id == user.id,
-            Match.match_score >= MIN_MATCH_SCORE,
-        )
-    ).scalar() or 0
+    qualified_jobs_count = (
+        session.execute(
+            select(func.count(Match.id))
+            .join(Job, Match.job_id == Job.id)
+            .where(
+                Match.user_id == user.id,
+                Match.match_score >= MIN_MATCH_SCORE,
+            )
+        ).scalar()
+        or 0
+    )
 
     # Application status counts
-    submitted_applications_count = session.execute(
-        select(func.count(Match.id)).where(
-            Match.user_id == user.id, Match.application_status == "applied"
-        )
-    ).scalar() or 0
+    submitted_applications_count = (
+        session.execute(
+            select(func.count(Match.id)).where(
+                Match.user_id == user.id, Match.application_status == "applied"
+            )
+        ).scalar()
+        or 0
+    )
 
-    interviews_requested_count = session.execute(
-        select(func.count(Match.id)).where(
-            Match.user_id == user.id, Match.application_status == "interviewing"
-        )
-    ).scalar() or 0
+    interviews_requested_count = (
+        session.execute(
+            select(func.count(Match.id)).where(
+                Match.user_id == user.id, Match.application_status == "interviewing"
+            )
+        ).scalar()
+        or 0
+    )
 
-    offers_received_count = session.execute(
-        select(func.count(Match.id)).where(
-            Match.user_id == user.id, Match.application_status == "offer"
-        )
-    ).scalar() or 0
+    offers_received_count = (
+        session.execute(
+            select(func.count(Match.id)).where(
+                Match.user_id == user.id, Match.application_status == "offer"
+            )
+        ).scalar()
+        or 0
+    )
 
     return DashboardMetricsResponse(
         display_name=display_name,
@@ -113,3 +128,80 @@ def get_dashboard_metrics(
         interviews_requested_count=interviews_requested_count,
         offers_received_count=offers_received_count,
     )
+
+
+class CandidateSubmissionItem(BaseModel):
+    """A single submission visible to the candidate."""
+
+    id: int
+    job_title: str | None = None
+    company_name: str | None = None
+    recruiter_company_name: str | None = None
+    submitted_at: datetime | None = None
+    status: str
+
+
+@router.get("/submissions", response_model=list[CandidateSubmissionItem])
+def get_my_submissions(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> list[CandidateSubmissionItem]:
+    """Get recruiter submissions where the current user is the candidate."""
+    from app.services.billing import get_plan_tier, get_tier_limit
+
+    # Find the latest candidate profile for this user
+    profile = (
+        session.execute(
+            select(CandidateProfile)
+            .where(CandidateProfile.user_id == user.id)
+            .order_by(CandidateProfile.version.desc())
+            .limit(1)
+        )
+        .scalars()
+        .first()
+    )
+    if not profile:
+        return []
+
+    # Determine detail level based on candidate tier
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    detail_level = get_tier_limit(tier, "submission_details")
+
+    submissions = get_candidate_submissions(session, profile.id)
+    items: list[CandidateSubmissionItem] = []
+    for sub in submissions:
+        # Resolve job title and company name
+        if sub.employer_job_id and sub.employer_job:
+            job_title = sub.employer_job.title
+            company_name = (
+                sub.employer_job.employer.company_name
+                if sub.employer_job.employer
+                else None
+            )
+        else:
+            job_title = sub.external_job_title
+            company_name = sub.external_company_name
+
+        # Recruiter company visible at standard+ detail level
+        recruiter_company = None
+        if detail_level in ("standard", "full"):
+            recruiter_company = (
+                sub.recruiter_profile.company_name
+                if sub.recruiter_profile
+                else None
+            )
+
+        items.append(
+            CandidateSubmissionItem(
+                id=sub.id,
+                job_title=job_title,
+                company_name=company_name,
+                recruiter_company_name=recruiter_company,
+                submitted_at=sub.submitted_at,
+                status=sub.status,
+            )
+        )
+    return items

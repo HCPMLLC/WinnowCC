@@ -7,14 +7,32 @@ from urllib.parse import urlparse
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
 # Free / consumer email domains that cannot verify company identity.
-FREE_EMAIL_DOMAINS = frozenset({
-    "gmail.com", "googlemail.com", "yahoo.com", "yahoo.co.uk",
-    "hotmail.com", "outlook.com", "live.com", "msn.com",
-    "aol.com", "icloud.com", "me.com", "mac.com",
-    "mail.com", "protonmail.com", "proton.me", "zoho.com",
-    "yandex.com", "gmx.com", "gmx.net", "fastmail.com",
-    "tutanota.com", "hey.com",
-})
+FREE_EMAIL_DOMAINS = frozenset(
+    {
+        "gmail.com",
+        "googlemail.com",
+        "yahoo.com",
+        "yahoo.co.uk",
+        "hotmail.com",
+        "outlook.com",
+        "live.com",
+        "msn.com",
+        "aol.com",
+        "icloud.com",
+        "me.com",
+        "mac.com",
+        "mail.com",
+        "protonmail.com",
+        "proton.me",
+        "zoho.com",
+        "yandex.com",
+        "gmx.com",
+        "gmx.net",
+        "fastmail.com",
+        "tutanota.com",
+        "hey.com",
+    }
+)
 
 
 def _extract_base_domain(url_or_email: str, *, is_email: bool = False) -> str:
@@ -22,7 +40,9 @@ def _extract_base_domain(url_or_email: str, *, is_email: bool = False) -> str:
     if is_email:
         domain = url_or_email.rsplit("@", 1)[-1].lower().strip()
     else:
-        parsed = urlparse(url_or_email if "://" in url_or_email else f"https://{url_or_email}")
+        parsed = urlparse(
+            url_or_email if "://" in url_or_email else f"https://{url_or_email}"
+        )
         domain = (parsed.hostname or "").lower().strip()
     # Strip www prefix
     if domain.startswith("www."):
@@ -32,6 +52,7 @@ def _extract_base_domain(url_or_email: str, *, is_email: bool = False) -> str:
     if len(parts) > 2:
         domain = ".".join(parts[-2:])
     return domain
+
 
 # ============================================================================
 # EMPLOYER PROFILE SCHEMAS
@@ -109,6 +130,10 @@ class EmployerProfileBase(BaseModel):
 class EmployerProfileCreate(EmployerProfileBase):
     """Schema for creating a new employer profile."""
 
+    # Hierarchy & contract vehicle
+    parent_employer_id: int | None = None
+    contract_vehicle: str | None = Field(None, max_length=255)
+
     @model_validator(mode="after")
     def validate_contact_email_domain(self) -> "EmployerProfileCreate":
         email = self.contact_email
@@ -149,6 +174,9 @@ class EmployerProfileUpdate(BaseModel):
     contact_last_name: str | None = Field(None, max_length=100)
     contact_email: EmailStr | None = None
     contact_phone: str | None = Field(None, max_length=50)
+    # Hierarchy & contract vehicle
+    parent_employer_id: int | None = None
+    contract_vehicle: str | None = Field(None, max_length=255)
 
     @field_validator("company_size")
     @classmethod
@@ -179,6 +207,10 @@ class EmployerProfileResponse(EmployerProfileBase):
     trial_ends_at: datetime | None = None
     current_period_start: datetime | None = None
     current_period_end: datetime | None = None
+    # Hierarchy & contract vehicle
+    parent_employer_id: int | None = None
+    contract_vehicle: str | None = None
+    parent_company_name: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

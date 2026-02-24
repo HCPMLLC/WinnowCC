@@ -19,6 +19,15 @@ type DashboardMetrics = {
   offers_received_count: number;
 };
 
+interface RecruiterSubmission {
+  id: number;
+  job_title: string | null;
+  company_name: string | null;
+  recruiter_company_name: string | null;
+  submitted_at: string | null;
+  status: string;
+}
+
 function DashboardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -26,6 +35,7 @@ function DashboardPageContent() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [submissions, setSubmissions] = useState<RecruiterSubmission[]>([]);
 
   useEffect(() => {
     const guard = async () => {
@@ -74,6 +84,12 @@ function DashboardPageContent() {
       }
     };
     void fetchMetrics();
+
+    // Fetch recruiter submissions for this candidate
+    fetch(`${API_BASE}/api/dashboard/submissions`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setSubmissions(data))
+      .catch(() => {});
   }, []);
 
   const getCompletenessColor = (score: number) => {
@@ -277,6 +293,65 @@ function DashboardPageContent() {
             <p className="mt-1 text-sm text-green-600">
               {metrics.offers_received_count === 1 ? "offer" : "offers"} received
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* Recruiter Representations */}
+      {!loading && submissions.length > 0 && (
+        <div className="mt-8">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Recruiter Representations
+          </h2>
+          <p className="mb-3 text-sm text-slate-600">
+            Recruiters have submitted you for the following positions.
+          </p>
+          <div className="space-y-3">
+            {submissions.map((sub) => (
+              <div
+                key={sub.id}
+                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
+              >
+                <div>
+                  <p className="font-medium text-slate-900">
+                    {sub.job_title || "Untitled Position"}
+                    {sub.company_name && (
+                      <span className="ml-1 font-normal text-slate-500">
+                        at {sub.company_name}
+                      </span>
+                    )}
+                  </p>
+                  <p className="mt-0.5 text-sm text-slate-500">
+                    Submitted by{" "}
+                    <span className="font-medium text-slate-700">
+                      {sub.recruiter_company_name || "Unknown Recruiter"}
+                    </span>
+                    {sub.submitted_at && (
+                      <>
+                        {" "}
+                        on{" "}
+                        {new Date(sub.submitted_at).toLocaleDateString()}
+                      </>
+                    )}
+                  </p>
+                </div>
+                <span
+                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                    sub.status === "accepted"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : sub.status === "rejected"
+                        ? "bg-red-100 text-red-800"
+                        : sub.status === "under_review"
+                          ? "bg-amber-100 text-amber-800"
+                          : sub.status === "withdrawn"
+                            ? "bg-slate-100 text-slate-600"
+                            : "bg-blue-100 text-blue-800"
+                  }`}
+                >
+                  {sub.status.replace("_", " ")}
+                </span>
+              </div>
+            ))}
           </div>
         </div>
       )}

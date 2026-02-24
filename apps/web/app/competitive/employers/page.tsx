@@ -148,6 +148,16 @@ const CATEGORIES = [
         winnow: "partial", greenhouse: "full", lever: "full", workable: "partial", bamboohr: "partial",
       },
       {
+        name: "Unified recruiter submission view",
+        tooltip: "See all recruiter submissions for each job in one dashboard \u2014 with first-submission badges and duplicate candidate highlighting.",
+        winnow: "full", greenhouse: "partial", lever: "partial", workable: "none", bamboohr: "none",
+      },
+      {
+        name: "Cross-vendor duplicate detection",
+        tooltip: "Automatically flag when the same candidate is submitted by multiple recruiters, with first-in-first-out tracking.",
+        winnow: "full", greenhouse: "none", lever: "none", workable: "none", bamboohr: "none",
+      },
+      {
         name: "Activity logging & audit trail",
         tooltip: "Complete record of all hiring actions, decisions, and communications per candidate",
         winnow: "full", greenhouse: "full", lever: "full", workable: "full", bamboohr: "full",

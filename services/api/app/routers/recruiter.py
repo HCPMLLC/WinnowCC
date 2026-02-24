@@ -148,7 +148,9 @@ def get_plan_info(
     return {
         "tier": tier,
         "subscription_status": profile.subscription_status,
-        "trial_days_remaining": profile.trial_days_remaining if tier == "trial" else None,
+        "trial_days_remaining": profile.trial_days_remaining
+        if tier == "trial"
+        else None,
         "crm_level": limits.get("client_crm", "basic"),
         "limits": limits,
     }
@@ -198,9 +200,29 @@ def create_client(
     session: Session = Depends(get_session),
 ) -> RecruiterClientResponse:
     """Create a new client company. Solo tier limited to 5 clients."""
-    from app.services.billing import get_recruiter_limit, get_recruiter_tier
+    from app.services.billing import (
+        check_recruiter_feature,
+        get_recruiter_limit,
+        get_recruiter_tier,
+    )
     from app.services.recruiter_service import create_client as svc_create
     from app.services.recruiter_service import get_client_job_count
+
+    # Gate hierarchy and contract vehicle features
+    if data.parent_client_id and not check_recruiter_feature(
+        profile, "client_hierarchy"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client hierarchy requires a Team or Agency plan. Upgrade to organize clients under parent entities.",
+        )
+    if data.contract_vehicle and not check_recruiter_feature(
+        profile, "contract_vehicle_management"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Contract vehicle management requires a Team or Agency plan. Upgrade to classify clients by contract vehicle.",
+        )
 
     tier = get_recruiter_tier(profile)
     client_limit = get_recruiter_limit(tier, "clients")
@@ -233,18 +255,35 @@ def create_client(
 @router.get("/clients", response_model=list[RecruiterClientResponse])
 def list_clients(
     status_filter: str | None = Query(None, alias="status"),
+    contract_vehicle: str | None = Query(None),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> list[RecruiterClientResponse]:
     """List all clients for this recruiter."""
+    from app.services.billing import check_recruiter_feature
     from app.services.recruiter_service import get_client_job_count
     from app.services.recruiter_service import list_clients as svc_list
 
-    clients = svc_list(session, profile, status_filter)
+    if contract_vehicle and not check_recruiter_feature(
+        profile, "contract_vehicle_management"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Contract vehicle filtering requires a Team or Agency plan.",
+        )
+
+    clients = svc_list(
+        session,
+        profile,
+        status_filter,
+        contract_vehicle=contract_vehicle,
+    )
     results = []
     for c in clients:
         resp = RecruiterClientResponse.model_validate(c, from_attributes=True)
         resp.job_count = get_client_job_count(session, c.id)
+        if c.parent_client_id and c.parent:
+            resp.parent_company_name = c.parent.company_name
         results.append(resp)
     return results
 
@@ -277,8 +316,25 @@ def update_client(
     session: Session = Depends(get_session),
 ) -> RecruiterClientResponse:
     """Update a client company."""
+    from app.services.billing import check_recruiter_feature
     from app.services.recruiter_service import get_client_job_count
     from app.services.recruiter_service import update_client as svc_update
+
+    # Gate hierarchy and contract vehicle features
+    if data.parent_client_id is not None and not check_recruiter_feature(
+        profile, "client_hierarchy"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Client hierarchy requires a Team or Agency plan.",
+        )
+    if data.contract_vehicle is not None and not check_recruiter_feature(
+        profile, "contract_vehicle_management"
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Contract vehicle management requires a Team or Agency plan.",
+        )
 
     client = svc_update(
         session, profile, client_id, data.model_dump(exclude_unset=True)
@@ -371,25 +427,36 @@ def list_pipeline(
     from app.services.recruiter_service import resolve_candidate_name
 
     pcs = svc_list(
-        session, profile, stage=stage, job_id=job_id,
-        search=search, limit=limit, offset=offset,
+        session,
+        profile,
+        stage=stage,
+        job_id=job_id,
+        search=search,
+        limit=limit,
+        offset=offset,
     )
     # Batch-load linked profiles to avoid N+1 queries
     cp_ids = [pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id]
     profiles_map: dict[int, dict] = {}
     if cp_ids:
-        cps = session.execute(
-            select(CandidateProfile).where(CandidateProfile.id.in_(cp_ids))
-        ).scalars().all()
+        cps = (
+            session.execute(
+                select(CandidateProfile).where(CandidateProfile.id.in_(cp_ids))
+            )
+            .scalars()
+            .all()
+        )
         for cp in cps:
             pj = cp.profile_json or {}
             basics = pj.get("basics") or {}
             skills_raw = pj.get("skills") or basics.get("top_skills") or []
             skills = [
-                (s if isinstance(s, str) else s.get("name", ""))
-                for s in skills_raw
+                (s if isinstance(s, str) else s.get("name", "")) for s in skills_raw
             ]
-            is_platform = not pj.get("sourced_by_user_id") and pj.get("source") != "linkedin_extension"
+            is_platform = (
+                not pj.get("sourced_by_user_id")
+                and pj.get("source") != "linkedin_extension"
+            )
             # Derive headline from experience if not set
             headline = pj.get("headline") or (basics.get("target_titles") or [None])[0]
             current_company = pj.get("current_company")
@@ -399,7 +466,9 @@ def list_pipeline(
                     if not headline:
                         title = exp[0].get("title") or ""
                         company = exp[0].get("company") or ""
-                        headline = f"{title} at {company}".strip(" at ") if title else company
+                        headline = (
+                            f"{title} at {company}".strip(" at ") if title else company
+                        )
                     if not current_company:
                         current_company = exp[0].get("company")
             profiles_map[cp.id] = {
@@ -457,7 +526,10 @@ async def upload_pipeline_resumes(
 
     # Enforce monthly quota (resets counters if needed)
     check_recruiter_monthly_limit(
-        profile, "resume_imports_used", "resume_imports_per_month", session,
+        profile,
+        "resume_imports_used",
+        "resume_imports_per_month",
+        session,
     )
 
     # Enforce per-batch limit
@@ -590,9 +662,7 @@ async def upload_pipeline_resumes(
 
                 # Check platform users first
                 platform_user = session.execute(
-                    select(User).where(
-                        func.lower(User.email) == parsed_email_lower
-                    )
+                    select(User).where(func.lower(User.email) == parsed_email_lower)
                 ).scalar_one_or_none()
 
                 if platform_user:
@@ -611,8 +681,10 @@ async def upload_pipeline_resumes(
                     # Find or create pipeline entry
                     pipeline_entry = session.execute(
                         select(RecruiterPipelineCandidate).where(
-                            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
-                            func.lower(RecruiterPipelineCandidate.external_email) == parsed_email_lower,
+                            RecruiterPipelineCandidate.recruiter_profile_id
+                            == profile.id,
+                            func.lower(RecruiterPipelineCandidate.external_email)
+                            == parsed_email_lower,
                         )
                     ).scalar_one_or_none()
 
@@ -637,8 +709,10 @@ async def upload_pipeline_resumes(
                     # Check pipeline entries by email
                     pipeline_entry = session.execute(
                         select(RecruiterPipelineCandidate).where(
-                            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
-                            func.lower(RecruiterPipelineCandidate.external_email) == parsed_email_lower,
+                            RecruiterPipelineCandidate.recruiter_profile_id
+                            == profile.id,
+                            func.lower(RecruiterPipelineCandidate.external_email)
+                            == parsed_email_lower,
                         )
                     ).scalar_one_or_none()
 
@@ -770,7 +844,9 @@ def bulk_update_pipeline_stage(
 ) -> dict:
     """Batch-update stage on pipeline candidates owned by this recruiter."""
     from app.schemas.recruiter_crm import ALLOWED_STAGES
-    from app.services.recruiter_service import bulk_update_pipeline_stage as svc_bulk_stage
+    from app.services.recruiter_service import (
+        bulk_update_pipeline_stage as svc_bulk_stage,
+    )
 
     if not ids or len(ids) > 100:
         raise HTTPException(
@@ -799,9 +875,7 @@ def update_pipeline_candidate(
         update_pipeline_candidate as svc_update,
     )
 
-    pc = svc_update(
-        session, profile, candidate_id, data.model_dump(exclude_unset=True)
-    )
+    pc = svc_update(session, profile, candidate_id, data.model_dump(exclude_unset=True))
     if pc is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -994,12 +1068,11 @@ def list_sourced_candidates(
         select(CandidateProfile)
         .where(
             or_(
-                cast(
-                    CandidateProfile.profile_json["sourced_by_user_id"], String
-                ) == str(user.id),
-                cast(
-                    CandidateProfile.profile_json["source"], String
-                ).ilike("%linkedin_extension%"),
+                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
+                == str(user.id),
+                cast(CandidateProfile.profile_json["source"], String).ilike(
+                    "%linkedin_extension%"
+                ),
             )
         )
         .order_by(CandidateProfile.updated_at.desc())
@@ -1036,12 +1109,11 @@ def export_sourced_candidates(
         select(CandidateProfile)
         .where(
             or_(
-                cast(
-                    CandidateProfile.profile_json["sourced_by_user_id"], String
-                ) == str(user.id),
-                cast(
-                    CandidateProfile.profile_json["source"], String
-                ).ilike("%linkedin_extension%"),
+                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
+                == str(user.id),
+                cast(CandidateProfile.profile_json["source"], String).ilike(
+                    "%linkedin_extension%"
+                ),
             )
         )
         .order_by(CandidateProfile.updated_at.desc())
@@ -1088,9 +1160,7 @@ def delete_sourced_candidates(
         )
 
     profiles = (
-        session.execute(
-            select(CandidateProfile).where(CandidateProfile.id.in_(ids))
-        )
+        session.execute(select(CandidateProfile).where(CandidateProfile.id.in_(ids)))
         .scalars()
         .all()
     )
@@ -1166,11 +1236,14 @@ def get_sourced_candidate(
     # Allow if candidate is in recruiter's pipeline
     if not allowed:
         from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+
         in_pipeline = session.execute(
-            select(RecruiterPipelineCandidate.id).where(
+            select(RecruiterPipelineCandidate.id)
+            .where(
                 RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
                 RecruiterPipelineCandidate.candidate_profile_id == candidate_profile_id,
-            ).limit(1)
+            )
+            .limit(1)
         ).scalar_one_or_none()
         allowed = in_pipeline is not None
 
@@ -1178,13 +1251,17 @@ def get_sourced_candidate(
     if not allowed:
         from app.models.recruiter_job_candidate import RecruiterJobCandidate
         from app.models.recruiter_job import RecruiterJob
+
         in_job = session.execute(
             select(RecruiterJobCandidate.id)
-            .join(RecruiterJob, RecruiterJob.id == RecruiterJobCandidate.recruiter_job_id)
+            .join(
+                RecruiterJob, RecruiterJob.id == RecruiterJobCandidate.recruiter_job_id
+            )
             .where(
                 RecruiterJob.recruiter_profile_id == profile.id,
                 RecruiterJobCandidate.candidate_profile_id == candidate_profile_id,
-            ).limit(1)
+            )
+            .limit(1)
         ).scalar_one_or_none()
         allowed = in_job is not None
 
@@ -1299,10 +1376,15 @@ def create_recruiter_job(
                 ),
             )
 
-    job = RecruiterJob(
-        recruiter_profile_id=profile.id, **job_data.model_dump()
-    )
+    job = RecruiterJob(recruiter_profile_id=profile.id, **job_data.model_dump())
     session.add(job)
+    session.flush()
+
+    # Auto-link to employer job by job_id_external
+    from app.services.job_linking import auto_link_recruiter_job
+
+    linked_employer_job = auto_link_recruiter_job(session, job)
+
     session.commit()
     session.refresh(job)
 
@@ -1312,6 +1394,12 @@ def create_recruiter_job(
 
     resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
     resp.matched_candidates_count = 0
+    if linked_employer_job:
+        resp.employer_company_name = (
+            linked_employer_job.employer.company_name
+            if linked_employer_job.employer
+            else None
+        )
     return resp
 
 
@@ -1346,7 +1434,10 @@ async def upload_job_documents(
 
     # Enforce monthly upload limit (resets counters if needed)
     check_recruiter_monthly_limit(
-        profile, "job_uploads_used", "smart_job_parsing_per_month", session,
+        profile,
+        "job_uploads_used",
+        "smart_job_parsing_per_month",
+        session,
     )
 
     batch_limit = _RECRUITER_BATCH_LIMITS.get(tier, 3)
@@ -1444,6 +1535,8 @@ async def upload_job_documents(
                 salary_max=parsed.get("salary_max"),
                 salary_currency=parsed.get("salary_currency") or "USD",
                 department=parsed.get("department"),
+                job_id_external=parsed.get("job_id_external"),
+                job_category=parsed.get("job_category"),
                 application_email=parsed.get("application_email"),
                 application_url=parsed.get("application_url"),
                 start_at=start_at,
@@ -1452,6 +1545,11 @@ async def upload_job_documents(
             )
             session.add(job)
             session.flush()
+
+            # Auto-link to employer job by job_id_external
+            from app.services.job_linking import auto_link_recruiter_job
+
+            auto_link_recruiter_job(session, job)
 
             increment_recruiter_counter(profile, "job_uploads_used", session)
 
@@ -1568,7 +1666,9 @@ def bulk_delete_recruiter_jobs(
 
                 get_queue().enqueue(deactivate_recruiter_job_proxy, job.id)
             except Exception:
-                logger.debug("Failed to enqueue deactivate for recruiter job %s", job.id)
+                logger.debug(
+                    "Failed to enqueue deactivate for recruiter job %s", job.id
+                )
 
         session.delete(job)
         deleted += 1
@@ -1605,6 +1705,9 @@ def get_recruiter_job(
     )
     resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
     resp.matched_candidates_count = count
+    if job.employer_job_id and job.employer_job:
+        ej = job.employer_job
+        resp.employer_company_name = ej.employer.company_name if ej.employer else None
     return resp
 
 
@@ -1697,7 +1800,14 @@ def update_recruiter_job(
     if new_status == "active" and not job.posted_at:
         update_data["posted_at"] = datetime.now(UTC)
 
-    content_fields = {"title", "description", "requirements", "salary_min", "salary_max", "location"}
+    content_fields = {
+        "title",
+        "description",
+        "requirements",
+        "salary_min",
+        "salary_max",
+        "location",
+    }
     content_changed = bool(update_data.keys() & content_fields)
 
     for field, value in update_data.items():
@@ -1820,12 +1930,16 @@ def get_recruiter_job_candidates(
     cached_cp_ids = [c.candidate_profile_id for c in cached]
     pipeline_ids: set[int] = set()
     if cached_cp_ids:
-        rows = session.execute(
-            select(RecruiterPipelineCandidate.candidate_profile_id).where(
-                RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
-                RecruiterPipelineCandidate.candidate_profile_id.in_(cached_cp_ids),
+        rows = (
+            session.execute(
+                select(RecruiterPipelineCandidate.candidate_profile_id).where(
+                    RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+                    RecruiterPipelineCandidate.candidate_profile_id.in_(cached_cp_ids),
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         pipeline_ids = set(rows)
 
     candidates = []
@@ -1884,9 +1998,7 @@ def refresh_recruiter_job_candidates(
 
         db = get_session_factory()()
         try:
-            rj = db.execute(
-                select(RJ).where(RJ.id == the_job_id)
-            ).scalar_one_or_none()
+            rj = db.execute(select(RJ).where(RJ.id == the_job_id)).scalar_one_or_none()
             if not rj:
                 yield f"data: {_json.dumps({'percent': 100, 'phase': 'error', 'message': 'Job not found'})}\n\n"
                 return
@@ -1902,23 +2014,26 @@ def refresh_recruiter_job_candidates(
                 .where(CandidateProfile.user_id.is_not(None))
                 .group_by(CandidateProfile.user_id)
             ).subquery()
-            total_profiles = db.execute(
-                select(func.count()).select_from(
-                    select(CandidateProfile.id)
-                    .join(
-                        latest_sub,
-                        (CandidateProfile.user_id == latest_sub.c.user_id)
-                        & (CandidateProfile.version == latest_sub.c.max_version),
+            total_profiles = (
+                db.execute(
+                    select(func.count()).select_from(
+                        select(CandidateProfile.id)
+                        .join(
+                            latest_sub,
+                            (CandidateProfile.user_id == latest_sub.c.user_id)
+                            & (CandidateProfile.version == latest_sub.c.max_version),
+                        )
+                        .where(
+                            CandidateProfile.open_to_opportunities == True,  # noqa: E712
+                            CandidateProfile.profile_visibility.in_(
+                                ["public", "anonymous"]
+                            ),
+                        )
+                        .subquery()
                     )
-                    .where(
-                        CandidateProfile.open_to_opportunities == True,  # noqa: E712
-                        CandidateProfile.profile_visibility.in_(
-                            ["public", "anonymous"]
-                        ),
-                    )
-                    .subquery()
-                )
-            ).scalar() or 0
+                ).scalar()
+                or 0
+            )
 
             yield f"data: {_json.dumps({'percent': 10, 'phase': 'scoring', 'message': f'Scoring {total_profiles} candidates...'})}\n\n"
 
@@ -1930,9 +2045,7 @@ def refresh_recruiter_job_candidates(
             # Delete old cached rows
             from sqlalchemy import delete as sa_delete
 
-            db.execute(
-                sa_delete(RJC).where(RJC.recruiter_job_id == the_job_id)
-            )
+            db.execute(sa_delete(RJC).where(RJC.recruiter_job_id == the_job_id))
 
             inserted = 0
             for r in results:
@@ -2043,7 +2156,10 @@ def generate_brief(
 
     try:
         check_recruiter_monthly_limit(
-            profile, "candidate_briefs_used", "candidate_briefs_per_month", session,
+            profile,
+            "candidate_briefs_used",
+            "candidate_briefs_per_month",
+            session,
         )
 
         if brief_type not in ("general", "job_specific", "submittal"):
@@ -2096,7 +2212,10 @@ def salary_lookup(
     from app.services.career_intelligence import salary_intelligence
 
     check_recruiter_monthly_limit(
-        profile, "salary_lookups_used", "salary_lookups_per_month", session,
+        profile,
+        "salary_lookups_used",
+        "salary_lookups_per_month",
+        session,
     )
 
     result = salary_intelligence(role_title=role, location=location, db=session)
@@ -2114,7 +2233,8 @@ def career_trajectory(
     from app.services.career_intelligence import predict_career_trajectory
 
     return predict_career_trajectory(
-        candidate_profile_id=candidate_profile_id, db=session,
+        candidate_profile_id=candidate_profile_id,
+        db=session,
     )
 
 
@@ -2363,7 +2483,11 @@ def get_introduction_usage(
     session: Session = Depends(get_session),
 ):
     """Get recruiter's introduction request usage for the current billing period."""
-    from app.services.billing import get_recruiter_limit, get_recruiter_tier, _maybe_reset_recruiter_counters
+    from app.services.billing import (
+        get_recruiter_limit,
+        get_recruiter_tier,
+        _maybe_reset_recruiter_counters,
+    )
 
     profile = get_recruiter_profile(user, session)
     _maybe_reset_recruiter_counters(profile, session)
@@ -2375,3 +2499,234 @@ def get_introduction_usage(
         "tier": tier,
     }
 
+
+# ============================================================================
+# CROSS-SEGMENT JOB LINKING
+# ============================================================================
+
+
+@router.patch("/jobs/{job_id}/link-employer-job")
+def link_employer_job(
+    job_id: int,
+    employer_job_id: int | None = Query(None),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Manually link or unlink a recruiter job to/from an employer job."""
+    from app.services.job_linking import manual_link_recruiter_job
+
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    try:
+        manual_link_recruiter_job(session, job, employer_job_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    session.commit()
+    return {
+        "message": "linked" if employer_job_id else "unlinked",
+        "employer_job_id": employer_job_id,
+    }
+
+
+# ============================================================================
+# CANDIDATE SUBMISSIONS
+# ============================================================================
+
+
+@router.post(
+    "/submissions",
+    response_model=dict,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_submission(
+    data: dict,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Submit a candidate to an employer job."""
+    from app.schemas.submission import CandidateSubmissionCreate
+    from app.services.submission import submit_candidate
+
+    body = CandidateSubmissionCreate(**data)
+
+    try:
+        submission, is_first = submit_candidate(
+            session,
+            recruiter_profile_id=profile.id,
+            recruiter_job_id=body.recruiter_job_id,
+            candidate_profile_id=body.candidate_profile_id,
+            pipeline_candidate_id=body.pipeline_candidate_id,
+        )
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    session.commit()
+    session.refresh(submission)
+
+    return {
+        "id": submission.id,
+        "recruiter_job_id": submission.recruiter_job_id,
+        "candidate_profile_id": submission.candidate_profile_id,
+        "employer_job_id": submission.employer_job_id,
+        "is_first_submission": is_first,
+        "status": submission.status,
+        "submitted_at": submission.submitted_at.isoformat()
+        if submission.submitted_at
+        else None,
+    }
+
+
+@router.get("/submissions")
+def list_submissions(
+    job_id: int | None = Query(None),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> list[dict]:
+    """List submissions by this recruiter."""
+    from app.services.submission import get_submissions_by_recruiter
+
+    subs = get_submissions_by_recruiter(session, profile.id, recruiter_job_id=job_id)
+    results = []
+    for s in subs:
+        job_title = None
+        if s.employer_job_id and s.employer_job:
+            job_title = s.employer_job.title
+        elif s.external_job_title:
+            job_title = s.external_job_title
+        else:
+            job_title = s.recruiter_job.title if s.recruiter_job else None
+
+        candidate_name = _resolve_submission_candidate_name(session, s)
+
+        results.append(
+            {
+                "id": s.id,
+                "recruiter_job_id": s.recruiter_job_id,
+                "employer_job_id": s.employer_job_id,
+                "candidate_profile_id": s.candidate_profile_id,
+                "candidate_name": candidate_name,
+                "job_title": job_title,
+                "status": s.status,
+                "is_first_submission": s.is_first_submission,
+                "submitted_at": s.submitted_at.isoformat() if s.submitted_at else None,
+                "employer_notes": s.employer_notes,
+            }
+        )
+    return results
+
+
+@router.get("/jobs/{job_id}/submission-check/{candidate_id}")
+def check_submission(
+    job_id: int,
+    candidate_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Pre-submit check: is this candidate already submitted for this job?"""
+    from app.services.billing import check_recruiter_feature
+    from app.services.submission import (
+        check_candidate_submitted,
+        check_own_submissions,
+    )
+
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    # Solo tier: only check own submissions (no cross-vendor intelligence)
+    if not check_recruiter_feature(profile, "cross_vendor_duplicate_check"):
+        own = check_own_submissions(session, profile.id, job.id, candidate_id)
+        return {
+            "already_submitted": bool(own),
+            "submission_count": len(own),
+            "first_submitted_at": own[0].submitted_at.isoformat()
+            if own and own[0].submitted_at
+            else None,
+            "first_submitted_by": "you" if own else None,
+            "upgrade_for_cross_vendor": True,
+        }
+
+    existing = check_candidate_submitted(session, job.employer_job_id, candidate_id)
+    if not existing:
+        return {
+            "already_submitted": False,
+            "submission_count": 0,
+            "first_submitted_at": None,
+            "first_submitted_by": None,
+        }
+
+    first = existing[0]
+    # Redact vendor name for other recruiters
+    if first.recruiter_profile_id == profile.id:
+        submitted_by = "you"
+    else:
+        submitted_by = "another vendor"
+
+    return {
+        "already_submitted": True,
+        "submission_count": len(existing),
+        "first_submitted_at": first.submitted_at.isoformat()
+        if first.submitted_at
+        else None,
+        "first_submitted_by": submitted_by,
+    }
+
+
+@router.delete("/submissions/{submission_id}", status_code=status.HTTP_204_NO_CONTENT)
+def withdraw_submission(
+    submission_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> None:
+    """Withdraw a submission (recruiter can only withdraw their own)."""
+    from app.models.candidate_submission import CandidateSubmission
+
+    sub = session.execute(
+        select(CandidateSubmission).where(
+            CandidateSubmission.id == submission_id,
+            CandidateSubmission.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Submission not found.",
+        )
+    sub.status = "withdrawn"
+    session.commit()
+
+
+def _resolve_submission_candidate_name(session: Session, submission) -> str:
+    """Resolve candidate name for a submission."""
+    if submission.candidate_profile_id:
+        cp = session.get(CandidateProfile, submission.candidate_profile_id)
+        if cp:
+            pj = cp.profile_json or {}
+            basics = pj.get("basics") or {}
+            first = basics.get("first_name", "")
+            last = basics.get("last_name", "")
+            name = basics.get("name") or f"{first} {last}".strip()
+            if name:
+                return name
+    return f"Candidate #{submission.candidate_profile_id}"

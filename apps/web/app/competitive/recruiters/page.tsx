@@ -158,6 +158,21 @@ const CATEGORIES = [
         winnow: "full", recruitcrm: "full", catsone: "full", bullhorn: "full", zoho: "full",
       },
       {
+        name: "Cross-segment employer job linking",
+        tooltip: "Recruiter jobs auto-link to employer postings via solicitation numbers, enabling cross-vendor visibility and first-submission tracking.",
+        winnow: "full", recruitcrm: "none", catsone: "none", bullhorn: "none", zoho: "none",
+      },
+      {
+        name: "Duplicate submission warnings",
+        tooltip: "Get warned before submitting a candidate another vendor has already sent to the same employer job.",
+        winnow: "full", recruitcrm: "none", catsone: "none", bullhorn: "none", zoho: "none",
+      },
+      {
+        name: "Contract vehicle & client hierarchy",
+        tooltip: "Organize clients under parent entities and contract vehicles (e.g., DIR, GSA). Filter pipeline by contract vehicle.",
+        winnow: "full", recruitcrm: "none", catsone: "none", bullhorn: "partial", zoho: "none",
+      },
+      {
         name: "Activity logging & notes",
         tooltip: "Record all interactions, notes, and activities on candidate and job records",
         winnow: "full", recruitcrm: "full", catsone: "full", bullhorn: "full", zoho: "full",
