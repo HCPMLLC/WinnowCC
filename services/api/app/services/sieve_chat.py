@@ -2389,6 +2389,7 @@ ADMIN PAGE DIRECTORY (always link to these with markdown):
 - [Recruiters]({frontend_url}/admin/recruiters) — recruiter management
 - [Jobs]({frontend_url}/admin/jobs) — job listing management
 - [Job Quality]({frontend_url}/admin/job-quality) — fraud scores, quality review
+- [Scheduler Control]({frontend_url}/admin/support/scheduler) — ingestion config, trigger runs, run history
 
 ADMIN API ACTION CATALOG (reference these when recommending fixes):
 - POST /admin/retry-queue/{{queue_name}} — retry all failed jobs in a queue (use for transient errors)
@@ -2400,6 +2401,7 @@ ADMIN API ACTION CATALOG (reference these when recommending fixes):
 - POST /admin/jobs/reparse-all — reparse all jobs
 - POST /admin/jobs/{{job_id}}/fraud-override — override fraud score for a job
 - POST /admin/embeddings/backfill — backfill missing embeddings
+- POST /admin/scheduler/trigger — manually trigger a job ingestion run
 
 PLATFORM SNAPSHOT:
 - Total users: {total_users}
