@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cd:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(python3:*)",
+      "Bash(grep ^MIN_MATCH_SCORE\\\\|^MIN_MATCH_SCORE =:*)",
+      "Bash(tasklist:*)",
+      "Bash(powershell:*)",
+      "Bash(sleep 3:*)",
+      "Bash(sleep 2:*)",
+      "Bash(sleep 5:*)",
+      "Bash(sleep 8:*)",
+      "Bash(curl:*)",
+      "Bash(echo gcloud not found:*)",
+      "Bash(nslookup:*)",
+      "Bash(\"/c/Users/ronle/AppData/Local/Google/Cloud SDK/google-cloud-sdk/bin/gcloud\" run:*)",
+      "Bash(head:*)",
+      "Bash(gcloud run:*)",
+      "Bash(gcloud logging:*)",
+      "Bash(python:*)",
+      "Bash(git:*)",
+      "Bash(test:*)",
+      "Bash(tail:*)",
+      "mcp__ide__getDiagnostics",
+      "Bash(cd /c/Users/ronle/Documents/resumematch/services/api && .venv/Scripts/python -m pytest tests/test_profile_parser.py -q --tb=short 2>&1)",
+      "Bash(gcloud config:*)",
+      "Bash(cd /c/Users/ronle/Documents/resumematch/services/api && .venv/Scripts/python.exe -c \"\nfrom app.services.gs_mapper import format_gs_posting, map_salary_to_gs_grade\nprint\\('gs_mapper: OK'\\)\nfrom app.services.job_bias_scanner import scan_job_for_bias\nprint\\('job_bias_scanner: OK'\\)\nfrom app.services.job_deduplicator import _text_similarity\nprint\\('job_deduplicator: OK'\\)\nfrom app.services.posting_validator import validate_posting\nprint\\('posting_validator: OK'\\)\n\" 2>&1)"
+    ]
+  }
+}
