@@ -430,6 +430,45 @@ def reparse_candidate_resume(
     }
 
 
+@router.post("/profiles/{profile_id}/reparse")
+def reparse_candidate_profile(
+    profile_id: int,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """Re-parse a candidate profile by ID with LLM (works for recruiter-sourced profiles)."""
+    cp = session.get(CandidateProfile, profile_id)
+    if cp is None:
+        raise HTTPException(status_code=404, detail="CandidateProfile not found.")
+
+    if not cp.resume_document_id:
+        raise HTTPException(status_code=400, detail="No resume document linked to this profile.")
+
+    resume = session.get(ResumeDocument, cp.resume_document_id)
+    if resume is None:
+        raise HTTPException(status_code=404, detail="ResumeDocument not found.")
+
+    from app.services.queue import get_queue
+    from app.services.recruiter_llm_reparse import recruiter_llm_reparse_job
+
+    cp.llm_parse_status = "pending"
+    session.commit()
+
+    get_queue().enqueue(
+        recruiter_llm_reparse_job,
+        cp.id,
+        resume.id,
+        job_timeout="10m",
+    )
+
+    return {
+        "status": "queued",
+        "candidate_profile_id": cp.id,
+        "resume_document_id": resume.id,
+        "resume_path": resume.path,
+    }
+
+
 @router.patch("/{user_id}/role", response_model=AdminUserRoleResponse)
 def update_user_role(
     user_id: int,
