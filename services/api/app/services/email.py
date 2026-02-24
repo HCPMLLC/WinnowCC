@@ -8,7 +8,7 @@ import resend
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <noreply@winnow.careers>").strip()
+RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <noreply@winnowcc.ai>").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 

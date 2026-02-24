@@ -87,10 +87,8 @@ export default function DashboardScreen() {
       <Text style={styles.greeting}>
         Welcome back
         {metrics?.display_name
-          ? `, ${metrics.display_name}`
-          : email
-            ? `, ${email.split("@")[0]}`
-            : ""}
+          ? `, ${metrics.display_name.split(" ")[0]}`
+          : ""}
       </Text>
 
       <View style={styles.grid}>
