@@ -98,7 +98,7 @@ export default function EmployerDashboardScreen() {
       }
     >
       <Text style={styles.greeting}>
-        Welcome{email ? `, ${email.split("@")[0]}` : ""}
+        Welcome
       </Text>
 
       {/* Role switcher for "both" users */}

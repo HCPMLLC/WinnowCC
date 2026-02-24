@@ -85,7 +85,7 @@ export default function RecruiterDashboardScreen() {
       }
     >
       <Text style={styles.greeting}>
-        Welcome{email ? `, ${email.split("@")[0]}` : ""}
+        Welcome{profile?.company_name ? `, ${profile.company_name}` : ""}
       </Text>
 
       {/* Trial banner */}
