@@ -229,7 +229,36 @@ class TestGetRecruiterTier:
         profile.subscription_tier = None
         profile.subscription_status = None
         profile.is_trial_active = False
+        profile.billing_exempt = False
         assert billing_service.get_recruiter_tier(profile) == "trial"
+
+    def test_billing_exempt_returns_stored_tier(self, session):
+        """billing_exempt=True with canceled status still returns stored tier."""
+        user = _create_recruiter_user(session)
+        profile = _create_recruiter_profile(
+            session, user, tier="agency", sub_status="canceled",
+        )
+        profile.billing_exempt = True
+        session.flush()
+        assert billing_service.get_recruiter_tier(profile) == "agency"
+
+    def test_billing_exempt_with_no_subscription_status(self, session):
+        """billing_exempt=True with None status returns stored tier."""
+        user = _create_recruiter_user(session)
+        profile = _create_recruiter_profile(
+            session, user, tier="agency", sub_status=None,
+        )
+        profile.billing_exempt = True
+        session.flush()
+        assert billing_service.get_recruiter_tier(profile) == "agency"
+
+    def test_admin_override_null_status_returns_tier(self, session):
+        """subscription_status=None returns stored tier (admin override)."""
+        user = _create_recruiter_user(session)
+        profile = _create_recruiter_profile(
+            session, user, tier="agency", sub_status=None,
+        )
+        assert billing_service.get_recruiter_tier(profile) == "agency"
 
 
 class TestGetRecruiterLimit:

@@ -13,6 +13,7 @@ type Recruiter = {
   subscription_tier: string;
   subscription_status: string | null;
   billing_interval: string | null;
+  billing_exempt: boolean;
   seats_purchased: number;
   seats_used: number;
   is_trial_active: boolean;
@@ -98,6 +99,7 @@ export default function AdminRecruitersPage() {
   // Tier override modal
   const [overrideTarget, setOverrideTarget] = useState<Recruiter | null>(null);
   const [overrideTier, setOverrideTier] = useState("trial");
+  const [overrideBillingExempt, setOverrideBillingExempt] = useState(false);
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
 
   const loadRecruiters = async () => {
@@ -235,6 +237,7 @@ export default function AdminRecruitersPage() {
           body: JSON.stringify({
             subscription_tier: overrideTier,
             subscription_status: null,
+            billing_exempt: overrideBillingExempt,
           }),
         }
       );
@@ -379,9 +382,15 @@ export default function AdminRecruitersPage() {
                       e.stopPropagation();
                       setOverrideTarget(rec);
                       setOverrideTier(rec.subscription_tier);
+                      setOverrideBillingExempt(rec.billing_exempt);
                     }}
                   >
                     <TierBadge tier={rec.subscription_tier} />
+                    {rec.billing_exempt && (
+                      <span className="ml-1 rounded-full border border-violet-200 bg-violet-100 px-2 py-0.5 text-xs font-medium text-violet-700">
+                        exempt
+                      </span>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-sm text-slate-600">
                     {rec.seats_used}/{rec.seats_purchased}
@@ -537,6 +546,21 @@ export default function AdminRecruitersPage() {
                 <option value="team">Team</option>
                 <option value="agency">Agency</option>
               </select>
+            </div>
+            <div className="mb-4 flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="billing-exempt"
+                checked={overrideBillingExempt}
+                onChange={(e) => setOverrideBillingExempt(e.target.checked)}
+                className="rounded border-slate-300"
+              />
+              <label
+                htmlFor="billing-exempt"
+                className="text-sm font-medium text-slate-700"
+              >
+                Billing exempt (immune to Stripe webhook changes)
+              </label>
             </div>
             <div className="flex justify-end gap-3">
               <button
