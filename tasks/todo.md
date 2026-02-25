@@ -38,3 +38,47 @@
 - `services/api/app/services/sieve_chat.py` — 1 query site filtered
 - `services/api/app/services/recruiter_llm_reparse.py` — 1 post-fetch check
 - `services/api/app/services/resume_parse_job.py` — 1 post-fetch check
+
+---
+
+# MFA OTP Verification — Mobile App
+
+## Summary
+
+Added MFA (OTP verification) support to the Expo mobile app. Previously, MFA-enabled accounts (employers, recruiters, "both" roles) could not log in on mobile — the app threw a generic error. Now the app presents a 6-digit OTP verification screen matching the web app's existing flow.
+
+## Implementation
+
+- [x] Extend `AuthContextType` with `verifyOtp`, `resendOtp`, `mfaPendingEmail`, `cancelMfa`
+- [x] Modify `login()` to return `{ requiresMfa: boolean }` instead of throwing on MFA
+- [x] Add MFA state (`mfaPendingEmail`, `mfaPendingPassword`) and callbacks to root layout
+- [x] Register `verify-otp` screen in auth stack layout
+- [x] Update login screen to navigate to OTP screen when MFA required
+- [x] Create `verify-otp.tsx` screen (6-digit input, verify, resend, back to sign in)
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `apps/mobile/lib/auth.ts` | Extended `AuthContextType` interface with MFA methods and fields |
+| `apps/mobile/app/_layout.tsx` | Added MFA state, `verifyOtp`/`resendOtp`/`cancelMfa` callbacks, updated provider |
+| `apps/mobile/app/(auth)/_layout.tsx` | Registered `verify-otp` screen in auth stack |
+| `apps/mobile/app/(auth)/login.tsx` | Added `useRouter`, check `login()` return for MFA navigation |
+| `apps/mobile/app/(auth)/verify-otp.tsx` | **New file** — OTP verification screen |
+
+## Test Results (2026-02-25)
+
+| Test | Result |
+|------|--------|
+| Metro bundle — root layout (701 modules) | Pass |
+| Metro bundle — login screen (630 modules) | Pass |
+| Metro bundle — verify-otp screen (672 modules) | Pass |
+| MFA login (`rlevi@hcpm.llc`) returns `requires_mfa: true` | Pass |
+| verify-otp with wrong code → 401 "Invalid code." | Pass |
+| resend-otp → 200 `{"status":"sent"}` | Pass |
+| resend-otp with wrong password → 401 "Invalid email or password." | Pass |
+| TypeScript `tsc --noEmit` — no new errors (4 pre-existing unrelated) | Pass |
+
+## Commit
+
+- `5cf4b4c` — Add MFA OTP verification flow to mobile app
