@@ -367,7 +367,8 @@ ALLOWED_ROLES = {"candidate", "employer", "recruiter", "both", "admin"}
 
 class AdminSetRoleRequest(BaseModel):
     email: EmailStr
-    role: str
+    role: str | None = None
+    is_admin: bool | None = None
 
 
 @router.post("/admin-set-role")
@@ -376,12 +377,12 @@ def admin_set_role(
     x_admin_token: str | None = Header(None),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Update a user's role. Requires ADMIN_TOKEN header."""
+    """Update a user's role and/or admin flag. Requires ADMIN_TOKEN header."""
     admin_token = os.getenv("ADMIN_TOKEN", "")
     if not admin_token or not x_admin_token or x_admin_token != admin_token:
         raise HTTPException(status_code=403, detail="Admin access required.")
 
-    if payload.role not in ALLOWED_ROLES:
+    if payload.role is not None and payload.role not in ALLOWED_ROLES:
         raise HTTPException(
             status_code=422,
             detail=f"Invalid role. Must be one of: {', '.join(sorted(ALLOWED_ROLES))}",
@@ -392,9 +393,12 @@ def admin_set_role(
     ).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=404, detail="User not found.")
-    user.role = payload.role
+    if payload.role is not None:
+        user.role = payload.role
+    if payload.is_admin is not None:
+        user.is_admin = payload.is_admin
     session.commit()
-    return {"status": "ok", "email": user.email, "role": user.role}
+    return {"status": "ok", "email": user.email, "role": user.role, "is_admin": user.is_admin}
 
 
 @router.post("/oauth/callback", response_model=MeResponse)
