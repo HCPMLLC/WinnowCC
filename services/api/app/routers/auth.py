@@ -395,6 +395,7 @@ def admin_set_role(
         raise HTTPException(status_code=404, detail="User not found.")
     if payload.role is not None:
         user.role = payload.role
+        user.mfa_required = payload.role in ("employer", "recruiter", "both")
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
     session.commit()
