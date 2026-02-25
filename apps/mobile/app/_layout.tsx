@@ -28,6 +28,9 @@ export default function RootLayout() {
     isLoading: true,
   });
 
+  const [mfaPendingEmail, setMfaPendingEmail] = useState<string | null>(null);
+  const [mfaPendingPassword, setMfaPendingPassword] = useState<string | null>(null);
+
   const router = useRouter();
   const segments = useSegments();
 
@@ -117,7 +120,7 @@ export default function RootLayout() {
     }
   }, [authState.isAuthenticated, authState.isLoading, authState.onboardingComplete, segments, router]);
 
-  const login = useCallback(async (email: string, password: string) => {
+  const login = useCallback(async (email: string, password: string): Promise<{ requiresMfa: boolean }> => {
     const res = await fetch(`${API_BASE}/api/auth/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -130,6 +133,17 @@ export default function RootLayout() {
     }
 
     const data = await res.json();
+
+    if (data.requires_mfa) {
+      setMfaPendingEmail(email);
+      setMfaPendingPassword(password);
+      return { requiresMfa: true };
+    }
+
+    if (!data.token) {
+      throw new Error("Login failed — no token received.");
+    }
+
     await saveToken(data.token);
     setAuthState({
       token: data.token,
@@ -140,6 +154,7 @@ export default function RootLayout() {
       isAuthenticated: true,
       isLoading: false,
     });
+    return { requiresMfa: false };
   }, []);
 
   const signup = useCallback(
@@ -196,6 +211,58 @@ export default function RootLayout() {
     });
   }, []);
 
+  const verifyOtp = useCallback(async (otpCode: string) => {
+    const res = await fetch(`${API_BASE}/api/auth/verify-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: mfaPendingEmail, otp_code: otpCode }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      let detail = "Verification failed.";
+      try { detail = JSON.parse(body).detail || detail; } catch {}
+      throw new Error(detail);
+    }
+
+    const data = await res.json();
+    setMfaPendingEmail(null);
+    setMfaPendingPassword(null);
+
+    if (data.token) {
+      await saveToken(data.token);
+    }
+    setAuthState({
+      token: data.token,
+      userId: data.user_id,
+      email: data.email,
+      role: data.role || "candidate",
+      onboardingComplete: !!data.onboarding_complete,
+      isAuthenticated: true,
+      isLoading: false,
+    });
+  }, [mfaPendingEmail]);
+
+  const resendOtp = useCallback(async () => {
+    const res = await fetch(`${API_BASE}/api/auth/resend-otp`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: mfaPendingEmail, password: mfaPendingPassword }),
+    });
+
+    if (!res.ok) {
+      const body = await res.text();
+      let detail = "Could not resend code.";
+      try { detail = JSON.parse(body).detail || detail; } catch {}
+      throw new Error(detail);
+    }
+  }, [mfaPendingEmail, mfaPendingPassword]);
+
+  const cancelMfa = useCallback(() => {
+    setMfaPendingEmail(null);
+    setMfaPendingPassword(null);
+  }, []);
+
   console.log("[RootLayout] Render — isLoading:", authState.isLoading, "isAuth:", authState.isAuthenticated);
 
   if (authState.isLoading) {
@@ -215,7 +282,7 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete }}>
+    <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete, verifyOtp, resendOtp, mfaPendingEmail, cancelMfa }}>
       <StatusBar style="light" />
       <Stack
         screenOptions={{

@@ -10,12 +10,13 @@ import {
   Platform,
   Alert,
 } from "react-native";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import { useAuth } from "../../lib/auth";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 export default function LoginScreen() {
   const { login } = useAuth();
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -24,7 +25,10 @@ export default function LoginScreen() {
     if (!email.trim() || !password) return;
     setLoading(true);
     try {
-      await login(email.trim().toLowerCase(), password);
+      const result = await login(email.trim().toLowerCase(), password);
+      if (result.requiresMfa) {
+        router.push("/(auth)/verify-otp");
+      }
     } catch (err: any) {
       Alert.alert(
         "Login Failed",

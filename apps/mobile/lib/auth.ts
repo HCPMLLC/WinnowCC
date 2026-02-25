@@ -14,10 +14,14 @@ export interface AuthState {
 }
 
 export interface AuthContextType extends AuthState {
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<{ requiresMfa: boolean }>;
   signup: (email: string, password: string, role?: string) => Promise<void>;
   logout: () => Promise<void>;
   markOnboardingComplete: () => void;
+  verifyOtp: (otpCode: string) => Promise<void>;
+  resendOtp: () => Promise<void>;
+  mfaPendingEmail: string | null;
+  cancelMfa: () => void;
 }
 
 export const AuthContext = createContext<AuthContextType | null>(null);
