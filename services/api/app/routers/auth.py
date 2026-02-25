@@ -4,6 +4,7 @@ import logging
 import os
 from datetime import datetime, timedelta, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
@@ -27,6 +28,10 @@ from app.services.email import send_mfa_otp_email, send_password_reset_email
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
+
+AUTH0_DOMAIN = os.getenv("AUTH0_DOMAIN", "")
+AUTH0_CLIENT_ID = os.getenv("AUTH0_CLIENT_ID", "")
+AUTH0_CLIENT_SECRET = os.getenv("AUTH0_CLIENT_SECRET", "")
 
 MFA_OTP_TTL_MINUTES = 10
 MFA_MAX_ATTEMPTS = 5
@@ -67,6 +72,11 @@ class VerifyOtpRequest(BaseModel):
 class ResendOtpRequest(BaseModel):
     email: EmailStr
     password: str
+
+
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    redirect_uri: str
 
 
 class ForgotPasswordRequest(BaseModel):
@@ -385,6 +395,74 @@ def admin_set_role(
     user.role = payload.role
     session.commit()
     return {"status": "ok", "email": user.email, "role": user.role}
+
+
+@router.post("/oauth/callback", response_model=MeResponse)
+async def oauth_callback(
+    payload: OAuthCallbackRequest,
+    response: Response,
+    session: Session = Depends(get_session),
+) -> MeResponse:
+    """Exchange an Auth0 authorization code for a session."""
+    if not AUTH0_DOMAIN or not AUTH0_CLIENT_ID or not AUTH0_CLIENT_SECRET:
+        raise HTTPException(
+            status_code=503, detail="OAuth is not configured on this server."
+        )
+
+    # Exchange authorization code for access token
+    token_url = f"https://{AUTH0_DOMAIN}/oauth/token"
+    async with httpx.AsyncClient() as http:
+        token_resp = await http.post(
+            token_url,
+            json={
+                "grant_type": "authorization_code",
+                "client_id": AUTH0_CLIENT_ID,
+                "client_secret": AUTH0_CLIENT_SECRET,
+                "code": payload.code,
+                "redirect_uri": payload.redirect_uri,
+            },
+        )
+        if token_resp.status_code != 200:
+            raise HTTPException(status_code=401, detail="OAuth token exchange failed.")
+
+        access_token = token_resp.json().get("access_token")
+
+        # Fetch user info
+        userinfo_resp = await http.get(
+            f"https://{AUTH0_DOMAIN}/userinfo",
+            headers={"Authorization": f"Bearer {access_token}"},
+        )
+
+    userinfo = userinfo_resp.json()
+    email = userinfo.get("email")
+    if not email:
+        raise HTTPException(
+            status_code=400, detail="Email not provided by OAuth provider."
+        )
+    email = email.lower().strip()
+    sub = userinfo.get("sub", "")
+
+    # Find or create user
+    user = session.execute(
+        select(User).where(User.email == email)
+    ).scalar_one_or_none()
+
+    if user is None:
+        user = User(email=email, password_hash="", oauth_provider="auth0", oauth_sub=sub)
+        session.add(user)
+        session.commit()
+        session.refresh(user)
+    else:
+        # Link OAuth fields only if not already linked
+        if not user.oauth_provider:
+            user.oauth_provider = "auth0"
+            user.oauth_sub = sub
+            session.commit()
+
+    set_auth_cookie(response, user_id=user.id, email=user.email)
+    resp = _me_response(user)
+    resp.token = make_token(user_id=user.id, email=user.email)
+    return resp
 
 
 @router.post("/logout")
