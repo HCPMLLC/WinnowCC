@@ -22,7 +22,7 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
     try:
         _set_job_status(session, job_run_id, "running")
         resume = session.get(ResumeDocument, resume_document_id)
-        if resume is None:
+        if resume is None or resume.deleted_at is not None:
             _set_job_status(session, job_run_id, "failed", "Resume document not found.")
             return
 

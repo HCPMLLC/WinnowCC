@@ -35,7 +35,9 @@ def export_preview(
 ) -> ExportPreviewResponse:
     """Preview what data will be included in the export."""
     resume_docs = (
-        db.query(ResumeDocument).filter(ResumeDocument.user_id == user.id).all()
+        db.query(ResumeDocument)
+        .filter(ResumeDocument.user_id == user.id, ResumeDocument.deleted_at.is_(None))
+        .all()
     )
     has_trust = False
     for doc in resume_docs:

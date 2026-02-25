@@ -36,9 +36,9 @@ def recruiter_llm_reparse_job(
             return
 
         resume = session.get(ResumeDocument, resume_document_id)
-        if resume is None:
+        if resume is None or resume.deleted_at is not None:
             logger.warning(
-                "LLM reparse: ResumeDocument %d not found",
+                "LLM reparse: ResumeDocument %d not found or deleted",
                 resume_document_id,
             )
             cp.llm_parse_status = "failed"

@@ -1,7 +1,7 @@
 from datetime import datetime
 
-from sqlalchemy import DateTime, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import DateTime, Integer, String, func, select
+from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base
 
@@ -17,3 +17,11 @@ class ResumeDocument(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+
+    @classmethod
+    def active(cls):
+        """Return a where-clause filtering out soft-deleted rows."""
+        return cls.deleted_at.is_(None)

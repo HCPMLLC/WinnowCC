@@ -136,7 +136,7 @@ def get_all_candidates(
         # Look up resume by user_id (resumes are linked directly via user_id)
         resume_stmt = (
             select(ResumeDocument)
-            .where(ResumeDocument.user_id == user.id)
+            .where(ResumeDocument.user_id == user.id, ResumeDocument.active())
             .order_by(ResumeDocument.created_at.desc())
             .limit(1)
         )
@@ -322,7 +322,9 @@ def merge_candidates(
         # Handle resume documents and their related data
         resume_docs = (
             session.execute(
-                select(ResumeDocument).where(ResumeDocument.user_id == dup_user_id)
+                select(ResumeDocument).where(
+                    ResumeDocument.user_id == dup_user_id, ResumeDocument.active()
+                )
             )
             .scalars()
             .all()
@@ -387,7 +389,7 @@ def reparse_candidate_resume(
     # Find the most recent resume document for this user
     resume_stmt = (
         select(ResumeDocument)
-        .where(ResumeDocument.user_id == user_id)
+        .where(ResumeDocument.user_id == user_id, ResumeDocument.active())
         .order_by(ResumeDocument.created_at.desc())
         .limit(1)
     )
@@ -445,7 +447,7 @@ def reparse_candidate_profile(
         raise HTTPException(status_code=400, detail="No resume document linked to this profile.")
 
     resume = session.get(ResumeDocument, cp.resume_document_id)
-    if resume is None:
+    if resume is None or resume.deleted_at is not None:
         raise HTTPException(status_code=404, detail="ResumeDocument not found.")
 
     from app.services.queue import get_queue
@@ -521,7 +523,7 @@ def get_resume_file(
     Download/view a candidate's resume file (admin only).
     """
     resume = session.get(ResumeDocument, resume_id)
-    if resume is None or not resume.path:
+    if resume is None or not resume.path or resume.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     try:

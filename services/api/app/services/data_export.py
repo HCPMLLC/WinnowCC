@@ -131,7 +131,11 @@ def export_user_data(user_id: int, db: Session) -> io.BytesIO:
 
         # 4. Trust records (via resume_documents)
         resume_docs = (
-            db.execute(select(ResumeDocument).where(ResumeDocument.user_id == user_id))
+            db.execute(
+                select(ResumeDocument).where(
+                    ResumeDocument.user_id == user_id, ResumeDocument.active()
+                )
+            )
             .scalars()
             .all()
         )
