@@ -62,8 +62,14 @@ export async function GET(request: NextRequest) {
 
     const data = await response.json();
 
-    // Use redirect from state, but always go to onboarding if not complete
-    const redirectUrl = data.onboarding_complete ? redirectAfterAuth : "/onboarding";
+    // Non-candidate roles skip candidate onboarding
+    const roleHome =
+      data.role === "recruiter" ? "/recruiter/dashboard"
+      : data.role === "employer" ? "/employer/dashboard"
+      : null;
+    const redirectUrl = roleHome
+      ? roleHome
+      : data.onboarding_complete ? redirectAfterAuth : "/onboarding";
     const res = NextResponse.redirect(new URL(redirectUrl, request.url));
 
     // Set the session cookie from the backend response
