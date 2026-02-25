@@ -163,14 +163,22 @@ def get_employer_profile(
     user: User = Depends(require_employer),
     session: Session = Depends(get_session),
 ):
-    """Get the EmployerProfile for the authenticated employer user."""
+    """Get the EmployerProfile for the authenticated employer user.
+
+    Auto-creates a starter profile if the user has employer role but no
+    profile row (e.g. profile lost to a destructive migration).
+    """
     from app.models.employer import EmployerProfile
 
     profile = session.execute(
         select(EmployerProfile).where(EmployerProfile.user_id == user.id)
     ).scalar_one_or_none()
     if profile is None:
-        raise HTTPException(status_code=404, detail="Employer profile not found.")
+        domain = (user.email or "").split("@")[-1].split(".")[0].title() or "My Company"
+        profile = EmployerProfile(user_id=user.id, company_name=domain)
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
     return profile
 
 
@@ -185,12 +193,22 @@ def get_recruiter_profile(
     user: User = Depends(require_recruiter),
     session: Session = Depends(get_session),
 ):
-    """Get the RecruiterProfile for the authenticated recruiter user."""
+    """Get the RecruiterProfile for the authenticated recruiter user.
+
+    Auto-creates a trial profile if the user has recruiter role but no
+    profile row (e.g. profile lost to a destructive migration).
+    """
     from app.models.recruiter import RecruiterProfile
 
     profile = session.execute(
         select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
     ).scalar_one_or_none()
     if profile is None:
-        raise HTTPException(status_code=404, detail="Recruiter profile not found.")
+        # Derive company name from email domain as a placeholder
+        domain = (user.email or "").split("@")[-1].split(".")[0].title() or "My Company"
+        profile = RecruiterProfile(user_id=user.id, company_name=domain)
+        profile.start_trial()
+        session.add(profile)
+        session.commit()
+        session.refresh(profile)
     return profile
