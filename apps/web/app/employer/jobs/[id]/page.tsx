@@ -34,6 +34,7 @@ interface JobDetail {
   start_date: string | null;
   close_date: string | null;
   job_category: string | null;
+  client_company_name: string | null;
   department: string | null;
   certifications_required: string[] | null;
   job_type: string | null;
@@ -779,10 +780,12 @@ export default function JobDetailPage() {
             <tr className="border-b border-slate-100">
               <td className="py-2 pr-4 font-medium text-slate-700">Job Category</td>
               <td className="py-2 pr-4">{job.job_category || "—"}</td>
-              <td className="py-2 pr-4 font-medium text-slate-700">Location</td>
-              <td className="py-2">{job.location || "—"}</td>
+              <td className="py-2 pr-4 font-medium text-slate-700">Client</td>
+              <td className="py-2">{job.client_company_name || "—"}</td>
             </tr>
             <tr className="border-b border-slate-100">
+              <td className="py-2 pr-4 font-medium text-slate-700">Location</td>
+              <td className="py-2 pr-4">{job.location || "—"}</td>
               <td className="py-2 pr-4 font-medium text-slate-700">Remote Policy</td>
               <td className="py-2 pr-4 capitalize">{job.remote_policy || "—"}</td>
               <td className="py-2 pr-4 font-medium text-slate-700">Start Date</td>

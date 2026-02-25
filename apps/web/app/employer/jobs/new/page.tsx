@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import JobForm from "../_components/JobForm";
 import { useProgress } from "../../../hooks/useProgress";
@@ -35,10 +35,34 @@ export default function CreateJobPage() {
 
   // Bulk upload state
   const [bulkFiles, setBulkFiles] = useState<File[]>([]);
-  const bulkProg = useProgress();
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 });
+  const [bulkPct, setBulkPct] = useState(0);
+  const bulkTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [bulkResults, setBulkResults] = useState<BulkUploadResponse | null>(
     null,
   );
+
+  // Simulated easing that ticks up while waiting for each file to process
+  useEffect(() => {
+    if (!bulkUploading) {
+      if (bulkTimerRef.current) clearInterval(bulkTimerRef.current);
+      return;
+    }
+    bulkTimerRef.current = setInterval(() => {
+      setBulkPct((prev) => {
+        const fileSlice = 100 / bulkProgress.total;
+        const ceiling = (bulkProgress.current + 1) * fileSlice - 2;
+        if (prev >= ceiling) return prev;
+        const remaining = ceiling - prev;
+        const step = Math.max(0.3, remaining * 0.04);
+        return Math.min(prev + step, ceiling);
+      });
+    }, 300);
+    return () => {
+      if (bulkTimerRef.current) clearInterval(bulkTimerRef.current);
+    };
+  }, [bulkUploading, bulkProgress]);
 
   async function handleUpload() {
     if (!file) return;
@@ -74,37 +98,82 @@ export default function CreateJobPage() {
 
   async function handleBulkUpload() {
     if (bulkFiles.length === 0) return;
-    bulkProg.start();
+    setBulkUploading(true);
     setError("");
     setBulkResults(null);
+    setBulkProgress({ current: 0, total: bulkFiles.length });
+    setBulkPct(0);
 
-    try {
+    const allResults: BulkFileResult[] = [];
+    let totalSucceeded = 0;
+    let totalFailed = 0;
+    let upgradeRec: string | null = null;
+
+    for (let i = 0; i < bulkFiles.length; i++) {
+      setBulkProgress({ current: i, total: bulkFiles.length });
+
       const fd = new FormData();
-      for (const f of bulkFiles) {
-        fd.append("files", f);
+      fd.append("file", bulkFiles[i]);
+
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/employer/jobs/upload-document`,
+          {
+            method: "POST",
+            credentials: "include",
+            body: fd,
+          },
+        );
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          allResults.push({
+            filename: bulkFiles[i].name,
+            success: false,
+            job_id: null,
+            title: null,
+            error: body?.detail || `Upload failed (${res.status})`,
+          });
+          totalFailed++;
+        } else {
+          const data = await res.json();
+          allResults.push({
+            filename: bulkFiles[i].name,
+            success: true,
+            job_id: data.job_id,
+            title: data.parsed_data?.title || null,
+            error: null,
+          });
+          totalSucceeded++;
+          if (data.upgrade_recommendation) {
+            upgradeRec = data.upgrade_recommendation;
+          }
+        }
+      } catch {
+        allResults.push({
+          filename: bulkFiles[i].name,
+          success: false,
+          job_id: null,
+          title: null,
+          error: "Network error",
+        });
+        totalFailed++;
       }
 
-      const res = await fetch(
-        `${API_BASE}/api/employer/jobs/upload-documents`,
-        {
-          method: "POST",
-          credentials: "include",
-          body: fd,
-        },
-      );
-
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.detail || "Bulk upload failed");
-      }
-
-      const data: BulkUploadResponse = await res.json();
-      setBulkResults(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Bulk upload failed");
-    } finally {
-      bulkProg.complete();
+      // Snap progress to actual completion percentage
+      setBulkPct(Math.round(((i + 1) / bulkFiles.length) * 100));
     }
+
+    setBulkPct(100);
+    setBulkProgress({ current: bulkFiles.length, total: bulkFiles.length });
+    setBulkResults({
+      results: allResults,
+      total_submitted: bulkFiles.length,
+      total_succeeded: totalSucceeded,
+      total_failed: totalFailed,
+      upgrade_recommendation: upgradeRec,
+    });
+    setBulkUploading(false);
   }
 
   function handleBulkFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -210,23 +279,33 @@ export default function CreateJobPage() {
           )}
 
           {!bulkResults && (
-            <button
-              onClick={handleBulkUpload}
-              disabled={bulkFiles.length === 0 || bulkProg.isActive}
-              className="relative w-full overflow-hidden rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed"
-            >
-              {bulkProg.isActive && (
-                <span
-                  className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-200"
-                  style={{ width: `${bulkProg.progress}%` }}
-                />
+            <>
+              <button
+                onClick={handleBulkUpload}
+                disabled={bulkFiles.length === 0 || bulkUploading}
+                className="relative w-full overflow-hidden rounded-md bg-slate-900 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:cursor-not-allowed"
+              >
+                {bulkUploading && (
+                  <span
+                    className="absolute inset-y-0 left-0 bg-slate-700 transition-all duration-300 ease-out"
+                    style={{ width: `${Math.max(2, Math.round(bulkPct))}%` }}
+                  />
+                )}
+                <span className="relative">
+                  {bulkUploading
+                    ? `Processing ${bulkProgress.current + 1} of ${bulkProgress.total} — ${Math.round(bulkPct)}%`
+                    : `Upload & Parse ${bulkFiles.length} File(s)`}
+                </span>
+              </button>
+              {bulkUploading && (
+                <div className="w-full rounded-full bg-slate-200 h-2.5 overflow-hidden">
+                  <div
+                    className="h-full bg-slate-900 transition-all duration-300 ease-out"
+                    style={{ width: `${Math.max(2, Math.round(bulkPct))}%` }}
+                  />
+                </div>
               )}
-              <span className="relative">
-                {bulkProg.isActive
-                  ? `Parsing ${bulkFiles.length} file(s)... ${bulkProg.pct}%`
-                  : `Upload & Parse ${bulkFiles.length} File(s)`}
-              </span>
-            </button>
+            </>
           )}
 
           {/* Results table */}

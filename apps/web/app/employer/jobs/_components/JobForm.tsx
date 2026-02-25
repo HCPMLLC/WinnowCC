@@ -5,22 +5,6 @@ import { useState } from "react";
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
-const JOB_CATEGORIES = [
-  "Engineering",
-  "Sales",
-  "Marketing",
-  "Design",
-  "Product",
-  "Operations",
-  "Finance",
-  "Human Resources",
-  "Customer Success",
-  "Customer Support",
-  "Data Science",
-  "Legal",
-  "Executive",
-  "Other",
-];
 
 export interface JobFormData {
   title: string;
@@ -40,6 +24,7 @@ export interface JobFormData {
   start_date: string;
   close_date: string;
   job_category: string;
+  client_company_name: string;
   department: string;
   certifications_required: string[];
   job_type: string;
@@ -63,6 +48,7 @@ const EMPTY_FORM: JobFormData = {
   start_date: "",
   close_date: "",
   job_category: "",
+  client_company_name: "",
   department: "",
   certifications_required: [],
   job_type: "",
@@ -136,6 +122,7 @@ export default function JobForm({
         start_date: formData.start_date || null,
         close_date: formData.close_date || null,
         job_category: formData.job_category || null,
+        client_company_name: formData.client_company_name || null,
         department: formData.department || null,
         certifications_required:
           formData.certifications_required.length > 0
@@ -276,21 +263,32 @@ export default function JobForm({
             <label className="mb-1 block text-sm font-medium text-slate-700">
               Job Category
             </label>
-            <select
+            <input
+              type="text"
               value={formData.job_category}
               onChange={(e) =>
                 setFormData({ ...formData, job_category: e.target.value })
               }
+              placeholder="e.g. Engineering, Project Management, IT"
               className={inputClass}
-            >
-              <option value="">Select category...</option>
-              {JOB_CATEGORIES.map((cat) => (
-                <option key={cat} value={cat}>
-                  {cat}
-                </option>
-              ))}
-            </select>
+            />
           </div>
+        </div>
+
+        {/* Client */}
+        <div>
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Client
+          </label>
+          <input
+            type="text"
+            value={formData.client_company_name}
+            onChange={(e) =>
+              setFormData({ ...formData, client_company_name: e.target.value })
+            }
+            placeholder="Client or hiring organization"
+            className={inputClass}
+          />
         </div>
 
         {/* Row: Location + Remote Policy */}

@@ -1604,6 +1604,7 @@ async def upload_job_documents(
                 department=parsed.get("department"),
                 job_id_external=parsed.get("job_id_external"),
                 job_category=parsed.get("job_category"),
+                client_company_name=parsed.get("client_company_name"),
                 application_email=parsed.get("application_email"),
                 application_url=parsed.get("application_url"),
                 start_at=start_at,
