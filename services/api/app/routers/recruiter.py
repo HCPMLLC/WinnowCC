@@ -646,14 +646,22 @@ async def upload_pipeline_resumes(
             used_llm = False
             try:
                 from app.services.llm_parser import is_llm_parser_available, parse_with_llm
-                if is_llm_parser_available():
+                avail = is_llm_parser_available()
+                logger.warning("RECRUITER_UPLOAD: LLM available=%s for %s", avail, filename)
+                if avail:
                     profile_json = parse_with_llm(text)
                     used_llm = True
+                    logger.warning("RECRUITER_UPLOAD: LLM parse SUCCEEDED for %s", filename)
             except Exception:
-                logger.warning("LLM parse failed for %s, falling back to regex", filename, exc_info=True)
+                logger.warning("RECRUITER_UPLOAD: LLM parse FAILED for %s, falling back to regex", filename, exc_info=True)
 
             if profile_json is None:
+                logger.warning("RECRUITER_UPLOAD: using regex fallback for %s", filename)
                 profile_json = parse_profile_from_text(text)
+
+            logger.warning("RECRUITER_UPLOAD: used_llm=%s exp=%d skills=%d for %s",
+                used_llm, len(profile_json.get("experience", [])),
+                len(profile_json.get("skills", [])), filename)
 
             # 3. Extract email and name from parsed profile
             basics = profile_json.get("basics", {})
