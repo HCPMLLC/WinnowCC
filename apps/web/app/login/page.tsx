@@ -107,9 +107,16 @@ function LoginForm() {
           return;
         }
 
-        const dest = data.onboarding_complete
-          ? redirectTarget
-          : withRedirectParam("/onboarding", redirectTarget);
+        // Non-candidate roles (recruiter, employer) skip candidate onboarding
+        const roleHome =
+          data.role === "recruiter" ? "/recruiter/dashboard"
+          : data.role === "employer" ? "/employer/dashboard"
+          : null;
+        const dest = roleHome
+          ? roleHome
+          : data.onboarding_complete
+            ? redirectTarget
+            : withRedirectParam("/onboarding", redirectTarget);
         if (data.token) await setAuthCookie(data.token, dest);
         window.location.href = dest;
       }
@@ -138,9 +145,16 @@ function LoginForm() {
         throw new Error(detail);
       }
       const data = await res.json();
-      const dest = data.onboarding_complete
-        ? redirectTarget
-        : withRedirectParam("/onboarding", redirectTarget);
+      // Non-candidate roles skip candidate onboarding
+      const roleHome =
+        data.role === "recruiter" ? "/recruiter/dashboard"
+        : data.role === "employer" ? "/employer/dashboard"
+        : null;
+      const dest = roleHome
+        ? roleHome
+        : data.onboarding_complete
+          ? redirectTarget
+          : withRedirectParam("/onboarding", redirectTarget);
       if (data.token) await setAuthCookie(data.token, dest);
       window.location.href = dest;
     } catch (e: any) {
