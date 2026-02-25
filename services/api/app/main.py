@@ -164,6 +164,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Founder email context propagation (sets ContextVar in async context so
+# all sync billing helpers see it via run_in_threadpool context copies)
+from app.middleware.founder_email import FounderEmailMiddleware  # noqa: E402
+
+app.add_middleware(FounderEmailMiddleware)
+
 # Routes
 app.include_router(health_router)
 app.include_router(ready_router)
