@@ -54,16 +54,7 @@ def get_dashboard_metrics(
         - interviews_requested_count: Jobs where user marked status as 'interviewing'
         - offers_received_count: Jobs where user marked status as 'offer'
     """
-    # Display name from candidate record
-    candidate = session.execute(
-        select(Candidate).where(Candidate.user_id == user.id)
-    ).scalar_one_or_none()
-    display_name = None
-    if candidate:
-        parts = [candidate.first_name, candidate.last_name]
-        display_name = " ".join(p for p in parts if p) or None
-
-    # Profile completeness
+    # Profile completeness (queried first so we can use it for display_name fallback)
     profile_stmt = (
         select(CandidateProfile)
         .where(CandidateProfile.user_id == user.id)
@@ -78,6 +69,26 @@ def get_dashboard_metrics(
 
     completeness = compute_profile_completeness(profile_json)
     profile_completeness_score = completeness.score
+
+    # Display name: candidate record → parsed profile → email local part
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    display_name = None
+    if candidate:
+        parts = [candidate.first_name, candidate.last_name]
+        name = " ".join(p for p in parts if p) or None
+        # Reject email-like values that may have leaked into name fields
+        if name and "@" not in name:
+            display_name = name
+    if not display_name:
+        basics = (profile_json or {}).get("basics") or {}
+        parts = [basics.get("first_name"), basics.get("last_name")]
+        name = " ".join(p for p in parts if p) or None
+        if name and "@" not in name:
+            display_name = name
+    if not display_name and user.email:
+        display_name = user.email.split("@")[0]
 
     # Qualified jobs count (matches above minimum score with valid jobs)
     qualified_jobs_count = (
