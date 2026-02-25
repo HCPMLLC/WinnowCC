@@ -46,7 +46,11 @@ def get_trust_queue(
 ) -> list[AdminTrustRecordResponse]:
     stmt = (
         select(CandidateTrust, ResumeDocument, User)
-        .outerjoin(ResumeDocument, CandidateTrust.resume_document_id == ResumeDocument.id)
+        .outerjoin(
+            ResumeDocument,
+            (CandidateTrust.resume_document_id == ResumeDocument.id)
+            & ResumeDocument.deleted_at.is_(None),
+        )
         .outerjoin(User, ResumeDocument.user_id == User.id)
         .where(CandidateTrust.status != "allowed")
         .order_by(CandidateTrust.updated_at.desc())

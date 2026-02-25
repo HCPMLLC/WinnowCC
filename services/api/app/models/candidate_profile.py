@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -21,7 +21,11 @@ class CandidateProfile(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    resume_document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    resume_document_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("resume_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     profile_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     open_to_opportunities: Mapped[bool | None] = mapped_column(

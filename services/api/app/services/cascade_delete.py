@@ -1,9 +1,11 @@
 """Cascade-delete a user and all associated data."""
 
-from pathlib import Path
+from datetime import datetime, timezone
 
-from sqlalchemy import delete, select, text
+from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
+
+from app.services.storage import delete_file as delete_stored_file
 
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
@@ -214,9 +216,7 @@ def cascade_delete_user(session: Session, user_id: int) -> bool:
     for tr in tailored:
         for url_field in [tr.docx_url, tr.cover_letter_url]:
             if url_field:
-                p = Path(url_field)
-                if p.exists():
-                    p.unlink()
+                delete_stored_file(url_field)
     session.execute(delete(TailoredResume).where(TailoredResume.user_id == user_id))
 
     # 3. Matches
@@ -249,13 +249,13 @@ def cascade_delete_user(session: Session, user_id: int) -> bool:
     # 5. Candidate profiles
     session.execute(delete(CandidateProfile).where(CandidateProfile.user_id == user_id))
 
-    # 6. Resume documents — delete physical files first, then DB rows
-    for doc in resume_docs:
-        if doc.path:
-            p = Path(doc.path)
-            if p.exists():
-                p.unlink()
-    session.execute(delete(ResumeDocument).where(ResumeDocument.user_id == user_id))
+    # 6. Resume documents — soft-delete (physical files retained for recovery)
+    session.execute(
+        update(ResumeDocument)
+        .where(ResumeDocument.user_id == user_id)
+        .where(ResumeDocument.deleted_at.is_(None))
+        .values(deleted_at=datetime.now(timezone.utc))
+    )
 
     # 7. Candidate (onboarding data)
     session.execute(delete(Candidate).where(Candidate.user_id == user_id))

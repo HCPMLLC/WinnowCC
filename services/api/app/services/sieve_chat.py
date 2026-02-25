@@ -239,7 +239,8 @@ def load_user_context(user_id: int, session: Session) -> dict:
     has_resume = (
         session.execute(
             select(func.count(ResumeDocument.id)).where(
-                ResumeDocument.user_id == user_id
+                ResumeDocument.user_id == user_id,
+                ResumeDocument.active(),
             )
         ).scalar_one()
         > 0

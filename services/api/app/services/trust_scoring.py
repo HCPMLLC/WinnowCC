@@ -95,7 +95,7 @@ def create_audit_entry(
 def get_latest_resume(session: Session, user_id: int) -> ResumeDocument | None:
     stmt = (
         select(ResumeDocument)
-        .where(ResumeDocument.user_id == user_id)
+        .where(ResumeDocument.user_id == user_id, ResumeDocument.active())
         .order_by(ResumeDocument.created_at.desc())
         .limit(1)
     )
@@ -272,7 +272,8 @@ def _compute_score(
     if resume.sha256:
         duplicate_count = session.execute(
             select(func.count(ResumeDocument.id)).where(
-                ResumeDocument.sha256 == resume.sha256
+                ResumeDocument.sha256 == resume.sha256,
+                ResumeDocument.active(),
             )
         ).scalar_one()
         if duplicate_count and duplicate_count > 1:
@@ -381,7 +382,7 @@ def _frequent_uploads(session: Session, user_id: int | None) -> bool:
     else:
         user_filter = ResumeDocument.user_id == user_id
     stmt = select(func.count(ResumeDocument.id)).where(
-        user_filter, ResumeDocument.created_at >= since
+        user_filter, ResumeDocument.created_at >= since, ResumeDocument.active()
     )
     count = session.execute(stmt).scalar_one()
     return bool(count and count >= 5)

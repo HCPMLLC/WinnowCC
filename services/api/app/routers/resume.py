@@ -120,7 +120,7 @@ def list_resumes(
 ) -> list[ResumeDocumentResponse]:
     stmt = (
         select(ResumeDocument)
-        .where(ResumeDocument.user_id == user.id)
+        .where(ResumeDocument.user_id == user.id, ResumeDocument.active())
         .order_by(ResumeDocument.created_at.desc())
     )
     records = session.execute(stmt).scalars().all()
@@ -134,7 +134,7 @@ def get_resume_details(
     session: Session = Depends(get_session),
 ) -> ResumeDocumentResponse:
     record = session.get(ResumeDocument, resume_id)
-    if record is None or record.user_id != user.id:
+    if record is None or record.user_id != user.id or record.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Resume not found.")
     return ResumeDocumentResponse.model_validate(record)
 
@@ -146,7 +146,7 @@ def parse_resume(
     session: Session = Depends(get_session),
 ) -> ParseJobResponse:
     record = session.get(ResumeDocument, resume_id)
-    if record is None or record.user_id != user.id:
+    if record is None or record.user_id != user.id or record.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     job_run = JobRun(
@@ -179,7 +179,7 @@ def get_parse_status(
         raise HTTPException(status_code=404, detail="Parse job not found.")
 
     resume = session.get(ResumeDocument, job_run.resume_document_id)
-    if resume is None or resume.user_id != user.id:
+    if resume is None or resume.user_id != user.id or resume.deleted_at is not None:
         raise HTTPException(status_code=404, detail="Parse job not found.")
 
     return ParseJobStatusResponse(

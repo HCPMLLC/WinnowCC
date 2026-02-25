@@ -244,7 +244,10 @@ def user_lookup(
                 select(CandidateTrust).join(
                     ResumeDocument,
                     CandidateTrust.resume_document_id == ResumeDocument.id,
-                ).where(ResumeDocument.user_id == user.id)
+                ).where(
+                    ResumeDocument.user_id == user.id,
+                    ResumeDocument.deleted_at.is_(None),
+                )
             )
             candidate_info = {
                 "plan_tier": candidate.plan_tier,
@@ -310,7 +313,10 @@ def user_lookup(
         job_runs = db.execute(
             select(JobRun)
             .join(ResumeDocument, JobRun.resume_document_id == ResumeDocument.id)
-            .where(ResumeDocument.user_id == user.id)
+            .where(
+                ResumeDocument.user_id == user.id,
+                ResumeDocument.deleted_at.is_(None),
+            )
             .order_by(JobRun.created_at.desc())
             .limit(10)
         ).scalars().all()
@@ -332,7 +338,10 @@ def user_lookup(
                 ResumeDocument,
                 CandidateTrust.resume_document_id == ResumeDocument.id,
             )
-            .where(ResumeDocument.user_id == user.id)
+            .where(
+                ResumeDocument.user_id == user.id,
+                ResumeDocument.deleted_at.is_(None),
+            )
             .order_by(TrustAuditLog.created_at.desc())
             .limit(5)
         ).scalars().all()
@@ -643,7 +652,8 @@ def audit_log(
             .join(CandidateTrust, TrustAuditLog.trust_id == CandidateTrust.id)
             .join(
                 ResumeDocument,
-                CandidateTrust.resume_document_id == ResumeDocument.id,
+                (CandidateTrust.resume_document_id == ResumeDocument.id)
+                & ResumeDocument.deleted_at.is_(None),
             )
             .outerjoin(User, ResumeDocument.user_id == User.id)
             .order_by(TrustAuditLog.created_at.desc())
@@ -783,7 +793,7 @@ def reparse_resume(
 
     doc = db.scalar(
         select(ResumeDocument)
-        .where(ResumeDocument.user_id == user_id)
+        .where(ResumeDocument.user_id == user_id, ResumeDocument.active())
         .order_by(ResumeDocument.created_at.desc())
     )
     if not doc:
