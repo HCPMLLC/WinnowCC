@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import logging
+import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -21,6 +23,8 @@ from app.services.auth import (
     verify_password,
 )
 from app.services.email import send_mfa_otp_email, send_password_reset_email
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 
@@ -273,7 +277,14 @@ def forgot_password(
             minutes=RESET_TOKEN_TTL_MINUTES
         )
         session.commit()
-        send_password_reset_email(user.email, token)
+        try:
+            send_password_reset_email(user.email, token)
+        except Exception:
+            logger.warning(
+                "Failed to send password reset email to %s",
+                user.email,
+                exc_info=True,
+            )
 
     return {"status": "sent"}
 
@@ -320,10 +331,14 @@ class AdminResetPasswordRequest(BaseModel):
 @router.post("/admin-reset-password")
 def admin_reset_password(
     payload: AdminResetPasswordRequest,
-    admin: User = Depends(require_admin_user),
+    x_admin_token: str | None = Header(None),
     session: Session = Depends(get_session),
 ) -> dict:
-    """Admin-only: reset any user's password directly."""
+    """Reset any user's password. Requires ADMIN_TOKEN header."""
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token or not x_admin_token or x_admin_token != admin_token:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
     _validate_password(payload.new_password)
     user = session.execute(
         select(User).where(User.email == payload.email.lower().strip())
