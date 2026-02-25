@@ -238,6 +238,27 @@ class PipelineCandidateResponse(BaseModel):
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
+    @field_validator("outreach_count", mode="before")
+    @classmethod
+    def _coerce_outreach_count(cls, v: object) -> int:
+        if v is None:
+            return 0
+        return int(v)
+
+    @field_validator("stage", mode="before")
+    @classmethod
+    def _coerce_stage(cls, v: object) -> str:
+        return v if v else "sourced"
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _coerce_tags(cls, v: object) -> list[str] | None:
+        if v is None:
+            return None
+        if not isinstance(v, list):
+            return None
+        return [str(item) for item in v if item is not None]
+
 
 # ---------------------------------------------------------------------------
 # Activities

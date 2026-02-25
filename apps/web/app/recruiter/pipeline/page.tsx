@@ -47,6 +47,7 @@ export default function RecruiterPipeline() {
   const router = useRouter();
   const [entries, setEntries] = useState<PipelineCandidate[]>([]);
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
   const [stageFilter, setStageFilter] = useState("");
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -83,14 +84,20 @@ export default function RecruiterPipeline() {
 
   const fetchPipeline = useCallback(async () => {
     try {
+      setFetchError("");
       const url = new URL(`${API_BASE}/api/recruiter/pipeline`);
       if (stageFilter) url.searchParams.set("stage", stageFilter);
       if (searchQuery.trim()) url.searchParams.set("search", searchQuery.trim());
       url.searchParams.set("limit", "100");
       const res = await fetch(url.toString(), { credentials: "include" });
-      if (res.ok) setEntries(await res.json());
+      if (res.ok) {
+        setEntries(await res.json());
+      } else {
+        const body = await res.json().catch(() => null);
+        setFetchError(body?.detail || `Failed to load pipeline (${res.status})`);
+      }
     } catch {
-      /* ignore */
+      setFetchError("Network error loading pipeline");
     }
   }, [stageFilter, searchQuery]);
 
@@ -394,8 +401,16 @@ export default function RecruiterPipeline() {
         </div>
       )}
 
+      {/* Fetch error */}
+      {fetchError && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {fetchError}
+          <button onClick={() => fetchPipeline()} className="ml-3 font-medium underline hover:text-red-900">Retry</button>
+        </div>
+      )}
+
       {/* Pipeline entries */}
-      {entries.length === 0 ? (
+      {!fetchError && entries.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-12 text-center shadow-sm">
           <p className="text-slate-500">No candidates in pipeline yet. Source candidates and add them to your pipeline.</p>
         </div>

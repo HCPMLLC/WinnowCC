@@ -19,8 +19,12 @@ github-actions-key.json
 
 # Local uploads & data
 services/api/data/uploads/
+services/api/data/resumes/
 services/api/data/*.sqlite*
 **/*.log
+
+# Script progress files
+scripts/pipeline_upload_progress.json
 
 # OS / editors
 .DS_Store

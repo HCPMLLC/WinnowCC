@@ -13,15 +13,33 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        "candidate_profiles",
-        sa.Column("llm_parse_status", sa.String(20), nullable=True),
+    conn = op.get_bind()
+    # Idempotent: only add column if it doesn't already exist
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_name = 'candidate_profiles' "
+            "AND column_name = 'llm_parse_status'"
+        )
     )
-    op.create_index(
-        "ix_cp_llm_parse_status",
-        "candidate_profiles",
-        ["llm_parse_status"],
+    if not result.fetchone():
+        op.add_column(
+            "candidate_profiles",
+            sa.Column("llm_parse_status", sa.String(20), nullable=True),
+        )
+    # Idempotent: only create index if it doesn't already exist
+    result = conn.execute(
+        sa.text(
+            "SELECT 1 FROM pg_indexes "
+            "WHERE indexname = 'ix_cp_llm_parse_status'"
+        )
     )
+    if not result.fetchone():
+        op.create_index(
+            "ix_cp_llm_parse_status",
+            "candidate_profiles",
+            ["llm_parse_status"],
+        )
 
 
 def downgrade() -> None:

@@ -435,50 +435,77 @@ def list_pipeline(
         limit=limit,
         offset=offset,
     )
-    # Batch-load linked profiles to avoid N+1 queries
-    cp_ids = [pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id]
+    # Batch-load linked profiles — select only needed columns to avoid
+    # missing-column errors when migrations haven't been applied yet.
+    cp_ids = [
+        pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id
+    ]
     profiles_map: dict[int, dict] = {}
     if cp_ids:
         cps = (
             session.execute(
-                select(CandidateProfile).where(CandidateProfile.id.in_(cp_ids))
+                select(
+                    CandidateProfile.id,
+                    CandidateProfile.profile_json,
+                ).where(CandidateProfile.id.in_(cp_ids))
             )
-            .scalars()
             .all()
         )
-        for cp in cps:
-            pj = cp.profile_json or {}
-            basics = pj.get("basics") or {}
-            skills_raw = pj.get("skills") or basics.get("top_skills") or []
-            skills = [
-                (s if isinstance(s, str) else s.get("name", "")) for s in skills_raw
-            ]
-            is_platform = (
-                not pj.get("sourced_by_user_id")
-                and pj.get("source") != "linkedin_extension"
-            )
-            # Derive headline from experience if not set
-            headline = pj.get("headline") or (basics.get("target_titles") or [None])[0]
-            current_company = pj.get("current_company")
-            if not headline or not current_company:
-                exp = pj.get("experience") or []
-                if exp and isinstance(exp[0], dict):
-                    if not headline:
-                        title = exp[0].get("title") or ""
-                        company = exp[0].get("company") or ""
-                        headline = (
-                            f"{title} at {company}".strip(" at ") if title else company
-                        )
-                    if not current_company:
-                        current_company = exp[0].get("company")
-            profiles_map[cp.id] = {
-                "headline": headline,
-                "location": pj.get("location") or basics.get("location"),
-                "current_company": current_company,
-                "skills": [s for s in skills if s][:10],
-                "linkedin_url": pj.get("linkedin_url"),
-                "is_platform_candidate": is_platform,
-            }
+        for cp_id, cp_profile_json in cps:
+            try:
+                pj = cp_profile_json or {}
+                if not isinstance(pj, dict):
+                    pj = {}
+                basics = pj.get("basics") or {}
+                if not isinstance(basics, dict):
+                    basics = {}
+                skills_raw = (
+                    pj.get("skills") or basics.get("top_skills") or []
+                )
+                skills = []
+                for s in skills_raw:
+                    if isinstance(s, str):
+                        skills.append(s)
+                    elif isinstance(s, dict):
+                        skills.append(s.get("name", ""))
+                is_platform = (
+                    not pj.get("sourced_by_user_id")
+                    and pj.get("source") != "linkedin_extension"
+                )
+                target_titles = basics.get("target_titles") or [None]
+                headline = pj.get("headline") or (
+                    target_titles[0] if target_titles else None
+                )
+                current_company = pj.get("current_company")
+                if not headline or not current_company:
+                    exp = pj.get("experience") or []
+                    if exp and isinstance(exp[0], dict):
+                        if not headline:
+                            title = exp[0].get("title") or ""
+                            company = exp[0].get("company") or ""
+                            headline = (
+                                f"{title} at {company}".strip(" at ")
+                                if title
+                                else company
+                            )
+                        if not current_company:
+                            current_company = exp[0].get("company")
+                profiles_map[cp_id] = {
+                    "headline": headline,
+                    "location": (
+                        pj.get("location") or basics.get("location")
+                    ),
+                    "current_company": current_company,
+                    "skills": [s for s in skills if s][:10],
+                    "linkedin_url": pj.get("linkedin_url"),
+                    "is_platform_candidate": is_platform,
+                }
+            except Exception:
+                logging.getLogger(__name__).warning(
+                    "Failed to enrich pipeline candidate profile %s",
+                    cp_id,
+                    exc_info=True,
+                )
     results = []
     for pc in pcs:
         resp = PipelineCandidateResponse.model_validate(pc, from_attributes=True)
