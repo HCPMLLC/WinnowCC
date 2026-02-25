@@ -35,6 +35,12 @@ if __name__ == "__main__":
     # Cloud Run requires a listening port for health checks
     threading.Thread(target=_start_health_server, daemon=True).start()
 
+    # Pre-import heavy modules so numpy/pgvector don't timeout on first job
+    try:
+        import app.models  # noqa: F401 — triggers pgvector/numpy import
+    except Exception:
+        pass
+
     worker_cls = SimpleWorker if os.name == "nt" else Worker
     worker = worker_cls(["default"], connection=redis_conn)
     worker.work()
