@@ -55,6 +55,10 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # OAuth
+    oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    oauth_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
     # Back-references for ORM relationships declared on other models
     employer_profile = relationship("EmployerProfile", back_populates="user", uselist=False)
     recruiter_profile = relationship("RecruiterProfile", back_populates="user", uselist=False)
