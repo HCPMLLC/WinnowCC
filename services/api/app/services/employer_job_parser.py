@@ -164,10 +164,18 @@ def _parse_with_claude(text: str) -> dict[str, Any]:
         'or vacancy number if mentioned, null otherwise",\n'
         '  "department": '
         '"Department or team if mentioned, null otherwise",\n'
-        '  "job_category": "One of: Engineering, Sales, '
-        "Marketing, Design, Product, Operations, Finance, "
-        "Human Resources, Customer Success, Customer Support,"
-        ' Data Science, Legal, Executive, Other",\n'
+        '  "job_category": "The EXACT category, labor category, '
+        "functional area, or job family as written in the "
+        "document (e.g. 'Project Management', 'IT', "
+        "'Information Technology', 'Administrative'). "
+        "Do NOT map to a standard list — use the document's "
+        'own wording. null if not mentioned",\n'
+        '  "client_company_name": "The client, customer, '
+        "end-client, hiring agency, or organization the work "
+        "is performed for. For government contracts this is "
+        "the agency name (e.g. 'Railroad Commission of Texas',"
+        " 'Department of Defense'). "
+        'null if not mentioned",\n'
         '  "location": '
         '"Job location if mentioned, null otherwise",\n'
         '  "remote_policy": '
@@ -242,7 +250,19 @@ def _parse_with_claude(text: str) -> dict[str, Any]:
         "13. For dates: scan the ENTIRE document including "
         "tables, footers, and appendices. Government RFRs "
         "often list start dates and submission deadlines "
-        "in tables or late sections"
+        "in tables or late sections\n"
+        "14. For job_category: use the VERBATIM category from "
+        "the document. Look for labels like 'Category', "
+        "'Labor Category', 'Job Family', 'Functional Area', "
+        "'Job Classification'. Do NOT normalize or map to "
+        "a standard list — if the document says "
+        "'Project Management', return 'Project Management'\n"
+        "15. For client_company_name: look for the client, "
+        "customer, end-client, or agency name. In government "
+        "contracts, this is the agency (e.g. 'Railroad "
+        "Commission of Texas', 'Texas DIR'). Look for labels "
+        "like 'Client', 'Customer', 'Agency', 'End Client', "
+        "'Organization', or the entity issuing the RFR/RFP"
     )
 
     try:
@@ -282,41 +302,10 @@ def _parse_with_claude(text: str) -> dict[str, Any]:
         return {}
 
 
-_CATEGORY_MAP = {
-    "engineering": "Engineering",
-    "software": "Engineering",
-    "tech": "Engineering",
-    "it": "Engineering",
-    "sales": "Sales",
-    "marketing": "Marketing",
-    "design": "Design",
-    "product": "Product",
-    "operations": "Operations",
-    "finance": "Finance",
-    "hr": "Human Resources",
-    "human resources": "Human Resources",
-    "customer success": "Customer Success",
-    "customer support": "Customer Support",
-    "support": "Customer Support",
-    "data science": "Data Science",
-    "data": "Data Science",
-    "legal": "Legal",
-    "executive": "Executive",
-}
-
-
 def _post_process_job_data(data: dict[str, Any]) -> dict[str, Any]:
     """Clean and validate parsed job data."""
     if not data:
         return data
-
-    # Normalize job category
-    raw_category = (data.get("job_category") or "").lower().strip()
-    if raw_category:
-        for key, value in _CATEGORY_MAP.items():
-            if key in raw_category:
-                data["job_category"] = value
-                break
 
     # Parse date strings
     for field in ("start_date", "close_date"):

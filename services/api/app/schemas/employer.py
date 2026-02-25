@@ -265,6 +265,7 @@ class EmployerJobBase(BaseModel):
     start_date: date | None = None
     close_date: date | None = None
     job_category: str | None = Field(None, max_length=100)
+    client_company_name: str | None = Field(None, max_length=255)
     department: str | None = Field(None, max_length=100)
     certifications_required: list[str] | None = None
     job_type: str | None = None

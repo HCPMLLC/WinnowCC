@@ -640,29 +640,15 @@ export default function RecruiterJobDetailPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Category
                 </label>
-                <select
+                <input
+                  type="text"
                   value={form.job_category}
                   onChange={(e) =>
                     setForm({ ...form, job_category: e.target.value })
                   }
                   className={inputCls}
-                >
-                  <option value="">Select...</option>
-                  <option value="Engineering">Engineering</option>
-                  <option value="Sales">Sales</option>
-                  <option value="Marketing">Marketing</option>
-                  <option value="Design">Design</option>
-                  <option value="Product">Product</option>
-                  <option value="Operations">Operations</option>
-                  <option value="Finance">Finance</option>
-                  <option value="Human Resources">Human Resources</option>
-                  <option value="Customer Success">Customer Success</option>
-                  <option value="Customer Support">Customer Support</option>
-                  <option value="Data Science">Data Science</option>
-                  <option value="Legal">Legal</option>
-                  <option value="Executive">Executive</option>
-                  <option value="Other">Other</option>
-                </select>
+                  placeholder="e.g. Project Management, Engineering, IT"
+                />
               </div>
             </div>
 
@@ -686,34 +672,41 @@ export default function RecruiterJobDetailPage() {
                 <label className="mb-1 block text-sm font-medium text-slate-700">
                   Client
                 </label>
-                {clients.length > 0 ? (
+                <input
+                  type="text"
+                  value={form.client_company_name}
+                  onChange={(e) =>
+                    setForm({
+                      ...form,
+                      client_company_name: e.target.value,
+                    })
+                  }
+                  className={inputCls}
+                  placeholder="Company name"
+                />
+                {clients.length > 0 && (
                   <select
                     value={form.client_id}
-                    onChange={(e) =>
-                      setForm({ ...form, client_id: e.target.value })
-                    }
-                    className={inputCls}
+                    onChange={(e) => {
+                      const selected = clients.find(
+                        (c) => c.id === Number(e.target.value),
+                      );
+                      setForm({
+                        ...form,
+                        client_id: e.target.value,
+                        client_company_name:
+                          selected?.company_name || form.client_company_name,
+                      });
+                    }}
+                    className={`${inputCls} mt-1`}
                   >
-                    <option value="">No client</option>
+                    <option value="">Or link to existing client...</option>
                     {clients.map((c) => (
                       <option key={c.id} value={c.id}>
                         {c.company_name}
                       </option>
                     ))}
                   </select>
-                ) : (
-                  <input
-                    type="text"
-                    value={form.client_company_name}
-                    onChange={(e) =>
-                      setForm({
-                        ...form,
-                        client_company_name: e.target.value,
-                      })
-                    }
-                    className={inputCls}
-                    placeholder="Company name"
-                  />
                 )}
               </div>
             </div>

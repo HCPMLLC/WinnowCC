@@ -140,6 +140,7 @@ class EmployerJob(Base):
     start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     close_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     job_category: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    client_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     department: Mapped[str | None] = mapped_column(String(100), nullable=True)
     certifications_required: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     job_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
