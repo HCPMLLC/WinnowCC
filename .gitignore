@@ -20,8 +20,12 @@ github-actions-key.json
 # Local uploads & data
 services/api/data/uploads/
 services/api/data/resumes/
+services/api/data/recruiter_resumes/
 services/api/data/*.sqlite*
 **/*.log
+
+# Temporary debug/check scripts
+services/api/_check_profiles.py
 
 # Script progress files
 scripts/pipeline_upload_progress.json
