@@ -237,3 +237,84 @@ async def _validate_security_config():
             )
 
     logger.info("Security config validated (env=%s)", env)
+
+
+@app.on_event("startup")
+async def _provision_founder_accounts():
+    """Ensure founder accounts have admin + highest-tier DB records."""
+    from sqlalchemy import select
+
+    from app.db.session import get_session_factory
+    from app.models.candidate import Candidate
+    from app.models.employer import EmployerProfile
+    from app.models.recruiter import RecruiterProfile
+    from app.models.user import User
+    from app.services.billing import FOUNDER_EMAILS
+
+    if not FOUNDER_EMAILS:
+        return
+
+    session = get_session_factory()()
+    try:
+        for email in FOUNDER_EMAILS:
+            user = session.execute(
+                select(User).where(User.email == email)
+            ).scalar_one_or_none()
+            if user is None:
+                logger.info("Founder %s not in DB yet — skipping provisioning", email)
+                continue
+
+            changed = False
+
+            # Admin flag
+            if not user.is_admin:
+                user.is_admin = True
+                changed = True
+
+            # Candidate tier
+            candidate = session.execute(
+                select(Candidate).where(Candidate.user_id == user.id)
+            ).scalar_one_or_none()
+            if candidate is not None:
+                if candidate.plan_tier != "pro" or candidate.subscription_status is not None:
+                    candidate.plan_tier = "pro"
+                    candidate.subscription_status = None
+                    changed = True
+
+            # Recruiter tier
+            rp = session.execute(
+                select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+            ).scalar_one_or_none()
+            if rp is not None:
+                updates = {}
+                if rp.subscription_tier != "agency":
+                    updates["subscription_tier"] = "agency"
+                if rp.subscription_status is not None:
+                    updates["subscription_status"] = None
+                if not rp.billing_exempt:
+                    updates["billing_exempt"] = True
+                if updates:
+                    for k, v in updates.items():
+                        setattr(rp, k, v)
+                    changed = True
+
+            # Employer tier
+            ep = session.execute(
+                select(EmployerProfile).where(EmployerProfile.user_id == user.id)
+            ).scalar_one_or_none()
+            if ep is not None:
+                if ep.subscription_tier != "enterprise" or ep.subscription_status is not None:
+                    ep.subscription_tier = "enterprise"
+                    ep.subscription_status = None
+                    changed = True
+
+            if changed:
+                session.commit()
+                logger.info("Provisioned founder account: %s", email)
+            else:
+                logger.info("Founder account already provisioned: %s", email)
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to provision founder accounts")
+    finally:
+        session.close()

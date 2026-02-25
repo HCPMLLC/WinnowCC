@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import logging
 import os
 from datetime import date
@@ -26,6 +27,32 @@ STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 STRIPE_PRICE_MONTHLY = os.getenv("STRIPE_PRICE_MONTHLY", "")
 STRIPE_PRICE_ANNUAL = os.getenv("STRIPE_PRICE_ANNUAL", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+# ---------------------------------------------------------------------------
+# Founder accounts — bypass all billing gates at highest tier, no Stripe.
+# ---------------------------------------------------------------------------
+
+_FOUNDER_EMAILS_DEFAULT = "rlevi@hcpm.llc"
+FOUNDER_EMAILS: set[str] = {
+    e.strip().lower()
+    for e in os.getenv("FOUNDER_EMAILS", _FOUNDER_EMAILS_DEFAULT).split(",")
+    if e.strip()
+}
+
+_request_user_email: contextvars.ContextVar[str] = contextvars.ContextVar(
+    "_request_user_email", default=""
+)
+
+
+def set_request_user_email(email: str) -> None:
+    """Set the current request's user email for founder-bypass checks."""
+    _request_user_email.set(email.strip().lower())
+
+
+def is_founder_email(email: str | None = None) -> bool:
+    """Check if the given (or current-request) email belongs to a founder."""
+    check = email.strip().lower() if email else _request_user_email.get("")
+    return bool(check and check in FOUNDER_EMAILS)
 
 # ---------------------------------------------------------------------------
 # Unified Plan Limits (three segments)
@@ -316,6 +343,8 @@ def _stripe_client() -> stripe.StripeClient:
 
 def get_plan_tier(candidate: Candidate | None) -> str:
     """Derive effective plan tier from candidate record."""
+    if is_founder_email():
+        return "pro"
     if candidate is None:
         return "free"
     tier = candidate.plan_tier or "free"
@@ -489,6 +518,8 @@ def increment_tailor_requests(session: Session, user_id: int) -> None:
 
 def get_recruiter_tier(profile) -> str:
     """Derive effective tier from a RecruiterProfile."""
+    if is_founder_email():
+        return "agency"
     tier = (profile.subscription_tier or "trial").lower()
     # Billing-exempt accounts always get their stored tier
     if getattr(profile, "billing_exempt", False):
@@ -583,6 +614,8 @@ def check_recruiter_feature(profile, feature_key: str) -> bool:
 
 def get_employer_tier(profile) -> str:
     """Derive effective tier from an EmployerProfile."""
+    if is_founder_email():
+        return "enterprise"
     tier = (profile.subscription_tier or "free").lower()
     if tier == "free":
         return "free"
@@ -707,6 +740,11 @@ def create_unified_checkout(
     interval: str = "monthly",
 ) -> str:
     """Create a Stripe Checkout session for any segment/tier/interval."""
+    if is_founder_email(user.email):
+        raise HTTPException(
+            status_code=400,
+            detail="Founder accounts do not require billing.",
+        )
     # Dev mode: when Stripe webhooks are not configured, directly upgrade the
     # plan tier and return the success URL.  Without a webhook secret, Stripe
     # checkout would succeed but the plan_tier would never get updated because
