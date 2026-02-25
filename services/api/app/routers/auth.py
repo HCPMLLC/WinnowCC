@@ -280,7 +280,7 @@ def forgot_password(
         try:
             send_password_reset_email(user.email, token)
         except Exception:
-            logger.warning(
+            logger.error(
                 "Failed to send password reset email to %s",
                 user.email,
                 exc_info=True,

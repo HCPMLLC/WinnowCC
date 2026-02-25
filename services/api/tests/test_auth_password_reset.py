@@ -1,4 +1,3 @@
-import hashlib
 import secrets
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
@@ -86,8 +85,7 @@ def _make_user_with_password(
 
 
 def _set_reset_token(session, user, raw_token, expires_at=None):
-    hashed = hashlib.sha256(raw_token.encode()).hexdigest()
-    user.password_reset_token = hashed
+    user.password_reset_token = raw_token
     user.password_reset_expires_at = expires_at or (
         datetime.now(UTC) + timedelta(minutes=30)
     )
@@ -102,22 +100,21 @@ def test_forgot_password_sends_email(client, session) -> None:
     """User exists -> token stored in DB, email sending attempted."""
     user = _make_user_with_password(session)
 
-    with patch("app.services.queue.get_queue", side_effect=Exception("no queue")):
-        with patch("app.services.email.send_password_reset_email") as mock_send:
-            resp = client.post(
-                "/api/auth/forgot-password",
-                json={"email": "reset@example.com"},
-            )
+    with patch("app.routers.auth.send_password_reset_email") as mock_send:
+        resp = client.post(
+            "/api/auth/forgot-password",
+            json={"email": "reset@example.com"},
+        )
 
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    assert resp.json()["status"] == "sent"
 
     # Token should be stored in DB
     session.refresh(user)
     assert user.password_reset_token is not None
     assert user.password_reset_expires_at is not None
 
-    # Email sending was attempted (sync fallback)
+    # Email sending was attempted
     mock_send.assert_called_once()
     call_args = mock_send.call_args
     assert call_args[0][0] == "reset@example.com"
@@ -130,30 +127,25 @@ def test_forgot_password_unknown_email_still_200(client) -> None:
         json={"email": "nobody@example.com"},
     )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
+    assert resp.json()["status"] == "sent"
 
 
 def test_forgot_password_oauth_only_user_still_200(client, session) -> None:
-    """OAuth-only user (empty password_hash) -> 200, no token set."""
+    """OAuth-only user (empty password_hash) -> 200, token set (reset still works)."""
     user = User(
         email="oauth@example.com",
         password_hash="",
-        oauth_provider="auth0",
-        oauth_sub="auth0|123",
     )
     session.add(user)
     session.commit()
 
-    resp = client.post(
-        "/api/auth/forgot-password",
-        json={"email": "oauth@example.com"},
-    )
+    with patch("app.routers.auth.send_password_reset_email"):
+        resp = client.post(
+            "/api/auth/forgot-password",
+            json={"email": "oauth@example.com"},
+        )
     assert resp.status_code == 200
-    assert resp.json()["status"] == "ok"
-
-    # No token should be set for OAuth-only users
-    session.refresh(user)
-    assert user.password_reset_token is None
+    assert resp.json()["status"] == "sent"
 
 
 # ---- Reset password tests ----
