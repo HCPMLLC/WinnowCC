@@ -151,6 +151,8 @@ jobs:
           docker build --no-cache \
             --build-arg NEXT_PUBLIC_API_BASE_URL=https://winnow-api-cdn2d6pc5q-uc.a.run.app \
             --build-arg NEXT_PUBLIC_APP_URL=https://winnowcc.ai \
+            --build-arg NEXT_PUBLIC_AUTH0_DOMAIN=$(gcloud secrets versions access latest --secret=auth0-domain) \
+            --build-arg NEXT_PUBLIC_AUTH0_CLIENT_ID=$(gcloud secrets versions access latest --secret=auth0-client-id) \
             --build-arg NEXT_PUBLIC_SENTRY_DSN=${{ secrets.SENTRY_WEB_DSN }} \
             --build-arg NEXT_PUBLIC_SENTRY_ENVIRONMENT=production \
             --build-arg NEXT_PUBLIC_POSTHOG_KEY=${{ secrets.POSTHOG_KEY }} \
