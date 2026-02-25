@@ -11,16 +11,57 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <noreply@winnowcc.ai>").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
+# Startup diagnostics — surface misconfiguration early in Cloud Run logs
+if not RESEND_API_KEY:
+    logger.error(
+        "EMAIL CONFIG: RESEND_API_KEY is not set — all transactional emails "
+        "(password reset, MFA, verification) will be silently skipped"
+    )
+if "localhost" in FRONTEND_URL:
+    logger.warning(
+        "EMAIL CONFIG: FRONTEND_URL is '%s' — email links will point to "
+        "localhost, not your production URL",
+        FRONTEND_URL,
+    )
+if "resend.dev" in RESEND_FROM:
+    logger.warning(
+        "EMAIL CONFIG: RESEND_FROM_EMAIL is '%s' — the resend.dev sandbox "
+        "domain only delivers to the account owner's email. Use a verified "
+        "domain for production.",
+        RESEND_FROM,
+    )
+
+
+def _send(payload: dict, description: str) -> None:
+    """Send an email via Resend with logging and error context."""
+    try:
+        result = resend.Emails.send(payload)
+        logger.info(
+            "Email sent: %s to=%s id=%s",
+            description,
+            payload["to"],
+            result.get("id") if isinstance(result, dict) else result,
+        )
+    except Exception:
+        logger.error(
+            "Email FAILED: %s to=%s from=%s",
+            description,
+            payload["to"],
+            payload["from"],
+            exc_info=True,
+        )
+        raise
+
 
 def send_password_reset_email(to_email: str, token: str) -> None:
     """Send password reset email. Designed to run in RQ worker."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping password reset email")
+        logger.error("RESEND_API_KEY not set; skipping password reset email to %s", to_email)
         return
 
     reset_url = f"{FRONTEND_URL}/login?mode=reset&token={token}"
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -31,7 +72,8 @@ def send_password_reset_email(to_email: str, token: str) -> None:
                 f'<p><a href="{reset_url}">Reset Password</a></p>'
                 "<p>If you didn't request this, you can safely ignore this email.</p>"
             ),
-        }
+        },
+        "password_reset",
     )
 
 
@@ -42,13 +84,13 @@ def send_introduction_request_email(
 ) -> None:
     """Notify candidate that a recruiter wants to connect."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping introduction request email")
+        logger.error("RESEND_API_KEY not set; skipping introduction request email to %s", to_email)
         return
 
     dashboard_url = f"{FRONTEND_URL}/dashboard"
     job_line = f" for the <strong>{job_title}</strong> position" if job_title else ""
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -62,7 +104,8 @@ def send_introduction_request_email(
                 "<p>You are in control — your contact details are only shared if "
                 "you accept the introduction.</p>"
             ),
-        }
+        },
+        "introduction_request",
     )
 
 
@@ -74,12 +117,12 @@ def send_introduction_accepted_email(
 ) -> None:
     """Notify recruiter that a candidate accepted their introduction request."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping introduction accepted email")
+        logger.error("RESEND_API_KEY not set; skipping introduction accepted email to %s", to_email)
         return
 
     job_line = f" for <strong>{job_title}</strong>" if job_title else ""
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -91,18 +134,19 @@ def send_introduction_accepted_email(
                 f"<p><strong>Email:</strong> {candidate_email}</p>"
                 "<p>We recommend reaching out within 48 hours while interest is fresh.</p>"
             ),
-        }
+        },
+        "introduction_accepted",
     )
 
 
 def send_mfa_otp_email(to_email: str, otp_code: str) -> None:
     """Send MFA verification code email."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping MFA OTP email")
+        logger.error("RESEND_API_KEY not set; skipping MFA OTP email to %s", to_email)
         return
 
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -115,7 +159,8 @@ def send_mfa_otp_email(to_email: str, otp_code: str) -> None:
                 "<p>This code expires in 10 minutes. If you didn't try to sign in, "
                 "you can safely ignore this email.</p>"
             ),
-        }
+        },
+        "mfa_otp",
     )
 
 
@@ -129,7 +174,7 @@ def send_migration_complete_email(
 ) -> None:
     """Notify recruiter that their bulk resume migration is complete."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping migration complete email")
+        logger.error("RESEND_API_KEY not set; skipping migration complete email to %s", to_email)
         return
 
     results_url = f"{FRONTEND_URL}/recruiter/migrate?job={job_id}"
@@ -137,7 +182,7 @@ def send_migration_complete_email(
     error_line = f"&bull; {errors:,} files failed to parse<br>" if errors else ""
     skip_line = f"&bull; {skipped:,} duplicates skipped<br>" if skipped else ""
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -152,19 +197,20 @@ def send_migration_complete_email(
                 f'<p><a href="{pipeline_url}">View your candidates</a> | '
                 f'<a href="{results_url}">View import details</a></p>'
             ),
-        }
+        },
+        "migration_complete",
     )
 
 
 def send_verification_email(to_email: str, token: str) -> None:
     """Send email verification link. Designed to run in RQ worker."""
     if not RESEND_API_KEY:
-        logger.warning("RESEND_API_KEY not set; skipping verification email")
+        logger.error("RESEND_API_KEY not set; skipping verification email to %s", to_email)
         return
 
     verify_url = f"{FRONTEND_URL}/login?mode=verify-email&token={token}"
     resend.api_key = RESEND_API_KEY
-    resend.Emails.send(
+    _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
@@ -175,5 +221,6 @@ def send_verification_email(to_email: str, token: str) -> None:
                 f'<p><a href="{verify_url}">Verify Email</a></p>'
                 "<p>If you didn't create a Winnow account, you can safely ignore this email.</p>"
             ),
-        }
+        },
+        "verification",
     )
