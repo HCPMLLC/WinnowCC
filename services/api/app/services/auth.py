@@ -132,9 +132,6 @@ def get_current_user(
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="Not authenticated.")
-    from app.services.billing import set_request_user_email
-
-    set_request_user_email(user.email or "")
     return user
 
 
