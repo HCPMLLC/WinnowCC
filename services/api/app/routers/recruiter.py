@@ -641,8 +641,19 @@ async def upload_pipeline_resumes(
                 )
                 continue
 
-            # 2. Parse profile
-            profile_json = parse_profile_from_text(text)
+            # 2. Parse profile (LLM first, regex fallback — same as resume_parse_job.py)
+            profile_json = None
+            used_llm = False
+            try:
+                from app.services.llm_parser import is_llm_parser_available, parse_with_llm
+                if is_llm_parser_available():
+                    profile_json = parse_with_llm(text)
+                    used_llm = True
+            except Exception:
+                logger.warning("LLM parse failed for %s, falling back to regex", filename, exc_info=True)
+
+            if profile_json is None:
+                profile_json = parse_profile_from_text(text)
 
             # 3. Extract email and name from parsed profile
             basics = profile_json.get("basics", {})
@@ -674,7 +685,7 @@ async def upload_pipeline_resumes(
                 profile_json=profile_json,
                 profile_visibility="private",
                 open_to_opportunities=False,
-                llm_parse_status="pending",
+                llm_parse_status="succeeded" if used_llm else "pending",
             )
             session.add(new_cp)
             session.flush()
@@ -780,25 +791,26 @@ async def upload_pipeline_resumes(
             # 8. Increment usage counter
             increment_recruiter_counter(profile, "resume_imports_used", session)
 
-            # 9. Queue async LLM re-parse for higher-quality profile
-            try:
-                from app.services.queue import get_queue
-                from app.services.recruiter_llm_reparse import (
-                    recruiter_llm_reparse_job,
-                )
+            # 9. Queue async LLM re-parse only if LLM didn't already succeed
+            if not used_llm:
+                try:
+                    from app.services.queue import get_queue
+                    from app.services.recruiter_llm_reparse import (
+                        recruiter_llm_reparse_job,
+                    )
 
-                get_queue().enqueue(
-                    recruiter_llm_reparse_job,
-                    new_cp.id,
-                    resume_doc.id,
-                    job_timeout="10m",
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to enqueue LLM reparse for profile %d",
-                    new_cp.id,
-                    exc_info=True,
-                )
+                    get_queue().enqueue(
+                        recruiter_llm_reparse_job,
+                        new_cp.id,
+                        resume_doc.id,
+                        job_timeout="10m",
+                    )
+                except Exception:
+                    logger.warning(
+                        "Failed to enqueue LLM reparse for profile %d",
+                        new_cp.id,
+                        exc_info=True,
+                    )
 
             results.append(
                 ResumeUploadFileResult(
@@ -809,7 +821,7 @@ async def upload_pipeline_resumes(
                     candidate_profile_id=new_cp.id,
                     matched_email=parsed_email,
                     parsed_name=parsed_name,
-                    llm_parse_status="pending",
+                    llm_parse_status="succeeded" if used_llm else "pending",
                 )
             )
             succeeded += 1
