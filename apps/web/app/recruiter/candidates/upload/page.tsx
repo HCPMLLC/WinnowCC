@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -51,6 +51,30 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
 export default function ResumeUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState({ current: 0, total: 0 });
+  const [pct, setPct] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Simulated progress that ticks up while waiting for each file to process
+  useEffect(() => {
+    if (!uploading) {
+      if (timerRef.current) clearInterval(timerRef.current);
+      return;
+    }
+    timerRef.current = setInterval(() => {
+      setPct((prev) => {
+        // Each file owns an equal slice; tick up toward ~95% of current file's ceiling
+        const fileSlice = 100 / progress.total;
+        const ceiling = (progress.current + 1) * fileSlice - 2;
+        if (prev >= ceiling) return prev;
+        // Slow down as we approach the ceiling (ease-out feel)
+        const remaining = ceiling - prev;
+        const step = Math.max(0.3, remaining * 0.04);
+        return Math.min(prev + step, ceiling);
+      });
+    }, 300);
+    return () => { if (timerRef.current) clearInterval(timerRef.current); };
+  }, [uploading, progress]);
   const [response, setResponse] = useState<UploadResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
@@ -84,33 +108,90 @@ export default function ResumeUploadPage() {
     setUploading(true);
     setError(null);
     setResponse(null);
+    setProgress({ current: 0, total: files.length });
+    setPct(0);
 
-    const formData = new FormData();
-    for (const file of files) {
-      formData.append("files", file);
-    }
+    const allResults: FileResult[] = [];
+    let totalSucceeded = 0;
+    let totalFailed = 0;
+    let totalMatched = 0;
+    let totalNew = 0;
+    let totalLinkedPlatform = 0;
+    let remainingQuota = 0;
+    let upgradeRec: string | null = null;
 
-    try {
-      const res = await fetch(`${API_BASE}/api/recruiter/pipeline/upload-resumes`, {
-        method: "POST",
-        credentials: "include",
-        body: formData,
-      });
+    for (let i = 0; i < files.length; i++) {
+      setProgress({ current: i, total: files.length });
 
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        setError(body?.detail || `Upload failed (${res.status})`);
-        return;
+      const formData = new FormData();
+      formData.append("files", files[i]);
+
+      try {
+        const res = await fetch(`${API_BASE}/api/recruiter/pipeline/upload-resumes`, {
+          method: "POST",
+          credentials: "include",
+          body: formData,
+        });
+
+        if (!res.ok) {
+          const body = await res.json().catch(() => null);
+          allResults.push({
+            filename: files[i].name,
+            success: false,
+            status: "failed",
+            pipeline_candidate_id: null,
+            candidate_profile_id: null,
+            matched_email: null,
+            parsed_name: null,
+            error: body?.detail || `Upload failed (${res.status})`,
+          });
+          totalFailed++;
+          setPct(Math.round(((i + 1) / files.length) * 100));
+          continue;
+        }
+
+        const data: UploadResponse = await res.json();
+        allResults.push(...data.results);
+        totalSucceeded += data.total_succeeded;
+        totalFailed += data.total_failed;
+        totalMatched += data.total_matched;
+        totalNew += data.total_new;
+        totalLinkedPlatform += data.total_linked_platform;
+        remainingQuota = data.remaining_monthly_quota;
+        if (data.upgrade_recommendation) upgradeRec = data.upgrade_recommendation;
+        // Snap progress to completed percentage
+        setPct(Math.round(((i + 1) / files.length) * 100));
+      } catch {
+        allResults.push({
+          filename: files[i].name,
+          success: false,
+          status: "failed",
+          pipeline_candidate_id: null,
+          candidate_profile_id: null,
+          matched_email: null,
+          parsed_name: null,
+          error: "Network error",
+        });
+        totalFailed++;
+        setPct(Math.round(((i + 1) / files.length) * 100));
       }
-
-      const data: UploadResponse = await res.json();
-      setResponse(data);
-      setFiles([]);
-    } catch {
-      setError("Network error. Please try again.");
-    } finally {
-      setUploading(false);
     }
+
+    setPct(100);
+    setProgress({ current: files.length, total: files.length });
+    setResponse({
+      results: allResults,
+      total_submitted: files.length,
+      total_succeeded: totalSucceeded,
+      total_failed: totalFailed,
+      total_matched: totalMatched,
+      total_new: totalNew,
+      total_linked_platform: totalLinkedPlatform,
+      remaining_monthly_quota: remainingQuota,
+      upgrade_recommendation: upgradeRec,
+    });
+    setFiles([]);
+    setUploading(false);
   }
 
   return (
@@ -224,8 +305,18 @@ export default function ResumeUploadPage() {
             disabled={uploading}
             className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
           >
-            {uploading ? "Uploading & Processing..." : `Upload ${files.length} Resume${files.length !== 1 ? "s" : ""}`}
+            {uploading
+              ? `Processing ${progress.current + 1} of ${progress.total} — ${Math.round(pct)}%`
+              : `Upload ${files.length} Resume${files.length !== 1 ? "s" : ""}`}
           </button>
+          {uploading && (
+            <div className="w-full rounded-full bg-slate-200 h-2.5 overflow-hidden">
+              <div
+                className="h-full bg-slate-900 transition-all duration-300 ease-out"
+                style={{ width: `${Math.max(2, Math.round(pct))}%` }}
+              />
+            </div>
+          )}
         </div>
       )}
 
