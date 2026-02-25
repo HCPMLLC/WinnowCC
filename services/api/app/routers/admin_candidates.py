@@ -488,6 +488,7 @@ def update_user_role(
                 detail=f"Invalid role. Must be one of: {', '.join(sorted(ALLOWED_ROLES))}",
             )
         user.role = payload.role
+        user.mfa_required = payload.role in ("employer", "recruiter", "both")
 
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
