@@ -9,7 +9,6 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
-import * as FileSystem from "expo-file-system";
 import { Ionicons } from "@expo/vector-icons";
 import { uploadFile, api } from "../../lib/api";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
@@ -46,8 +45,7 @@ export default function UploadScreen() {
       if (!file) return;
 
       // Validate size
-      const info = await FileSystem.getInfoAsync(file.uri);
-      if (info.exists && info.size && info.size > 10 * 1024 * 1024) {
+      if (file.size && file.size > 10 * 1024 * 1024) {
         Alert.alert("Error", "File must be under 10 MB.");
         return;
       }
