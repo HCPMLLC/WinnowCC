@@ -22,12 +22,16 @@ export async function fetchAuthMe(): Promise<AuthMe | null> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const response = await fetch(`${API_BASE}/api/auth/me`, {
-    credentials: "include",
-    headers,
-  });
-  if (!response.ok) {
+  try {
+    const response = await fetch(`${API_BASE}/api/auth/me`, {
+      credentials: "include",
+      headers,
+    });
+    if (!response.ok) {
+      return null;
+    }
+    return (await response.json()) as AuthMe;
+  } catch {
     return null;
   }
-  return (await response.json()) as AuthMe;
 }
