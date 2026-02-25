@@ -96,17 +96,18 @@ export default function RootLayout() {
 
     if (!authState.isAuthenticated && !inAuthGroup) {
       router.replace("/(auth)/login");
-    } else if (authState.isAuthenticated && inAuthGroup) {
-      // Just logged in — check onboarding
-      if (!authState.onboardingComplete) {
-        if (authState.role === "recruiter") {
-          router.replace("/recruiter-onboarding");
-        } else if (authState.role === "employer") {
-          router.replace("/employer-onboarding");
-        } else {
-          router.replace("/candidate-onboarding");
-        }
-      } else if (authState.role === "recruiter") {
+    } else if (authState.isAuthenticated && !authState.onboardingComplete && !inOnboarding) {
+      // Redirect to onboarding from ANY non-onboarding screen (not just auth)
+      if (authState.role === "recruiter") {
+        router.replace("/recruiter-onboarding");
+      } else if (authState.role === "employer") {
+        router.replace("/employer-onboarding");
+      } else {
+        router.replace("/candidate-onboarding");
+      }
+    } else if (authState.isAuthenticated && authState.onboardingComplete && inAuthGroup) {
+      // Onboarded user on auth screen — send to dashboard
+      if (authState.role === "recruiter") {
         router.replace("/(recruiter-tabs)/dashboard");
       } else if (authState.role === "employer") {
         router.replace("/(employer-tabs)/dashboard");
