@@ -108,14 +108,22 @@ export default function RootLayout() {
       } else {
         router.replace("/candidate-onboarding");
       }
-    } else if (authState.isAuthenticated && authState.onboardingComplete && inAuthGroup) {
-      // Onboarded user on auth screen — send to dashboard
-      if (authState.role === "recruiter") {
-        router.replace("/(recruiter-tabs)/dashboard");
-      } else if (authState.role === "employer") {
-        router.replace("/(employer-tabs)/dashboard");
-      } else {
-        router.replace("/(tabs)/dashboard");
+    } else if (authState.isAuthenticated && authState.onboardingComplete) {
+      // Redirect to the correct dashboard for the user's role
+      const inWrongTabs =
+        (authState.role === "recruiter" && segments[0] !== "(recruiter-tabs)") ||
+        (authState.role === "employer" && segments[0] !== "(employer-tabs)") ||
+        (authState.role === "candidate" && segments[0] !== "(tabs)");
+      const shouldRedirect = inAuthGroup || inWrongTabs;
+
+      if (shouldRedirect && !inOnboarding) {
+        if (authState.role === "recruiter") {
+          router.replace("/(recruiter-tabs)/dashboard");
+        } else if (authState.role === "employer") {
+          router.replace("/(employer-tabs)/dashboard");
+        } else {
+          router.replace("/(tabs)/dashboard");
+        }
       }
     }
   }, [authState.isAuthenticated, authState.isLoading, authState.onboardingComplete, segments, router]);
