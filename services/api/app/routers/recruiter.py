@@ -44,6 +44,8 @@ from app.schemas.recruiter_crm import (
     RecruiterTeamMemberResponse,
 )
 from app.schemas.recruiter_job import (
+    CandidateMatchedJobResult,
+    CandidateMatchedJobsResponse,
     RecruiterJobCandidateResult,
     RecruiterJobCandidatesResponse,
     RecruiterJobCreate,
@@ -1308,6 +1310,86 @@ def delete_sourced_candidates(
 
 # Immutable fields that recruiters cannot edit
 _IMMUTABLE_PROFILE_FIELDS = {"source", "sourced_by_user_id", "linkedin_url"}
+
+
+@router.get(
+    "/candidates/{candidate_profile_id}/matched-jobs",
+    response_model=CandidateMatchedJobsResponse,
+)
+def get_candidate_matched_jobs(
+    candidate_profile_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> CandidateMatchedJobsResponse:
+    """Return matched jobs for a candidate, sorted by match score descending."""
+    cp = session.get(CandidateProfile, candidate_profile_id)
+    if cp is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found.",
+        )
+
+    cached = (
+        session.execute(
+            select(RecruiterJobCandidate)
+            .join(
+                RecruiterJob,
+                RecruiterJob.id == RecruiterJobCandidate.recruiter_job_id,
+            )
+            .where(
+                RecruiterJobCandidate.candidate_profile_id == candidate_profile_id,
+                RecruiterJob.recruiter_profile_id == profile.id,
+            )
+            .order_by(RecruiterJobCandidate.match_score.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+
+    total = (
+        session.execute(
+            select(func.count(RecruiterJobCandidate.id))
+            .join(
+                RecruiterJob,
+                RecruiterJob.id == RecruiterJobCandidate.recruiter_job_id,
+            )
+            .where(
+                RecruiterJobCandidate.candidate_profile_id == candidate_profile_id,
+                RecruiterJob.recruiter_profile_id == profile.id,
+            )
+        ).scalar()
+        or 0
+    )
+
+    jobs = []
+    for match in cached:
+        job = session.get(RecruiterJob, match.recruiter_job_id)
+        if not job:
+            continue
+        jobs.append(
+            CandidateMatchedJobResult(
+                job_id=job.id,
+                title=job.title,
+                client_company_name=job.client_company_name,
+                location=job.location,
+                remote_policy=job.remote_policy,
+                employment_type=job.employment_type,
+                salary_min=job.salary_min,
+                salary_max=job.salary_max,
+                salary_currency=job.salary_currency,
+                status=job.status,
+                match_score=match.match_score,
+                matched_skills=match.matched_skills or [],
+            )
+        )
+
+    return CandidateMatchedJobsResponse(
+        candidate_profile_id=candidate_profile_id,
+        jobs=jobs,
+        total=total,
+    )
 
 
 @router.get("/candidates/{candidate_profile_id}")

@@ -106,6 +106,27 @@ interface CandidateDetail {
   updated_at: string | null;
 }
 
+interface MatchedJob {
+  job_id: number;
+  title: string;
+  client_company_name: string | null;
+  location: string | null;
+  remote_policy: string | null;
+  employment_type: string | null;
+  salary_min: number | null;
+  salary_max: number | null;
+  salary_currency: string | null;
+  status: string;
+  match_score: number;
+  matched_skills: string[];
+}
+
+interface MatchedJobsResponse {
+  candidate_profile_id: number;
+  jobs: MatchedJob[];
+  total: number;
+}
+
 const inputCls =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500";
 
@@ -141,6 +162,8 @@ export default function CandidateDetailPage() {
   const [saving, setSaving] = useState(false);
   const [showIntroModal, setShowIntroModal] = useState(false);
   const [introSent, setIntroSent] = useState(false);
+  const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
+  const [matchedJobsTotal, setMatchedJobsTotal] = useState(0);
 
   // Form state
   const [form, setForm] = useState({
@@ -213,11 +236,19 @@ export default function CandidateDetailPage() {
 
   useEffect(() => {
     if (!candidateId) return;
-    fetch(`${API_BASE}/api/recruiter/candidates/${candidateId}`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data: CandidateDetail | null) => {
+    Promise.all([
+      fetch(`${API_BASE}/api/recruiter/candidates/${candidateId}`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null)),
+      fetch(`${API_BASE}/api/recruiter/candidates/${candidateId}/matched-jobs?limit=50`, { credentials: "include" })
+        .then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([data, jobsData]: [CandidateDetail | null, MatchedJobsResponse | null]) => {
         setCandidate(data);
         if (data) populateForm(data.profile_json);
+        if (jobsData) {
+          setMatchedJobs(jobsData.jobs);
+          setMatchedJobsTotal(jobsData.total);
+        }
       })
       .finally(() => setLoading(false));
   }, [candidateId]);
@@ -685,6 +716,64 @@ export default function CandidateDetailPage() {
               </div>
             </div>
           </div>
+
+          {/* Matched Jobs */}
+          {matchedJobs.length > 0 && (
+            <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+              <div className="mb-4">
+                <h2 className="text-lg font-semibold text-slate-900">Matched Jobs</h2>
+                <p className="text-sm text-slate-500">
+                  {matchedJobsTotal} job{matchedJobsTotal !== 1 ? "s" : ""} matched to this candidate
+                </p>
+              </div>
+              <div className="space-y-3">
+                {matchedJobs.map((job) => (
+                  <div
+                    key={job.job_id}
+                    className="flex items-center justify-between rounded-lg border border-slate-200 p-4 transition-colors hover:bg-slate-50"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{job.title}</span>
+                        {job.client_company_name && (
+                          <span className="text-sm text-slate-500">{job.client_company_name}</span>
+                        )}
+                      </div>
+                      {job.matched_skills.length > 0 && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {job.matched_skills.slice(0, 8).map((skill) => (
+                            <span key={skill} className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs text-emerald-700">
+                              {skill}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="mt-1 flex gap-4 text-xs text-slate-400">
+                        {job.location && <span>{job.location}</span>}
+                        {job.remote_policy && <span>{job.remote_policy}</span>}
+                        {job.employment_type && <span>{job.employment_type}</span>}
+                        {job.salary_min != null && job.salary_max != null && (
+                          <span>${job.salary_min.toLocaleString()} – ${job.salary_max.toLocaleString()}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="ml-4 flex items-center gap-3">
+                      <div className="text-right">
+                        <div className="text-lg font-bold text-slate-900">{Math.round(job.match_score)}%</div>
+                        <div className="text-xs text-slate-500">match</div>
+                      </div>
+                      <Link
+                        href={`/recruiter/jobs/${job.job_id}`}
+                        className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
+                      >
+                        View Job
+                      </Link>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* About */}
           <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">

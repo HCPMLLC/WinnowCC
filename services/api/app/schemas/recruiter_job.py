@@ -194,3 +194,28 @@ class RecruiterJobCandidatesResponse(BaseModel):
     job_title: str
     candidates: list[RecruiterJobCandidateResult]
     total_cached: int
+
+
+class CandidateMatchedJobResult(BaseModel):
+    """Single job match result for a candidate."""
+
+    job_id: int
+    title: str
+    client_company_name: str | None = None
+    location: str | None = None
+    remote_policy: str | None = None
+    employment_type: str | None = None
+    salary_min: int | None = None
+    salary_max: int | None = None
+    salary_currency: str | None = "USD"
+    status: str
+    match_score: float = Field(..., ge=0, le=100)
+    matched_skills: list[str] = Field(default_factory=list)
+
+
+class CandidateMatchedJobsResponse(BaseModel):
+    """Response for matched jobs for a candidate."""
+
+    candidate_profile_id: int
+    jobs: list[CandidateMatchedJobResult]
+    total: int
