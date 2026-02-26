@@ -7,6 +7,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
 
+try:
+    from pgvector.sqlalchemy import Vector as _Vector
+
+    _EmbeddingType = _Vector(384)
+except ImportError:
+    import sqlalchemy as _sa
+
+    _EmbeddingType = _sa.JSON()
+
 
 class RecruiterJob(Base):
     """Job posting created by a recruiter on behalf of a client company."""
@@ -66,6 +75,9 @@ class RecruiterJob(Base):
     )
     application_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     application_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+    # Embedding for semantic matching
+    embedding = mapped_column(_EmbeddingType, nullable=True)
 
     # Dates
     posted_at: Mapped[datetime | None] = mapped_column(
