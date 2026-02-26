@@ -728,8 +728,9 @@ export default function CandidateDetailPage() {
               </div>
               <div className="space-y-3">
                 {matchedJobs.map((job) => (
-                  <div
+                  <Link
                     key={job.job_id}
+                    href={`/recruiter/jobs/${job.job_id}`}
                     className="flex items-center justify-between rounded-lg border border-slate-200 p-4 transition-colors hover:bg-slate-50"
                   >
                     <div className="min-w-0 flex-1">
@@ -757,19 +758,11 @@ export default function CandidateDetailPage() {
                         )}
                       </div>
                     </div>
-                    <div className="ml-4 flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-lg font-bold text-slate-900">{Math.round(job.match_score)}%</div>
-                        <div className="text-xs text-slate-500">match</div>
-                      </div>
-                      <Link
-                        href={`/recruiter/jobs/${job.job_id}`}
-                        className="whitespace-nowrap rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:bg-slate-50"
-                      >
-                        View Job
-                      </Link>
+                    <div className="ml-4 text-right">
+                      <div className="text-lg font-bold text-slate-900">{Math.round(job.match_score)}%</div>
+                      <div className="text-xs text-slate-500">match</div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             </div>
