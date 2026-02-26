@@ -13,6 +13,7 @@ env:
   REGION: us-central1
   API_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/api
   WORKER_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/worker
+  SCHEDULER_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/scheduler
   WEB_IMAGE: us-central1-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/winnow/web
 
 jobs:
@@ -55,7 +56,7 @@ jobs:
             --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
             --vpc-connector=winnow-connector \
             --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest,ADMIN_TOKEN=admin-token:latest \
-            --set-env-vars=^::^FRONTEND_URL=https://winnowcc.ai::AUTH_COOKIE_NAME=rm_session::AUTH_COOKIE_SECURE=true::EMBEDDING_PROVIDER=sentence-transformers::JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,arbeitnow,adzuna,jooble,usajobs,ziprecruiter,builtin,manual::GCS_BUCKET=winnow-resumes-prod \
+            --set-env-vars=^::^FRONTEND_URL=https://winnowcc.ai::AUTH_COOKIE_NAME=rm_session::AUTH_COOKIE_SECURE=true::EMBEDDING_PROVIDER=sentence-transformers::JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,arbeitnow,adzuna,jooble,usajobs,ziprecruiter,builtin,manual::GCS_BUCKET=winnow-resumes-prod::SCHEDULER_ENABLED=true::SCHEDULER_INGEST_CRON=0 6 * * 0 \
             --memory=512Mi \
             --cpu=1 \
             --min-instances=0 \
@@ -125,6 +126,49 @@ jobs:
             --cpu=1 \
             --min-instances=0 \
             --max-instances=5
+
+  deploy-scheduler:
+    name: Deploy Scheduler
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker
+        run: gcloud auth configure-docker us-central1-docker.pkg.dev
+
+      - name: Build and push Scheduler image
+        run: |
+          cd services/api
+          docker build --no-cache -f Dockerfile.scheduler -t ${{ env.SCHEDULER_IMAGE }}:${{ github.sha }} -t ${{ env.SCHEDULER_IMAGE }}:latest .
+          docker push ${{ env.SCHEDULER_IMAGE }}:${{ github.sha }}
+          docker push ${{ env.SCHEDULER_IMAGE }}:latest
+
+      - name: Deploy Scheduler to Cloud Run
+        run: |
+          gcloud run deploy winnow-scheduler \
+            --image=${{ env.SCHEDULER_IMAGE }}:${{ github.sha }} \
+            --region=${{ env.REGION }} \
+            --platform=managed \
+            --no-allow-unauthenticated \
+            --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
+            --vpc-connector=winnow-connector \
+            --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest,ADMIN_TOKEN=admin-token:latest \
+            --set-env-vars=^::^FRONTEND_URL=https://winnowcc.ai::EMBEDDING_PROVIDER=sentence-transformers::JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,arbeitnow,adzuna,jooble,usajobs,ziprecruiter,builtin,manual::GCS_BUCKET=winnow-resumes-prod::SCHEDULER_ENABLED=true::SCHEDULER_INGEST_CRON=0 6 * * 0 \
+            --memory=256Mi \
+            --cpu=1 \
+            --min-instances=1 \
+            --max-instances=1 \
+            --no-cpu-throttling
 
   deploy-web:
     name: Deploy Web
