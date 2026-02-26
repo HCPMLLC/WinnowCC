@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import CompetitiveComparison from "./competitive/winnow-competitive-comparison";
@@ -372,9 +373,11 @@ function NavBar({ audience }: { audience: Audience }) {
     >
       <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-4 lg:px-8">
         <Link href="/" className="flex items-center gap-2">
-          <img
+          <Image
             src="/Winnow CC Masthead TBGC.png"
             alt="Winnow"
+            width={240}
+            height={72}
             className="h-[72px] w-auto"
           />
         </Link>

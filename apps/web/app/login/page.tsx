@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import Link from "next/link";
 
 
@@ -789,10 +790,12 @@ export default function LoginPage() {
           <div className="px-8 py-12 lg:px-12">
             <div style={{ maxWidth: "550px" }}>
               <Link href="/">
-                <img
+                <Image
                   src="/Winnow CC Masthead TBGC.png"
                   alt="Winnow"
-                  className="mb-8 h-[120px]"
+                  width={400}
+                  height={120}
+                  className="mb-8 h-[120px] w-auto"
                 />
               </Link>
               <h2 className="text-3xl font-bold tracking-tight text-white">
@@ -829,10 +832,12 @@ export default function LoginPage() {
       <div className="relative z-10 px-8 py-12 lg:hidden">
         <div className="mx-auto max-w-sm">
           <Link href="/">
-            <img
+            <Image
               src="/Winnow CC Masthead TBGC.png"
               alt="Winnow"
-              className="mb-6 h-16"
+              width={200}
+              height={64}
+              className="mb-6 h-16 w-auto"
             />
           </Link>
           <h2 className="text-2xl font-bold tracking-tight text-white">
