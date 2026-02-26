@@ -1488,6 +1488,15 @@ def create_recruiter_job(
 
     linked_employer_job = auto_link_recruiter_job(session, job)
 
+    # Generate embedding for semantic matching
+    try:
+        from app.services.embedding import generate_embedding
+
+        text = f"Job Title: {job.title}\nCompany: {job.client_company_name or ''}\nDescription: {(job.description or '')[:2000]}\nRequirements: {(job.requirements or '')[:1000]}\nLocation: {job.location or ''}"
+        job.embedding = generate_embedding(text)
+    except Exception:
+        logger.debug("Failed to generate embedding for recruiter job %s", job.id)
+
     session.commit()
     session.refresh(job)
 
@@ -1916,6 +1925,17 @@ def update_recruiter_job(
 
     for field, value in update_data.items():
         setattr(job, field, value)
+
+    # Regenerate embedding when content fields change
+    if content_changed:
+        try:
+            from app.services.embedding import generate_embedding
+
+            text = f"Job Title: {job.title}\nCompany: {job.client_company_name or ''}\nDescription: {(job.description or '')[:2000]}\nRequirements: {(job.requirements or '')[:1000]}\nLocation: {job.location or ''}"
+            job.embedding = generate_embedding(text)
+        except Exception:
+            logger.debug("Failed to regenerate embedding for recruiter job %s", job.id)
+
     session.commit()
     session.refresh(job)
 
@@ -2106,6 +2126,17 @@ def refresh_recruiter_job_candidates(
             if not rj:
                 yield f"data: {_json.dumps({'percent': 100, 'phase': 'error', 'message': 'Job not found'})}\n\n"
                 return
+
+            # Generate embedding if missing (backfill existing jobs)
+            if rj.embedding is None:
+                try:
+                    from app.services.embedding import generate_embedding
+
+                    text = f"Job Title: {rj.title}\nCompany: {rj.client_company_name or ''}\nDescription: {(rj.description or '')[:2000]}\nRequirements: {(rj.requirements or '')[:1000]}\nLocation: {rj.location or ''}"
+                    rj.embedding = generate_embedding(text)
+                    db.commit()
+                except Exception:
+                    logger.debug("Failed to generate embedding for job %s", the_job_id)
 
             yield f"data: {_json.dumps({'percent': 5, 'phase': 'loading', 'message': 'Loading candidate profiles...'})}\n\n"
 

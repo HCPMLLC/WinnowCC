@@ -611,15 +611,29 @@ def find_top_candidates_for_recruiter_job(
 
     all_profiles = platform_profiles + sourced_profiles
 
+    # Get job embedding for semantic blending (same approach as candidate
+    # matching in compute_matches).
+    job_embedding = _get_embedding_list(
+        getattr(recruiter_job, "embedding", None)
+    )
+
     scored: list[dict] = []
     for cp in all_profiles:
         pj = cp.profile_json or {}
         result = _score_posted_job(recruiter_job, pj)
         if result.match_score > 0:
+            # Blend deterministic score with semantic similarity
+            profile_embedding = _get_embedding_list(cp.embedding)
+            semantic_sim = compute_cosine_similarity(
+                profile_embedding, job_embedding
+            )
+            blended = compute_blended_match_score(
+                result.match_score, semantic_sim
+            )
             scored.append(
                 {
                     "id": cp.id,
-                    "match_score": result.match_score,
+                    "match_score": blended,
                     "matched_skills": result.reasons.get("matched_skills", []),
                 }
             )
