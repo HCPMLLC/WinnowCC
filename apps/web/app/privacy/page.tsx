@@ -43,7 +43,7 @@ export default function PrivacyPage() {
           </ul>
           <div style={{ marginTop: 32, padding: '20px', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
             <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: '#1a1a2e' }}>Questions?</p>
-            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>We're happy to explain anything.</p>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>We&apos;re happy to explain anything.</p>
             <a href="mailto:privacy@winnowcc.ai" style={{ fontSize: 13, color: '#6366f1', fontWeight: 600 }}>
               privacy@winnowcc.ai
             </a>
@@ -54,7 +54,7 @@ export default function PrivacyPage() {
         <main style={{ flex: 1, maxWidth: 720 }}>
           <div style={{ background: '#fff', borderRadius: 16, border: '1px solid #e2e8f0', padding: '48px 56px' }}>
             <p style={{ fontSize: 16, color: '#475569', lineHeight: 1.8, marginTop: 0 }}>
-              <strong>Winnow Career Concierge</strong> ("we", "our", "us") operates the Winnow platform at{' '}
+              <strong>Winnow Career Concierge</strong> (&quot;we&quot;, &quot;our&quot;, &quot;us&quot;) operates the Winnow platform at{' '}
               <a href="https://winnowcc.ai" style={{ color: '#6366f1' }}>winnowcc.ai</a> and our mobile app.
               This policy explains what data we collect, why we collect it, and how we protect it.
             </p>
@@ -137,8 +137,8 @@ export default function PrivacyPage() {
 
             <Section id="changes-to-this-policy" title="Changes to This Policy">
               <p>
-                We may update this policy as the platform evolves. When we make material changes, we'll notify
-                you by email or an in-app notice. The "Last updated" date at the top will always reflect the
+                We may update this policy as the platform evolves. When we make material changes, we&apos;ll notify
+                you by email or an in-app notice. The &quot;Last updated&quot; date at the top will always reflect the
                 current version.
               </p>
             </Section>

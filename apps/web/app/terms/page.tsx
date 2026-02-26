@@ -46,7 +46,7 @@ export default function TermsPage() {
           </ul>
           <div style={{ marginTop: 32, padding: '20px', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
             <p style={{ fontSize: 13, fontWeight: 600, margin: '0 0 8px', color: '#1a1a2e' }}>Questions?</p>
-            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>We're here to help.</p>
+            <p style={{ fontSize: 13, color: '#64748b', margin: '0 0 12px' }}>We&apos;re here to help.</p>
             <a href="mailto:hello@winnowcc.ai" style={{ fontSize: 13, color: '#6366f1', fontWeight: 600 }}>
               hello@winnowcc.ai
             </a>
@@ -121,8 +121,8 @@ export default function TermsPage() {
               </p>
               <p>
                 You may cancel at any time through the Stripe Customer Portal — cancellations take effect at the
-                end of the current billing period. Refunds are handled per Stripe's standard refund policies. We
-                reserve the right to change pricing with 30 days' notice.
+                end of the current billing period. Refunds are handled per Stripe&apos;s standard refund policies. We
+                reserve the right to change pricing with 30 days&apos; notice.
               </p>
             </Section>
 
@@ -140,7 +140,7 @@ export default function TermsPage() {
 
             <Section id="disclaimer-of-warranties" title="Disclaimer of Warranties">
               <p>
-                Winnow is provided "as is" and "as available" without warranties of any kind, express or implied.
+                Winnow is provided &quot;as is&quot; and &quot;as available&quot; without warranties of any kind, express or implied.
                 We do not warrant that the platform will be uninterrupted, error-free, or that job matches will
                 result in interviews or employment.
               </p>
@@ -148,7 +148,7 @@ export default function TermsPage() {
 
             <Section id="limitation-of-liability" title="Limitation of Liability">
               <p>
-                To the maximum extent permitted by law, Winnow's total liability for any claims arising from your
+                To the maximum extent permitted by law, Winnow&apos;s total liability for any claims arising from your
                 use of the platform shall not exceed the amount you paid us in the 12 months prior to the claim.
                 We are not liable for indirect, incidental, or consequential damages.
               </p>
