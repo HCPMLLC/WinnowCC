@@ -235,6 +235,7 @@ class PipelineCandidateResponse(BaseModel):
     skills: list[str] | None = None
     linkedin_url: str | None = None
     is_platform_candidate: bool = False
+    job_match_count: int = 0
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

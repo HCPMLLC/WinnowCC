@@ -28,6 +28,7 @@ interface PipelineCandidate {
   skills: string[] | null;
   linkedin_url: string | null;
   is_platform_candidate: boolean;
+  job_match_count: number;
   created_at: string;
 }
 
@@ -450,6 +451,11 @@ export default function RecruiterPipeline() {
                   <h3 className="text-base font-semibold text-slate-900">{entry.candidate_name || entry.external_name || `Candidate #${entry.id}`}</h3>
                   {entry.match_score != null && (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{Math.round(entry.match_score)}% match</span>
+                  )}
+                  {entry.job_match_count > 0 && (
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                      {entry.job_match_count} job{entry.job_match_count !== 1 ? "s" : ""} matched
+                    </span>
                   )}
                   {entry.rating != null && (
                     <span className="text-xs text-amber-500">{"★".repeat(entry.rating)}{"☆".repeat(5 - entry.rating)}</span>

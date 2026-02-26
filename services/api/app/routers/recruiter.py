@@ -506,6 +506,21 @@ def list_pipeline(
                     cp_id,
                     exc_info=True,
                 )
+    # Batch-count how many recruiter jobs each candidate is linked to
+    match_counts: dict[int, int] = {}
+    if cp_ids:
+        from app.models.recruiter_job_candidate import RecruiterJobCandidate as RJC
+
+        rows = session.execute(
+            select(
+                RJC.candidate_profile_id,
+                func.count(RJC.id),
+            )
+            .where(RJC.candidate_profile_id.in_(cp_ids))
+            .group_by(RJC.candidate_profile_id)
+        ).all()
+        match_counts = {row[0]: row[1] for row in rows}
+
     results = []
     for pc in pcs:
         resp = PipelineCandidateResponse.model_validate(pc, from_attributes=True)
@@ -518,6 +533,10 @@ def list_pipeline(
             resp.skills = info["skills"]
             resp.linkedin_url = info["linkedin_url"]
             resp.is_platform_candidate = info["is_platform_candidate"]
+        if pc.candidate_profile_id:
+            resp.job_match_count = match_counts.get(
+                pc.candidate_profile_id, 0
+            )
         results.append(resp)
     return results
 
@@ -1148,6 +1167,22 @@ def list_sourced_candidates(
     )
     profiles = session.execute(stmt).scalars().all()
 
+    # Batch-count how many recruiter jobs each candidate is linked to
+    profile_ids = [p.id for p in profiles]
+    match_counts: dict[int, int] = {}
+    if profile_ids:
+        from app.models.recruiter_job_candidate import RecruiterJobCandidate as RJC
+
+        rows = session.execute(
+            select(
+                RJC.candidate_profile_id,
+                func.count(RJC.id),
+            )
+            .where(RJC.candidate_profile_id.in_(profile_ids))
+            .group_by(RJC.candidate_profile_id)
+        ).all()
+        match_counts = {row[0]: row[1] for row in rows}
+
     candidates = []
     for p in profiles:
         pj = p.profile_json or {}
@@ -1155,6 +1190,7 @@ def list_sourced_candidates(
             {
                 "candidate_profile_id": p.id,
                 "profile_json": pj,
+                "job_match_count": match_counts.get(p.id, 0),
             }
         )
 

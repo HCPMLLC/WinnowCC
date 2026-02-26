@@ -15,6 +15,7 @@ interface Candidate {
   linkedin_url: string | null;
   current_company: string | null;
   about: string | null;
+  job_match_count: number;
 }
 
 export default function RecruiterCandidates() {
@@ -53,6 +54,7 @@ export default function RecruiterCandidates() {
               linkedin_url: pj.linkedin_url || null,
               current_company: pj.current_company || (firstExp?.company as string || null),
               about: (pj.about || pj.professional_summary || null) as string | null,
+              job_match_count: (c.job_match_count as number) || 0,
             };
           });
           setCandidates(mapped);
@@ -281,6 +283,11 @@ export default function RecruiterCandidates() {
                       {c.source === "Winnowcc.ai" && (
                         <span className="shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
                           Winnowcc.ai
+                        </span>
+                      )}
+                      {c.job_match_count > 0 && (
+                        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                          {c.job_match_count} job{c.job_match_count !== 1 ? "s" : ""} matched
                         </span>
                       )}
                     </div>
