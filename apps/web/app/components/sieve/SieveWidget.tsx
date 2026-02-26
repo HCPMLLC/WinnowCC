@@ -27,7 +27,6 @@ interface SieveWidgetProps {
   greeting?: string;
   triggers?: SieveTrigger[];
   onRefreshTriggers?: (dismissedIds?: string[]) => void;
-  autoOpen?: boolean;
 }
 
 // ─── Constants ───────────────────────────────────────────────────────────────
@@ -154,10 +153,8 @@ export default function SieveWidget({
   greeting = DEFAULT_GREETING,
   triggers = [],
   onRefreshTriggers,
-  autoOpen = false,
 }: SieveWidgetProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const autoOpenedRef = useRef(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -225,14 +222,6 @@ export default function SieveWidget({
       setTimeout(() => inputRef.current?.focus(), 300);
     }
   }, [isOpen]);
-
-  // Auto-open on critical triggers (once per mount)
-  useEffect(() => {
-    if (autoOpen && !autoOpenedRef.current && !isOpen && activeTriggers.length > 0) {
-      autoOpenedRef.current = true;
-      setTimeout(() => setIsOpen(true), 1500);
-    }
-  }, [autoOpen, activeTriggers.length, isOpen]);
 
   const handleTriggerAction = useCallback(
     (trigger: SieveTrigger) => {

@@ -53,17 +53,11 @@ export default function AuthenticatedSieve() {
 
   if (!isAuthenticated || isPublicPage) return null;
 
-  // Auto-open Sieve for critical triggers (e.g. profile < 50% complete)
-  const hasCriticalTrigger = triggers.some(
-    (t) => t.id === "profile_incomplete_critical"
-  );
-
   return (
     <SieveWidget
       apiBase={API_BASE}
       triggers={triggers}
       onRefreshTriggers={fetchTriggers}
-      autoOpen={hasCriticalTrigger}
     />
   );
 }
