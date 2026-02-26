@@ -486,36 +486,47 @@ export default function AdminProfileEditorPage() {
         if (!response.ok) {
           throw new Error("Failed to load profile.");
         }
-        const payload = (await response.json()) as AdminProfileDetailResponse;
-        setUserBasics(payload.user);
-        setRole(payload.role);
-        setUserEmail(payload.user.email);
+        const payload = await response.json();
 
-        if (payload.candidate_profile) {
-          setProfile(payload.candidate_profile.profile_json);
-          setVersion(payload.candidate_profile.version);
+        if (payload.user) {
+          // New role-aware response format
+          const detail = payload as AdminProfileDetailResponse;
+          setUserBasics(detail.user);
+          setRole(detail.role);
+          setUserEmail(detail.user.email);
+
+          if (detail.candidate_profile) {
+            setProfile(detail.candidate_profile.profile_json);
+            setVersion(detail.candidate_profile.version);
+          } else {
+            // Non-candidate: set a minimal profile so the page renders
+            setProfile({
+              basics: {},
+              experience: [],
+              education: [],
+              skills: [],
+              preferences: {
+                target_titles: [],
+                locations: [],
+                remote_ok: null,
+                job_type: null,
+                salary_min: null,
+                salary_max: null,
+              },
+            });
+          }
+          if (detail.recruiter_profile) {
+            setRecruiterProfile(detail.recruiter_profile);
+          }
+          if (detail.employer_profile) {
+            setEmployerProfile(detail.employer_profile);
+          }
         } else {
-          // Non-candidate: set a minimal profile so the page renders
-          setProfile({
-            basics: {},
-            experience: [],
-            education: [],
-            skills: [],
-            preferences: {
-              target_titles: [],
-              locations: [],
-              remote_ok: null,
-              job_type: null,
-              salary_min: null,
-              salary_max: null,
-            },
-          });
-        }
-        if (payload.recruiter_profile) {
-          setRecruiterProfile(payload.recruiter_profile);
-        }
-        if (payload.employer_profile) {
-          setEmployerProfile(payload.employer_profile);
+          // Legacy response format: {version, profile_json}
+          const legacy = payload as ProfileResponse;
+          setProfile(legacy.profile_json);
+          setVersion(legacy.version);
+          setUserEmail(legacy.profile_json.basics?.email || null);
         }
       } catch (caught) {
         const message =
@@ -523,28 +534,31 @@ export default function AdminProfileEditorPage() {
         setError(message);
       }
 
-      // Only fetch completeness for candidates
-      if (role === "candidate") {
-        try {
-          const response = await fetch(
-            `${API_BASE}/api/admin/profile/${userId}/completeness`,
-            {
-              credentials: "include",
-            }
-          );
-          if (response.ok) {
-            const payload =
-              (await response.json()) as ProfileCompletenessResponse;
-            setCompleteness(payload);
-          }
-        } catch {
-          // Non-critical
-        }
-      }
     };
 
     void loadData();
-  }, [userId, router, role]);
+  }, [userId, router]);
+
+  // Fetch completeness only for candidates
+  useEffect(() => {
+    if (role !== "candidate") return;
+    const fetchCompleteness = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE}/api/admin/profile/${userId}/completeness`,
+          { credentials: "include" }
+        );
+        if (response.ok) {
+          const payload =
+            (await response.json()) as ProfileCompletenessResponse;
+          setCompleteness(payload);
+        }
+      } catch {
+        // Non-critical
+      }
+    };
+    void fetchCompleteness();
+  }, [userId, role]);
 
   const updateBasics = (updates: Partial<Basics>) => {
     setProfile((current) => {
