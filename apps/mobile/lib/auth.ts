@@ -43,6 +43,9 @@ async function getSecureStore() {
 }
 
 export async function saveToken(token: string): Promise<void> {
+  if (typeof token !== "string" || !token) {
+    throw new Error("Login failed — no valid session token received.");
+  }
   const store = await getSecureStore();
   if (store) {
     await store.setItemAsync(TOKEN_KEY, token);
