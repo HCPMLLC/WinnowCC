@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import html
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -11,17 +12,27 @@ from sqlalchemy.orm import Session
 from app.models.job import Job
 from app.services.job_sources import JobPosting, get_job_sources
 
+logger = logging.getLogger(__name__)
+
 
 def ingest_jobs(session: Session, query: dict) -> int:
     now = datetime.now(timezone.utc)
     new_count = 0
-    for source in get_job_sources():
+    sources = get_job_sources()
+    logger.info("Starting ingestion from %d sources with query=%s", len(sources), query)
+    for source in sources:
         try:
             postings = source.fetch_jobs(query)
+            logger.info("Source %s returned %d postings", source.name, len(postings))
         except Exception:
+            logger.exception("Source %s failed", source.name)
             continue
+        source_new = 0
+        source_stale = 0
+        source_dup = 0
         for posting in postings:
             if not _is_recent_posting(posting.posted_at, now):
+                source_stale += 1
                 continue
             description = _clean_text(posting.description_text)
             description_html = _get_description_html(posting.description_text)
@@ -30,6 +41,7 @@ def ingest_jobs(session: Session, query: dict) -> int:
                 select(Job.id).where(Job.content_hash == content_hash)
             ).scalar_one_or_none()
             if exists:
+                source_dup += 1
                 continue
             legacy_hash = _hash_posting(posting, posting.description_text)
             legacy = session.execute(
@@ -40,6 +52,7 @@ def ingest_jobs(session: Session, query: dict) -> int:
                 legacy.description_html = description_html
                 legacy.content_hash = content_hash
                 session.add(legacy)
+                source_dup += 1
                 continue
             job = Job(
                 source=posting.source,
@@ -62,8 +75,14 @@ def ingest_jobs(session: Session, query: dict) -> int:
                 hiring_manager_phone=posting.hiring_manager_phone,
             )
             session.add(job)
+            source_new += 1
             new_count += 1
+        logger.info(
+            "Source %s: %d new, %d stale, %d duplicate",
+            source.name, source_new, source_stale, source_dup,
+        )
     session.commit()
+    logger.info("Ingestion complete: %d new jobs total", new_count)
     return new_count
 
 
