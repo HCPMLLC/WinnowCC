@@ -33,7 +33,7 @@ function timeAgo(dateStr: string): string {
 }
 
 export default function RecruiterDashboardScreen() {
-  const { email } = useAuth();
+  const { firstName } = useAuth();
   const router = useRouter();
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -85,7 +85,7 @@ export default function RecruiterDashboardScreen() {
       }
     >
       <Text style={styles.greeting}>
-        Welcome{profile?.company_name ? `, ${profile.company_name}` : ""}
+        Welcome{firstName ? `, ${firstName}` : ""}
       </Text>
 
       {/* Trial banner */}

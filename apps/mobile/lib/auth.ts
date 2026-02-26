@@ -7,6 +7,7 @@ export interface AuthState {
   token: string | null;
   userId: number | null;
   email: string | null;
+  firstName: string | null;
   role: string | null;
   onboardingComplete: boolean;
   isAuthenticated: boolean;

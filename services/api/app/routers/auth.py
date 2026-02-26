@@ -48,6 +48,7 @@ class AuthRequest(BaseModel):
 class MeResponse(BaseModel):
     user_id: int
     email: EmailStr
+    first_name: str | None = None
     onboarding_complete: bool
     is_admin: bool = False
     role: str = "candidate"
@@ -58,6 +59,7 @@ class LoginResponse(BaseModel):
     requires_mfa: bool = False
     user_id: int | None = None
     email: str | None = None
+    first_name: str | None = None
     onboarding_complete: bool | None = None
     is_admin: bool | None = None
     role: str | None = None
@@ -107,6 +109,7 @@ def _me_response(user: User) -> MeResponse:
     return MeResponse(
         user_id=user.id,
         email=user.email,
+        first_name=user.first_name,
         onboarding_complete=bool(user.onboarding_completed_at),
         is_admin=user.is_admin,
         role=user.role,
@@ -192,6 +195,7 @@ def login(
         requires_mfa=False,
         user_id=user.id,
         email=user.email,
+        first_name=user.first_name,
         onboarding_complete=bool(user.onboarding_completed_at),
         is_admin=user.is_admin,
         role=user.role,

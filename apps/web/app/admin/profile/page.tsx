@@ -8,6 +8,12 @@ type UserSummary = {
   id: number;
   email: string;
   name: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  phone: string | null;
+  role: string | null;
+  company_name: string | null;
   completeness_score: number;
   onboarding_completed: boolean;
 };
@@ -126,7 +132,12 @@ export default function AdminProfileListPage() {
     const term = searchTerm.toLowerCase();
     return (
       u.name?.toLowerCase().includes(term) ||
-      u.email?.toLowerCase().includes(term)
+      u.email?.toLowerCase().includes(term) ||
+      u.first_name?.toLowerCase().includes(term) ||
+      u.last_name?.toLowerCase().includes(term) ||
+      u.full_name?.toLowerCase().includes(term) ||
+      u.company_name?.toLowerCase().includes(term) ||
+      u.phone?.includes(term)
     );
   });
 
@@ -308,7 +319,7 @@ export default function AdminProfileListPage() {
   const selectedUsers = users.filter((u) => selectedIds.has(u.id));
 
   return (
-    <main className="mx-auto flex min-h-screen max-w-5xl flex-col gap-6 px-6 py-16">
+    <main className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-6 py-16">
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
           <h1 className="text-3xl font-semibold">User Profiles</h1>
@@ -624,10 +635,15 @@ export default function AdminProfileListPage() {
                     className="h-4 w-4 rounded border-slate-300"
                   />
                 </th>
-                <th className="px-6 py-4">User</th>
-                <th className="px-6 py-4">Status</th>
-                <th className="px-6 py-4">Completeness</th>
-                <th className="px-6 py-4"></th>
+                <th className="px-4 py-4">User</th>
+                <th className="px-4 py-4">First Name</th>
+                <th className="px-4 py-4">Last Name</th>
+                <th className="px-4 py-4">Phone</th>
+                <th className="px-4 py-4">Company</th>
+                <th className="px-4 py-4">Role</th>
+                <th className="px-4 py-4">Status</th>
+                <th className="px-4 py-4">Completeness</th>
+                <th className="px-4 py-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -644,16 +660,33 @@ export default function AdminProfileListPage() {
                       className="h-4 w-4 rounded border-slate-300"
                     />
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4">
                     <Link
                       href={`/admin/profile/${user.id}`}
                       className="text-sm font-medium text-slate-900 hover:text-slate-600 hover:underline"
                     >
-                      {user.name || "No name"}
+                      {user.full_name || user.name || "No name"}
                     </Link>
                     <div className="text-xs text-slate-500">{user.email}</div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4 text-sm text-slate-700">
+                    {user.first_name || "—"}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-700">
+                    {user.last_name || "—"}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-700">
+                    {user.phone || "—"}
+                  </td>
+                  <td className="px-4 py-4 text-sm text-slate-700">
+                    {user.company_name || "—"}
+                  </td>
+                  <td className="px-4 py-4">
+                    <span className="inline-flex items-center rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-medium capitalize text-slate-600">
+                      {user.role || "candidate"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-4">
                     <span
                       className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
                         user.onboarding_completed
@@ -664,10 +697,10 @@ export default function AdminProfileListPage() {
                       {user.onboarding_completed ? "Onboarded" : "Incomplete"}
                     </span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td className="px-4 py-4">
                     <CompletenessIndicator score={user.completeness_score} />
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td className="px-4 py-4 text-right">
                     <Link
                       href={`/admin/profile/${user.id}`}
                       className="text-sm font-medium text-slate-600 hover:text-slate-900"
