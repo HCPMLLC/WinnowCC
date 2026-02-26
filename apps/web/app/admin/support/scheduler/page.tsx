@@ -23,8 +23,19 @@ type SchedulerRun = {
   job_type: string;
   status: string;
   error_message: string | null;
+  finished_at: string | null;
+  jobs_ingested: number | null;
   created_at: string;
   updated_at: string;
+};
+
+type IngestionProgress = {
+  running: boolean;
+  run_id: number | null;
+  completed_sources: number;
+  total_sources: number;
+  percent: number;
+  jobs_so_far: number;
 };
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -64,6 +75,7 @@ export default function SchedulerControlPage() {
   const [error, setError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
+  const [progress, setProgress] = useState<IngestionProgress | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -95,6 +107,39 @@ export default function SchedulerControlPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Poll progress while a run is active
+  useEffect(() => {
+    const hasRunning = runs.some((r) => r.status === "running");
+    if (!hasRunning) {
+      setProgress(null);
+      return;
+    }
+    let cancelled = false;
+    const poll = async () => {
+      try {
+        const res = await fetch(`${API}/api/admin/scheduler/progress`, {
+          credentials: "include",
+        });
+        if (res.ok && !cancelled) {
+          const data: IngestionProgress = await res.json();
+          setProgress(data);
+          if (!data.running) {
+            // Ingestion finished — refresh runs list
+            void load();
+          }
+        }
+      } catch {
+        // ignore polling errors
+      }
+    };
+    void poll();
+    const interval = setInterval(poll, 3000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [runs, load]);
 
   const handleTrigger = async () => {
     setActionMsg(null);
@@ -288,6 +333,30 @@ export default function SchedulerControlPage() {
         </button>
       </div>
 
+      {/* Progress Bar */}
+      {progress?.running && (
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4">
+          <div className="mb-2 flex items-center justify-between text-sm">
+            <span className="font-semibold text-blue-800">
+              Ingestion in progress
+            </span>
+            <span className="text-blue-600">
+              {progress.completed_sources}/{progress.total_sources} sources
+              {" \u00B7 "}
+              {progress.jobs_so_far} jobs so far
+              {" \u00B7 "}
+              {progress.percent}%
+            </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-blue-200">
+            <div
+              className="h-full rounded-full bg-blue-600 transition-all duration-500"
+              style={{ width: `${progress.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Run History */}
       <div>
         <h2 className="mb-3 text-lg font-semibold text-slate-900">
@@ -305,7 +374,9 @@ export default function SchedulerControlPage() {
                   <th className="px-4 py-3">ID</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">Started</th>
+                  <th className="px-4 py-3">Finished</th>
                   <th className="px-4 py-3">Duration</th>
+                  <th className="px-4 py-3">Jobs</th>
                   <th className="px-4 py-3">Error</th>
                 </tr>
               </thead>
@@ -329,7 +400,17 @@ export default function SchedulerControlPage() {
                       {formatTime(run.created_at)}
                     </td>
                     <td className="px-4 py-3 text-slate-600">
-                      {formatDuration(run.created_at, run.updated_at)}
+                      {run.finished_at ? formatTime(run.finished_at) : "-"}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {run.finished_at
+                        ? formatDuration(run.created_at, run.finished_at)
+                        : run.status === "running"
+                          ? "..."
+                          : formatDuration(run.created_at, run.updated_at)}
+                    </td>
+                    <td className="px-4 py-3 font-mono text-slate-600">
+                      {run.jobs_ingested ?? "-"}
                     </td>
                     <td
                       className="max-w-xs truncate px-4 py-3 text-red-600"
