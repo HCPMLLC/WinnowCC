@@ -24,6 +24,7 @@ interface ExperienceEntry {
   location?: string;
   job_location?: string;
   duties?: string[];
+  bullets?: string[];
   quantified_accomplishments?: string[];
   skills_used?: string[];
   technologies_used?: string[];
@@ -163,23 +164,35 @@ export default function CandidateDetailPage() {
 
   function populateForm(pj: ProfileJson) {
     const basics = pj.basics || {};
+    const firstExp = (pj.experience || [])[0];
+    const derivedHeadline = pj.headline
+      || (basics.headline as string)
+      || (firstExp ? [firstExp.title, firstExp.company].filter(Boolean).join(" at ") : "")
+      || "";
+    const derivedCompany = pj.current_company || (firstExp?.company ?? "") || "";
+    const ci = pj.contact_info || {};
     setForm({
       name: pj.name || (basics.name as string) || "",
-      headline: pj.headline || "",
+      headline: derivedHeadline,
       location: pj.location || (basics.location as string) || "",
-      current_company: pj.current_company || "",
+      current_company: derivedCompany,
       about: pj.about || pj.professional_summary || "",
       open_to_work: pj.open_to_work ?? true,
       recommendations_count: pj.recommendations_count || 0,
       notes: pj.notes || "",
     });
-    setContactInfo(pj.contact_info || { email: "", phone: "", website: "" });
-    // Normalize date_range to start_date for the edit form
+    setContactInfo({
+      email: ci.email || (basics.email as string) || "",
+      phone: ci.phone || (basics.phone as string) || "",
+      website: ci.website || "",
+    });
+    // Normalize date_range to start_date for the edit form; merge duties/bullets into description
     setExperience(
       (pj.experience || []).map((e) => ({
         ...e,
         start_date: e.start_date || e.date_range || "",
         end_date: e.end_date || "",
+        description: e.description || (e.duties || e.bullets || []).join("\n") || "",
       }))
     );
     setEducation(
