@@ -112,11 +112,20 @@ export default function RootLayout() {
         router.replace("/candidate-onboarding");
       }
     } else if (authState.isAuthenticated && authState.onboardingComplete) {
-      // Redirect to the correct dashboard for the user's role
-      const inWrongTabs =
-        (authState.role === "recruiter" && segments[0] !== "(recruiter-tabs)") ||
-        (authState.role === "employer" && segments[0] !== "(employer-tabs)") ||
-        (authState.role === "candidate" && segments[0] !== "(tabs)");
+      // Only redirect when the user is actually inside a tab group that doesn't
+      // match their role.  Top-level screens (sieve, match/[id], profile/*,
+      // recruiter/*, employer/*) are valid for any role and must NOT trigger a
+      // redirect — doing so crashes the app (two competing navigations).
+      const TAB_GROUPS = new Set(["(tabs)", "(employer-tabs)", "(recruiter-tabs)"]);
+      const currentSegment = segments[0] as string;
+      const isInTabGroup = TAB_GROUPS.has(currentSegment);
+
+      // "both" users can freely switch between all tab groups
+      const inWrongTabs = isInTabGroup && authState.role !== "both" && (
+        (authState.role === "recruiter" && currentSegment !== "(recruiter-tabs)") ||
+        (authState.role === "employer" && currentSegment !== "(employer-tabs)") ||
+        (authState.role === "candidate" && currentSegment !== "(tabs)")
+      );
       const shouldRedirect = inAuthGroup || inWrongTabs;
 
       if (shouldRedirect && !inOnboarding) {

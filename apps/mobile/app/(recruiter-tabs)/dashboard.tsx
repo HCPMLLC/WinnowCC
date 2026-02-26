@@ -42,10 +42,9 @@ export default function RecruiterDashboardScreen() {
 
   const loadData = async () => {
     try {
-      const [profileRes, dashRes] = await Promise.all([
-        api.get("/api/recruiter/profile"),
-        api.get("/api/recruiter/dashboard"),
-      ]);
+      // Check profile first — if 404 the user needs onboarding and we should
+      // NOT fire the dashboard call (it may 401/403 and trigger token removal).
+      const profileRes = await api.get("/api/recruiter/profile");
 
       if (profileRes.status === 404) {
         router.replace("/recruiter-onboarding");
@@ -53,9 +52,11 @@ export default function RecruiterDashboardScreen() {
       }
 
       if (profileRes.ok) setProfile(await profileRes.json());
+
+      const dashRes = await api.get("/api/recruiter/dashboard");
       if (dashRes.ok) setStats(await dashRes.json());
     } catch {
-      // Silently fail
+      // Silently fail — covers network errors and AuthError (401 token removal)
     } finally {
       setLoading(false);
       setRefreshing(false);
