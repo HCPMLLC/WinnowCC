@@ -2059,10 +2059,10 @@ def refresh_recruiter_job_candidates(
         from app.models.recruiter_job_candidate import (
             RecruiterJobCandidate as RJC,
         )
+        from app.models.recruiter import RecruiterProfile as RP
         from app.services.matching import (
-            find_top_candidates_for_employer_job,
+            find_top_candidates_for_recruiter_job,
         )
-        from app.services.skill_synonyms import get_canonical  # noqa: F401
 
         db = get_session_factory()()
         try:
@@ -2073,7 +2073,8 @@ def refresh_recruiter_job_candidates(
 
             yield f"data: {_json.dumps({'percent': 5, 'phase': 'loading', 'message': 'Loading candidate profiles...'})}\n\n"
 
-            # Count eligible candidates first
+            # Count eligible candidates (platform + sourced)
+            rp = db.execute(select(RP).where(RP.id == rj.recruiter_profile_id)).scalar_one()
             latest_sub = (
                 select(
                     CandidateProfile.user_id,
@@ -2082,7 +2083,7 @@ def refresh_recruiter_job_candidates(
                 .where(CandidateProfile.user_id.is_not(None))
                 .group_by(CandidateProfile.user_id)
             ).subquery()
-            total_profiles = (
+            platform_count = (
                 db.execute(
                     select(func.count()).select_from(
                         select(CandidateProfile.id)
@@ -2102,11 +2103,25 @@ def refresh_recruiter_job_candidates(
                 ).scalar()
                 or 0
             )
+            sourced_count = (
+                db.execute(
+                    select(func.count(CandidateProfile.id)).where(
+                        CandidateProfile.user_id.is_(None),
+                        cast(
+                            CandidateProfile.profile_json["sourced_by_user_id"],
+                            String,
+                        )
+                        == str(rp.user_id),
+                    )
+                ).scalar()
+                or 0
+            )
+            total_profiles = platform_count + sourced_count
 
             yield f"data: {_json.dumps({'percent': 10, 'phase': 'scoring', 'message': f'Scoring {total_profiles} candidates...'})}\n\n"
 
             # Run matching (this is the heavy part)
-            results = find_top_candidates_for_employer_job(db, rj, limit=100)
+            results = find_top_candidates_for_recruiter_job(db, rj, rp.user_id, limit=100)
 
             yield f"data: {_json.dumps({'percent': 80, 'phase': 'saving', 'message': f'Found {len(results)} matches, saving...'})}\n\n"
 

@@ -138,3 +138,76 @@ def embed_all_jobs() -> int:
 def refresh_candidates_for_profile(user_id: int) -> None:
     """Placeholder for future candidate-refresh logic after profile update."""
     pass
+
+
+def populate_recruiter_job_candidates(job_id: int) -> None:
+    """Background job: compute and cache candidate matches for a recruiter job."""
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_job import RecruiterJob
+    from app.models.recruiter_job_candidate import RecruiterJobCandidate
+    from app.services.matching import find_top_candidates_for_recruiter_job
+
+    session = get_session_factory()()
+    try:
+        job = session.get(RecruiterJob, job_id)
+        if not job:
+            logger.warning(
+                "populate_recruiter_job_candidates: job %s not found", job_id
+            )
+            return
+        rp = session.get(RecruiterProfile, job.recruiter_profile_id)
+        if not rp:
+            logger.warning(
+                "populate_recruiter_job_candidates: recruiter profile %s not found",
+                job.recruiter_profile_id,
+            )
+            return
+
+        results = find_top_candidates_for_recruiter_job(session, job, rp.user_id)
+
+        # Delete old cached rows
+        session.execute(
+            sa_delete(RecruiterJobCandidate).where(
+                RecruiterJobCandidate.recruiter_job_id == job_id
+            )
+        )
+
+        inserted = 0
+        for r in results:
+            if r["match_score"] <= 50:
+                continue
+            session.add(
+                RecruiterJobCandidate(
+                    recruiter_job_id=job_id,
+                    candidate_profile_id=r["id"],
+                    match_score=r["match_score"],
+                    matched_skills=r.get("matched_skills"),
+                )
+            )
+            inserted += 1
+
+        session.commit()
+        logger.info(
+            "populate_recruiter_job_candidates: job %s — %s candidates cached",
+            job_id,
+            inserted,
+        )
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "populate_recruiter_job_candidates: failed for job %s", job_id
+        )
+    finally:
+        session.close()
+
+
+def sync_recruiter_job_to_jobs(job_id: int) -> None:
+    """Sync recruiter job to the main jobs table for cross-segment visibility."""
+    pass
+
+
+def deactivate_recruiter_job_proxy(job_id: int) -> None:
+    """Deactivate the proxy job entry when a recruiter job goes inactive."""
+    pass
