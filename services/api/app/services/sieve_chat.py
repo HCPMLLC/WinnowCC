@@ -1313,6 +1313,7 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     context["tier"] = profile.subscription_tier or "trial"
     context["trial_days"] = profile.trial_days_remaining if profile.is_trial_active else None
     context["specializations"] = profile.specializations or []
+    context["auto_populate_pipeline"] = profile.auto_populate_pipeline
 
     # Pipeline stats
     pipeline_stages = session.execute(
@@ -1627,6 +1628,7 @@ TIER COMPARISON (for upgrade recommendations):
 - Clients: {ctx.get("client_count", 0)}
 - Jobs: {jobs_summary} (total: {ctx.get("jobs_total", 0)})
 - Pipeline: {pipeline_summary} (total: {ctx.get("pipeline_total", 0)})
+- Auto-populate pipeline: {"on" if ctx.get("auto_populate_pipeline") else "off"}
 - Sequences: {seq_summary}
 
 ═══ RESPONSE GUIDELINES ═══
@@ -1662,6 +1664,13 @@ include a link.
 what the next tier unlocks. No hard sell, just the facts.
 - When pipeline is empty, nudge them toward sourcing: Chrome extension, \
 job matching, or introductions.
+- When auto-populate pipeline is ON, do NOT suggest manually adding \
+candidates to the pipeline after matching — they are added automatically. \
+Instead, suggest reviewing the pipeline or advancing candidates to the \
+next stage.
+- When a candidate is already in the pipeline, do not suggest adding them \
+again. Instead, suggest next actions: generate a brief, advance their \
+stage, or send a client submittal.
 - When they have active candidates, suggest the logical next move: \
 generate a brief, advance a stage, send a submittal.
 - Reference their real numbers (pipeline counts, job statuses, usage) — \
