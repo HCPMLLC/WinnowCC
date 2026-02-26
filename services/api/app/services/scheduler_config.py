@@ -11,9 +11,9 @@ def get_scheduler_enabled() -> bool:
 def get_scheduler_ingest_cron() -> str:
     """Get cron expression for job ingestion schedule.
 
-    Default: "0 6 * * 0" = Sunday at 6am UTC
+    Default: "0 6 * * *" = Daily at 6am UTC
     """
-    return os.getenv("SCHEDULER_INGEST_CRON", "0 6 * * 0")
+    return os.getenv("SCHEDULER_INGEST_CRON", "0 6 * * *")
 
 
 def get_scheduler_default_search() -> str:
