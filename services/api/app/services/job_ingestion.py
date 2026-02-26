@@ -6,7 +6,7 @@ import logging
 import re
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
@@ -38,7 +38,13 @@ def ingest_jobs(session: Session, query: dict) -> int:
             description_html = _get_description_html(posting.description_text)
             content_hash = _hash_posting(posting, description)
             exists = session.execute(
-                select(Job.id).where(Job.content_hash == content_hash)
+                select(Job.id).where(
+                    or_(
+                        Job.content_hash == content_hash,
+                        (Job.source == posting.source)
+                        & (Job.source_job_id == posting.source_job_id),
+                    )
+                )
             ).scalar_one_or_none()
             if exists:
                 source_dup += 1
