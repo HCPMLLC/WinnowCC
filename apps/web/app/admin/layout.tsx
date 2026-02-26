@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 
 const ADMIN_NAV = [
   { href: "/admin/profile", label: "Users" },
@@ -35,12 +35,38 @@ export default function AdminLayout({
   const { user, loading, isAdmin } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
+  const [failedCount, setFailedCount] = useState(0);
+
+  const fetchFailedCount = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/admin/support/queue-monitor`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      const total = (data.queues || []).reduce(
+        (sum: number, q: { failed?: number }) => sum + (q.failed || 0),
+        0
+      );
+      setFailedCount(total);
+    } catch {
+      // Silently ignore — sidebar shouldn't break if API is down
+    }
+  }, []);
 
   useEffect(() => {
     if (!loading && (!user || !isAdmin)) {
       router.push("/dashboard");
     }
   }, [user, loading, isAdmin, router]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    fetchFailedCount();
+    const interval = setInterval(fetchFailedCount, 60_000);
+    return () => clearInterval(interval);
+  }, [isAdmin, fetchFailedCount]);
 
   if (loading) {
     return (
@@ -86,13 +112,18 @@ export default function AdminLayout({
               <Link
                 key={item.href}
                 href={item.href}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
                   ("exact" in item ? pathname === item.href : isActive(item.href))
                     ? "bg-slate-900 text-white"
                     : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                 }`}
               >
                 {item.label}
+                {item.label === "Queues" && failedCount > 0 && (
+                  <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
+                    {failedCount}
+                  </span>
+                )}
               </Link>
             ))}
           </nav>
