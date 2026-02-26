@@ -148,6 +148,7 @@ function MatchCard({
         </div>
       </div>
       <div className="mt-1 flex items-center gap-2">
+        {/* eslint-disable-next-line @next/next/no-img-element -- external company logo URL, domain unknown */}
         {job.company_logo ? <img src={job.company_logo} alt="" className="h-4 w-4 rounded object-contain" /> : null}
         <span className="text-sm text-gray-700">{job.company}</span>
       </div>
@@ -755,6 +756,7 @@ function MatchesPageContent() {
                       {/* Company logo */}
                       <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg border border-gray-200 bg-white">
                         {selectedMatch.job.company_logo ? (
+                          /* eslint-disable-next-line @next/next/no-img-element -- external company logo URL, domain unknown */
                           <img
                             src={selectedMatch.job.company_logo}
                             alt={selectedMatch.job.company}
