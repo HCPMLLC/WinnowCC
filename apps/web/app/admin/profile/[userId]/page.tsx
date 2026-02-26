@@ -70,6 +70,80 @@ type ProfileCompletenessResponse = {
   recommendations: string[];
 };
 
+type AdminUserBasics = {
+  id: number;
+  email: string;
+  role: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  full_name: string | null;
+  phone: string | null;
+  created_at: string | null;
+  onboarding_completed: boolean;
+};
+
+type RecruiterProfileData = {
+  profile_id: number;
+  company_name: string;
+  company_type: string | null;
+  company_website: string | null;
+  specializations: string[] | null;
+  subscription_tier: string;
+  subscription_status: string | null;
+  billing_interval: string | null;
+  billing_exempt: boolean;
+  trial_started_at: string | null;
+  trial_ends_at: string | null;
+  is_trial_active: boolean;
+  trial_days_remaining: number;
+  seats_purchased: number;
+  seats_used: number;
+  auto_populate_pipeline: boolean;
+  candidate_briefs_used: number;
+  salary_lookups_used: number;
+  job_uploads_used: number;
+  intro_requests_used: number;
+  resume_imports_used: number;
+  outreach_enrollments_used: number;
+  team_member_count: number;
+  client_count: number;
+  pipeline_candidate_count: number;
+  jobs_count: number;
+  created_at: string | null;
+};
+
+type EmployerProfileData = {
+  profile_id: number;
+  company_name: string;
+  company_size: string | null;
+  industry: string | null;
+  company_website: string | null;
+  company_description: string | null;
+  company_logo_url: string | null;
+  billing_email: string | null;
+  contact_first_name: string | null;
+  contact_last_name: string | null;
+  contact_email: string | null;
+  contact_phone: string | null;
+  subscription_tier: string;
+  subscription_status: string | null;
+  trial_ends_at: string | null;
+  ai_parsing_used: number;
+  intro_requests_used: number;
+  total_jobs_count: number;
+  active_jobs_count: number;
+  saved_candidates_count: number;
+  created_at: string | null;
+};
+
+type AdminProfileDetailResponse = {
+  user: AdminUserBasics;
+  role: string;
+  candidate_profile: ProfileResponse | null;
+  recruiter_profile: RecruiterProfileData | null;
+  employer_profile: EmployerProfileData | null;
+};
+
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -369,6 +443,14 @@ export default function AdminProfileEditorPage() {
   const [completeness, setCompleteness] =
     useState<ProfileCompletenessResponse | null>(null);
 
+  // Role-aware state
+  const [userBasics, setUserBasics] = useState<AdminUserBasics | null>(null);
+  const [role, setRole] = useState<string>("candidate");
+  const [recruiterProfile, setRecruiterProfile] =
+    useState<RecruiterProfileData | null>(null);
+  const [employerProfile, setEmployerProfile] =
+    useState<EmployerProfileData | null>(null);
+
   // Validation state for name fields
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
@@ -404,35 +486,65 @@ export default function AdminProfileEditorPage() {
         if (!response.ok) {
           throw new Error("Failed to load profile.");
         }
-        const payload = (await response.json()) as ProfileResponse;
-        setProfile(payload.profile_json);
-        setVersion(payload.version);
-        setUserEmail(payload.profile_json.basics?.email || null);
+        const payload = (await response.json()) as AdminProfileDetailResponse;
+        setUserBasics(payload.user);
+        setRole(payload.role);
+        setUserEmail(payload.user.email);
+
+        if (payload.candidate_profile) {
+          setProfile(payload.candidate_profile.profile_json);
+          setVersion(payload.candidate_profile.version);
+        } else {
+          // Non-candidate: set a minimal profile so the page renders
+          setProfile({
+            basics: {},
+            experience: [],
+            education: [],
+            skills: [],
+            preferences: {
+              target_titles: [],
+              locations: [],
+              remote_ok: null,
+              job_type: null,
+              salary_min: null,
+              salary_max: null,
+            },
+          });
+        }
+        if (payload.recruiter_profile) {
+          setRecruiterProfile(payload.recruiter_profile);
+        }
+        if (payload.employer_profile) {
+          setEmployerProfile(payload.employer_profile);
+        }
       } catch (caught) {
         const message =
           caught instanceof Error ? caught.message : "Failed to load profile.";
         setError(message);
       }
 
-      try {
-        const response = await fetch(
-          `${API_BASE}/api/admin/profile/${userId}/completeness`,
-          {
-            credentials: "include",
+      // Only fetch completeness for candidates
+      if (role === "candidate") {
+        try {
+          const response = await fetch(
+            `${API_BASE}/api/admin/profile/${userId}/completeness`,
+            {
+              credentials: "include",
+            }
+          );
+          if (response.ok) {
+            const payload =
+              (await response.json()) as ProfileCompletenessResponse;
+            setCompleteness(payload);
           }
-        );
-        if (response.ok) {
-          const payload =
-            (await response.json()) as ProfileCompletenessResponse;
-          setCompleteness(payload);
+        } catch {
+          // Non-critical
         }
-      } catch {
-        // Non-critical
       }
     };
 
     void loadData();
-  }, [userId, router]);
+  }, [userId, router, role]);
 
   const updateBasics = (updates: Partial<Basics>) => {
     setProfile((current) => {
@@ -564,82 +676,109 @@ export default function AdminProfileEditorPage() {
   };
 
   const handleSave = async () => {
-    if (!profile) {
-      return;
-    }
-
-    // Validate required name fields
-    const firstNameValidation = validateFullName(profile.basics.first_name || "");
-    const lastNameValidation = validateFullName(profile.basics.last_name || "");
-
-    // Check for empty required fields
-    if (!profile.basics.first_name?.trim()) {
-      setFirstNameError("First name is required.");
-      setError("Please fill in all required fields.");
-      return;
-    }
-    if (!profile.basics.last_name?.trim()) {
-      setLastNameError("Last name is required.");
-      setError("Please fill in all required fields.");
-      return;
-    }
-
-    // Check for validation errors
-    if (firstNameValidation) {
-      setFirstNameError(firstNameValidation);
-      setError("Please correct the errors before saving.");
-      return;
-    }
-    if (lastNameValidation) {
-      setLastNameError(lastNameValidation);
-      setError("Please correct the errors before saving.");
-      return;
-    }
-
     setIsSaving(true);
     setStatus(null);
     setError(null);
 
     try {
-      const response = await fetch(`${API_BASE}/api/admin/profile/${userId}`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ profile_json: profile }),
-      });
-      if (!response.ok) {
-        let message = "Failed to save profile.";
-        try {
-          const payload = (await response.json()) as { detail?: string };
-          if (payload?.detail) {
-            message = payload.detail;
-          }
-        } catch {
-          // Keep default message.
-        }
-        throw new Error(message);
-      }
-      const payload = (await response.json()) as ProfileResponse;
-      setVersion(payload.version);
-      setProfile(payload.profile_json);
-      setStatus("Profile saved.");
-
-      // Refresh completeness score
-      try {
-        const completenessResponse = await fetch(
-          `${API_BASE}/api/admin/profile/${userId}/completeness`,
+      // Save user basics (all roles)
+      if (userBasics) {
+        const userPatch = await fetch(
+          `${API_BASE}/api/admin/profile/${userId}/user`,
           {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
             credentials: "include",
+            body: JSON.stringify({
+              first_name: userBasics.first_name,
+              last_name: userBasics.last_name,
+              phone: userBasics.phone,
+            }),
           }
         );
-        if (completenessResponse.ok) {
-          const completenessPayload =
-            (await completenessResponse.json()) as ProfileCompletenessResponse;
-          setCompleteness(completenessPayload);
+        if (!userPatch.ok) {
+          throw new Error("Failed to save user info.");
         }
-      } catch {
-        // Non-critical
       }
+
+      // Save candidate profile (candidates only)
+      if (role === "candidate" && profile) {
+        // Validate required name fields
+        const firstNameValidation = validateFullName(
+          profile.basics.first_name || ""
+        );
+        const lastNameValidation = validateFullName(
+          profile.basics.last_name || ""
+        );
+
+        if (!profile.basics.first_name?.trim()) {
+          setFirstNameError("First name is required.");
+          setError("Please fill in all required fields.");
+          setIsSaving(false);
+          return;
+        }
+        if (!profile.basics.last_name?.trim()) {
+          setLastNameError("Last name is required.");
+          setError("Please fill in all required fields.");
+          setIsSaving(false);
+          return;
+        }
+        if (firstNameValidation) {
+          setFirstNameError(firstNameValidation);
+          setError("Please correct the errors before saving.");
+          setIsSaving(false);
+          return;
+        }
+        if (lastNameValidation) {
+          setLastNameError(lastNameValidation);
+          setError("Please correct the errors before saving.");
+          setIsSaving(false);
+          return;
+        }
+
+        const response = await fetch(
+          `${API_BASE}/api/admin/profile/${userId}`,
+          {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ profile_json: profile }),
+          }
+        );
+        if (!response.ok) {
+          let message = "Failed to save profile.";
+          try {
+            const payload = (await response.json()) as { detail?: string };
+            if (payload?.detail) {
+              message = payload.detail;
+            }
+          } catch {
+            // Keep default message.
+          }
+          throw new Error(message);
+        }
+        const payload = (await response.json()) as ProfileResponse;
+        setVersion(payload.version);
+        setProfile(payload.profile_json);
+
+        // Refresh completeness score
+        try {
+          const completenessResponse = await fetch(
+            `${API_BASE}/api/admin/profile/${userId}/completeness`,
+            {
+              credentials: "include",
+            }
+          );
+          if (completenessResponse.ok) {
+            const completenessPayload =
+              (await completenessResponse.json()) as ProfileCompletenessResponse;
+            setCompleteness(completenessPayload);
+          }
+        } catch {
+          // Non-critical
+        }
+      }
+      setStatus("Profile saved.");
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Failed to save profile.";
@@ -685,13 +824,27 @@ export default function AdminProfileEditorPage() {
 
       <header className="flex items-start justify-between gap-4">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-semibold">Edit Profile</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-semibold">Edit Profile</h1>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium capitalize ${
+                role === "recruiter"
+                  ? "bg-purple-100 text-purple-700"
+                  : role === "employer"
+                    ? "bg-blue-100 text-blue-700"
+                    : "bg-slate-100 text-slate-600"
+              }`}
+            >
+              {role}
+            </span>
+          </div>
           <p className="text-sm text-slate-600">
             User ID: {userId}
-            {userEmail ? ` (${userEmail})` : ""} | Version {version}
+            {userEmail ? ` (${userEmail})` : ""}
+            {role === "candidate" ? ` | Version ${version}` : ""}
           </p>
         </div>
-        {completeness && (
+        {role === "candidate" && completeness && (
           <CompletenesssBadge
             score={completeness.score}
             onClick={scrollToRecommendations}
@@ -711,134 +864,414 @@ export default function AdminProfileEditorPage() {
         </div>
       ) : null}
 
-      {/* Basics Section */}
+      {/* User Info Section (all roles) */}
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
-        <h2 className="text-lg font-semibold">Basic Information</h2>
-        <p className="mt-2 text-xs text-slate-500">
-          Full names required. Initials are not accepted. As an admin, you can also directly edit the Full Name field.
-        </p>
+        <h2 className="text-lg font-semibold">User Information</h2>
+        {role === "candidate" && (
+          <p className="mt-2 text-xs text-slate-500">
+            Full names required. Initials are not accepted.
+          </p>
+        )}
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">
-              First Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={profile.basics.first_name ?? ""}
-              onChange={(e) => updateBasics({ first_name: e.target.value })}
-              className={`rounded-xl border px-3 py-2 text-sm ${
-                firstNameError
-                  ? "border-red-300 bg-red-50"
-                  : "border-slate-200"
-              }`}
-              placeholder="John"
-            />
-            {firstNameError && (
-              <p className="text-xs text-red-600">{firstNameError}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">
-              Last Name <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={profile.basics.last_name ?? ""}
-              onChange={(e) => updateBasics({ last_name: e.target.value })}
-              className={`rounded-xl border px-3 py-2 text-sm ${
-                lastNameError
-                  ? "border-red-300 bg-red-50"
-                  : "border-slate-200"
-              }`}
-              placeholder="Doe"
-            />
-            {lastNameError && (
-              <p className="text-xs text-red-600">{lastNameError}</p>
-            )}
-          </div>
-          <div className="flex flex-col gap-2">
-            <label className="text-sm font-medium text-slate-700">
-              Full Name
-              <span className="ml-2 text-xs font-normal text-amber-600">
-                (admin editable)
-              </span>
-            </label>
-            <input
-              type="text"
-              value={profile.basics.name ?? ""}
-              onChange={(e) => updateBasics({ name: e.target.value })}
-              className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
-              placeholder="John Doe"
-            />
-          </div>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Email
-            <input
-              type="email"
-              value={profile.basics.email ?? ""}
-              onChange={(e) => updateBasics({ email: e.target.value })}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="john@example.com"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Phone
-            <input
-              type="tel"
-              value={profile.basics.phone ?? ""}
-              onChange={(e) => updateBasics({ phone: e.target.value })}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="+1 555-123-4567"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Location
-            <input
-              type="text"
-              value={profile.basics.location ?? ""}
-              onChange={(e) => updateBasics({ location: e.target.value })}
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="New York, NY"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Total Years of Experience
-            <input
-              type="number"
-              min="0"
-              value={profile.basics.total_years_experience ?? ""}
-              onChange={(e) =>
-                updateBasics({
-                  total_years_experience: e.target.value
-                    ? Number(e.target.value)
-                    : null,
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-              placeholder="5"
-            />
-          </label>
-          <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
-            Work Authorization
-            <select
-              value={profile.basics.work_authorization ?? ""}
-              onChange={(e) =>
-                updateBasics({
-                  work_authorization: e.target.value || null,
-                })
-              }
-              className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
-            >
-              <option value="">Select...</option>
-              {WORK_AUTHORIZATION_OPTIONS.map((option) => (
-                <option key={option} value={option}>
-                  {option}
-                </option>
-              ))}
-            </select>
-          </label>
+          {role === "candidate" ? (
+            <>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-slate-700">
+                  First Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={profile.basics.first_name ?? ""}
+                  onChange={(e) => updateBasics({ first_name: e.target.value })}
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    firstNameError
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200"
+                  }`}
+                  placeholder="John"
+                />
+                {firstNameError && (
+                  <p className="text-xs text-red-600">{firstNameError}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Last Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={profile.basics.last_name ?? ""}
+                  onChange={(e) => updateBasics({ last_name: e.target.value })}
+                  className={`rounded-xl border px-3 py-2 text-sm ${
+                    lastNameError
+                      ? "border-red-300 bg-red-50"
+                      : "border-slate-200"
+                  }`}
+                  placeholder="Doe"
+                />
+                {lastNameError && (
+                  <p className="text-xs text-red-600">{lastNameError}</p>
+                )}
+              </div>
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-slate-700">
+                  Full Name
+                  <span className="ml-2 text-xs font-normal text-amber-600">
+                    (admin editable)
+                  </span>
+                </label>
+                <input
+                  type="text"
+                  value={profile.basics.name ?? ""}
+                  onChange={(e) => updateBasics({ name: e.target.value })}
+                  className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm"
+                  placeholder="John Doe"
+                />
+              </div>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Email
+                <input
+                  type="email"
+                  value={profile.basics.email ?? ""}
+                  onChange={(e) => updateBasics({ email: e.target.value })}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="john@example.com"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Phone
+                <input
+                  type="tel"
+                  value={profile.basics.phone ?? ""}
+                  onChange={(e) => updateBasics({ phone: e.target.value })}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="+1 555-123-4567"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Location
+                <input
+                  type="text"
+                  value={profile.basics.location ?? ""}
+                  onChange={(e) => updateBasics({ location: e.target.value })}
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="New York, NY"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Total Years of Experience
+                <input
+                  type="number"
+                  min="0"
+                  value={profile.basics.total_years_experience ?? ""}
+                  onChange={(e) =>
+                    updateBasics({
+                      total_years_experience: e.target.value
+                        ? Number(e.target.value)
+                        : null,
+                    })
+                  }
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="5"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Work Authorization
+                <select
+                  value={profile.basics.work_authorization ?? ""}
+                  onChange={(e) =>
+                    updateBasics({
+                      work_authorization: e.target.value || null,
+                    })
+                  }
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                >
+                  <option value="">Select...</option>
+                  {WORK_AUTHORIZATION_OPTIONS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </>
+          ) : (
+            <>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                First Name
+                <input
+                  type="text"
+                  value={userBasics?.first_name ?? ""}
+                  onChange={(e) =>
+                    setUserBasics((prev) =>
+                      prev ? { ...prev, first_name: e.target.value } : prev
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="John"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Last Name
+                <input
+                  type="text"
+                  value={userBasics?.last_name ?? ""}
+                  onChange={(e) =>
+                    setUserBasics((prev) =>
+                      prev ? { ...prev, last_name: e.target.value } : prev
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="Doe"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Email
+                <input
+                  type="email"
+                  value={userBasics?.email ?? ""}
+                  disabled
+                  className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-500"
+                />
+              </label>
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Phone
+                <input
+                  type="tel"
+                  value={userBasics?.phone ?? ""}
+                  onChange={(e) =>
+                    setUserBasics((prev) =>
+                      prev ? { ...prev, phone: e.target.value } : prev
+                    )
+                  }
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                  placeholder="+1 555-123-4567"
+                />
+              </label>
+            </>
+          )}
         </div>
       </section>
+
+      {/* Recruiter Profile Section */}
+      {role === "recruiter" && recruiterProfile && (
+        <>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Company Information</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Company Name</span>
+                <span className="text-sm text-slate-900">{recruiterProfile.company_name}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Company Type</span>
+                <span className="text-sm capitalize text-slate-900">{recruiterProfile.company_type || "\u2014"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Website</span>
+                {recruiterProfile.company_website ? (
+                  <a href={recruiterProfile.company_website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{recruiterProfile.company_website}</a>
+                ) : (
+                  <span className="text-sm text-slate-400">{"\u2014"}</span>
+                )}
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Specializations</span>
+                <div className="flex flex-wrap gap-1">
+                  {(recruiterProfile.specializations ?? []).length > 0
+                    ? recruiterProfile.specializations!.map((s: string) => (
+                        <span key={s} className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">{s}</span>
+                      ))
+                    : <span className="text-sm text-slate-400">{"\u2014"}</span>}
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Subscription & Billing</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Tier</span>
+                <span className="text-sm font-semibold uppercase text-slate-900">{recruiterProfile.subscription_tier}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Status</span>
+                <span className={`text-sm font-medium ${recruiterProfile.subscription_status === "active" ? "text-emerald-600" : "text-amber-600"}`}>
+                  {recruiterProfile.subscription_status || "\u2014"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Billing Exempt</span>
+                <span className="text-sm text-slate-900">{recruiterProfile.billing_exempt ? "Yes" : "No"}</span>
+              </div>
+              {recruiterProfile.is_trial_active && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">Trial Days Remaining</span>
+                  <span className="text-sm font-medium text-amber-600">{recruiterProfile.trial_days_remaining}</span>
+                </div>
+              )}
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Seats</span>
+                <span className="text-sm text-slate-900">{recruiterProfile.seats_used} / {recruiterProfile.seats_purchased}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Usage Counters</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              {[
+                { label: "Candidate Briefs", value: recruiterProfile.candidate_briefs_used },
+                { label: "Salary Lookups", value: recruiterProfile.salary_lookups_used },
+                { label: "Job Uploads", value: recruiterProfile.job_uploads_used },
+                { label: "Intro Requests", value: recruiterProfile.intro_requests_used },
+                { label: "Resume Imports", value: recruiterProfile.resume_imports_used },
+                { label: "Outreach Enrollments", value: recruiterProfile.outreach_enrollments_used },
+              ].map(({ label, value }) => (
+                <div key={label} className="flex flex-col gap-1">
+                  <span className="text-xs font-medium text-slate-500">{label}</span>
+                  <span className="text-sm text-slate-900">{value}</span>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Stats</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-4">
+              {[
+                { label: "Team Members", value: recruiterProfile.team_member_count },
+                { label: "Clients", value: recruiterProfile.client_count },
+                { label: "Pipeline Candidates", value: recruiterProfile.pipeline_candidate_count },
+                { label: "Jobs", value: recruiterProfile.jobs_count },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center">
+                  <div className="text-2xl font-bold text-slate-900">{value}</div>
+                  <div className="mt-1 text-xs text-slate-500">{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* Employer Profile Section */}
+      {role === "employer" && employerProfile && (
+        <>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Company Information</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Company Name</span>
+                <span className="text-sm text-slate-900">{employerProfile.company_name}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Company Size</span>
+                <span className="text-sm text-slate-900">{employerProfile.company_size || "\u2014"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Industry</span>
+                <span className="text-sm text-slate-900">{employerProfile.industry || "\u2014"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Website</span>
+                {employerProfile.company_website ? (
+                  <a href={employerProfile.company_website} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">{employerProfile.company_website}</a>
+                ) : (
+                  <span className="text-sm text-slate-400">{"\u2014"}</span>
+                )}
+              </div>
+              {employerProfile.company_description && (
+                <div className="flex flex-col gap-1 md:col-span-2">
+                  <span className="text-xs font-medium text-slate-500">Description</span>
+                  <span className="text-sm text-slate-900">{employerProfile.company_description}</span>
+                </div>
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Primary Contact</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Contact Name</span>
+                <span className="text-sm text-slate-900">
+                  {[employerProfile.contact_first_name, employerProfile.contact_last_name].filter(Boolean).join(" ") || "\u2014"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Contact Email</span>
+                <span className="text-sm text-slate-900">{employerProfile.contact_email || "\u2014"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Contact Phone</span>
+                <span className="text-sm text-slate-900">{employerProfile.contact_phone || "\u2014"}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Billing Email</span>
+                <span className="text-sm text-slate-900">{employerProfile.billing_email || "\u2014"}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Subscription & Usage</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Tier</span>
+                <span className="text-sm font-semibold uppercase text-slate-900">{employerProfile.subscription_tier}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Status</span>
+                <span className={`text-sm font-medium ${employerProfile.subscription_status === "active" ? "text-emerald-600" : "text-amber-600"}`}>
+                  {employerProfile.subscription_status || "\u2014"}
+                </span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">AI Parsing Used</span>
+                <span className="text-sm text-slate-900">{employerProfile.ai_parsing_used}</span>
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="text-xs font-medium text-slate-500">Intro Requests Used</span>
+                <span className="text-sm text-slate-900">{employerProfile.intro_requests_used}</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="text-lg font-semibold">Stats</h2>
+            <div className="mt-4 grid gap-4 md:grid-cols-3">
+              {[
+                { label: "Total Jobs", value: employerProfile.total_jobs_count },
+                { label: "Active Jobs", value: employerProfile.active_jobs_count },
+                { label: "Saved Candidates", value: employerProfile.saved_candidates_count },
+              ].map(({ label, value }) => (
+                <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-4 text-center">
+                  <div className="text-2xl font-bold text-slate-900">{value}</div>
+                  <div className="mt-1 text-xs text-slate-500">{label}</div>
+                </div>
+              ))}
+            </div>
+          </section>
+        </>
+      )}
+
+      {/* No profile found for non-candidates */}
+      {role === "recruiter" && !recruiterProfile && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          No recruiter profile found for this user.
+        </div>
+      )}
+      {role === "employer" && !employerProfile && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+          No employer profile found for this user.
+        </div>
+      )}
+
+      {/* Candidate-only sections */}
+      {role === "candidate" && (
+        <>
 
       {/* Experience Section */}
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -1351,6 +1784,9 @@ export default function AdminProfileEditorPage() {
             )}
           </section>
         )}
+
+        </>
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end">
