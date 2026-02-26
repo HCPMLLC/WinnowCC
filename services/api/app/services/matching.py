@@ -5,7 +5,7 @@ import re
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
 
-from sqlalchemy import delete, select
+from sqlalchemy import String, cast, delete, func, select
 from sqlalchemy.orm import Session
 
 from app.models.candidate import Candidate
@@ -222,6 +222,35 @@ def _score_job(job: Job, profile_json: dict, candidate: Candidate | None) -> Mat
         application_logistics_score=application_logistics_score,
         interview_probability=interview_probability,
     )
+
+
+def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
+    """Score a candidate profile against a RecruiterJob or EmployerJob.
+
+    These models use different field names than Job (e.g. ``description``
+    instead of ``description_text``, ``remote_policy`` instead of
+    ``remote_flag``).  We build a lightweight proxy that maps to the
+    attributes ``_score_job`` expects.
+    """
+
+    class _JobProxy:
+        pass
+
+    proxy = _JobProxy()
+    proxy.title = posted_job.title or ""
+    proxy.description_text = (
+        (posted_job.description or "")
+        + "\n"
+        + (getattr(posted_job, "requirements", None) or "")
+    )
+    proxy.remote_flag = (posted_job.remote_policy or "").lower() == "remote"
+    proxy.location = posted_job.location or ""
+    proxy.salary_min = posted_job.salary_min
+    proxy.salary_max = posted_job.salary_max
+    proxy.posted_at = posted_job.posted_at or getattr(posted_job, "created_at", None)
+    proxy.source = "recruiter"
+
+    return _score_job(proxy, profile_json, None)
 
 
 def _tokenize(text: str) -> set[str]:
@@ -446,3 +475,125 @@ def recalculate_interview_probability(match: Match) -> int:
         application_logistics_score=match.application_logistics_score or 70,
         referred=match.referred,
     )
+
+
+# ---------------------------------------------------------------------------
+# Recruiter & Employer job → candidate matching
+# ---------------------------------------------------------------------------
+
+
+def _latest_platform_profiles(session: Session) -> list:
+    """Return latest-version CandidateProfiles for opted-in platform users."""
+    latest_sub = (
+        select(
+            CandidateProfile.user_id,
+            func.max(CandidateProfile.version).label("mv"),
+        )
+        .where(CandidateProfile.user_id.is_not(None))
+        .group_by(CandidateProfile.user_id)
+    ).subquery()
+
+    return (
+        session.execute(
+            select(CandidateProfile)
+            .join(
+                latest_sub,
+                (CandidateProfile.user_id == latest_sub.c.user_id)
+                & (CandidateProfile.version == latest_sub.c.mv),
+            )
+            .where(
+                CandidateProfile.open_to_opportunities == True,  # noqa: E712
+                CandidateProfile.profile_visibility.in_(["public", "anonymous"]),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+
+def find_top_candidates_for_recruiter_job(
+    session: Session,
+    recruiter_job,
+    recruiter_user_id: int,
+    limit: int = 100,
+) -> list[dict]:
+    """Find top candidates for a recruiter job.
+
+    Searches two pools:
+      A) Platform candidates — opted-in, latest version per user.
+      B) Recruiter's own sourced candidates (user_id IS NULL,
+         profile_json.sourced_by_user_id == recruiter_user_id).
+    """
+    # Pool A: platform candidates
+    platform_profiles = _latest_platform_profiles(session)
+
+    # Pool B: recruiter-sourced candidates
+    sourced_profiles = (
+        session.execute(
+            select(CandidateProfile).where(
+                CandidateProfile.user_id.is_(None),
+                cast(
+                    CandidateProfile.profile_json["sourced_by_user_id"], String
+                )
+                == str(recruiter_user_id),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    all_profiles = platform_profiles + sourced_profiles
+
+    scored: list[dict] = []
+    for cp in all_profiles:
+        pj = cp.profile_json or {}
+        result = _score_posted_job(recruiter_job, pj)
+        if result.match_score > 0:
+            scored.append(
+                {
+                    "id": cp.id,
+                    "match_score": result.match_score,
+                    "matched_skills": result.reasons.get("matched_skills", []),
+                }
+            )
+
+    scored.sort(key=lambda x: x["match_score"], reverse=True)
+    return scored[:limit]
+
+
+def find_top_candidates_for_employer_job(
+    session: Session,
+    employer_job,
+    limit: int = 100,
+) -> list[dict]:
+    """Find top candidates for an employer job (platform candidates only).
+
+    Returns dicts compatible with ``TopCandidateResult`` schema.
+    """
+    platform_profiles = _latest_platform_profiles(session)
+
+    scored: list[dict] = []
+    for cp in platform_profiles:
+        pj = cp.profile_json or {}
+        result = _score_posted_job(employer_job, pj)
+        if result.match_score > 0:
+            skills = [
+                s if isinstance(s, str) else s.get("name", "")
+                for s in pj.get("skills", [])
+            ]
+            scored.append(
+                {
+                    "id": cp.id,
+                    "name": pj.get("name", "Unknown"),
+                    "headline": pj.get("headline"),
+                    "location": pj.get("location"),
+                    "years_experience": pj.get("years_experience"),
+                    "top_skills": skills[:5],
+                    "matched_skills": result.reasons.get("matched_skills", []),
+                    "match_score": result.match_score,
+                    "profile_visibility": cp.profile_visibility or "private",
+                }
+            )
+
+    scored.sort(key=lambda x: x["match_score"], reverse=True)
+    return scored[:limit]
