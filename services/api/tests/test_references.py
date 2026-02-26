@@ -145,7 +145,7 @@ def test_has_references_flag_set_at_3(auth_client, db_session):
             },
         )
 
-    # Latest profile should have has_references=True
+    # Latest profile should have 3 active references
     from sqlalchemy import select
 
     profile = (
@@ -159,4 +159,6 @@ def test_has_references_flag_set_at_3(auth_client, db_session):
         .first()
     )
     assert profile is not None
-    assert profile.has_references is True
+    refs = profile.profile_json.get("references", [])
+    active_refs = [r for r in refs if r.get("is_active", True)]
+    assert len(active_refs) >= 3

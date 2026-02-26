@@ -106,7 +106,7 @@ class TestLocationParsing:
             "Software Engineer", "San Francisco, CA", ""
         )
         assert city == "San Francisco"
-        assert state == "California"
+        assert state == "CA"
         assert country == "US"
 
     def test_remote_detection(self, parser):

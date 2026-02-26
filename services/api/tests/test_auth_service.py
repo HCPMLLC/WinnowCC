@@ -96,9 +96,8 @@ def test_get_current_user_ok(session) -> None:
     session.refresh(user)
     token = auth_service.make_token(user_id=user.id, email=user.email)
 
-    req = _make_request()
     current = auth_service.get_current_user(
-        request=req, session=session, rm_session=token
+        session=session, rm_session=token, authorization=None
     )
     assert current.id == user.id
 
@@ -111,25 +110,22 @@ def test_get_current_user_via_bearer(session) -> None:
     session.refresh(user)
     token = auth_service.make_token(user_id=user.id, email=user.email)
 
-    req = _make_request(headers={"authorization": f"Bearer {token}"})
     current = auth_service.get_current_user(
-        request=req, session=session, rm_session=None
+        session=session, rm_session=None, authorization=f"Bearer {token}"
     )
     assert current.id == user.id
 
 
 def test_get_current_user_missing_cookie(session) -> None:
-    req = _make_request()
     with pytest.raises(HTTPException) as exc:
-        auth_service.get_current_user(request=req, session=session, rm_session=None)
+        auth_service.get_current_user(session=session, rm_session=None, authorization=None)
     assert exc.value.status_code == 401
 
 
 def test_get_current_user_missing_user(session) -> None:
     token = auth_service.make_token(user_id=999, email="a@b.com")
-    req = _make_request()
     with pytest.raises(HTTPException) as exc:
-        auth_service.get_current_user(request=req, session=session, rm_session=token)
+        auth_service.get_current_user(session=session, rm_session=token, authorization=None)
     assert exc.value.status_code == 401
 
 

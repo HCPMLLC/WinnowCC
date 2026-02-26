@@ -115,13 +115,19 @@ class RecruiterProfile(Base):
             return False
         if not self.trial_ends_at:
             return False
-        return datetime.now(timezone.utc) < self.trial_ends_at
+        ends = self.trial_ends_at
+        if ends.tzinfo is None:
+            ends = ends.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) < ends
 
     @property
     def trial_days_remaining(self) -> int:
         if not self.trial_ends_at:
             return 0
-        delta = self.trial_ends_at - datetime.now(timezone.utc)
+        ends = self.trial_ends_at
+        if ends.tzinfo is None:
+            ends = ends.replace(tzinfo=timezone.utc)
+        delta = ends - datetime.now(timezone.utc)
         return max(0, delta.days)
 
     def start_trial(self) -> None:

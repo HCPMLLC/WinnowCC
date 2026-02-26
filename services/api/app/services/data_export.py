@@ -200,7 +200,6 @@ def export_user_data(user_id: int, db: Session) -> io.BytesIO:
                             "interview_probability": m.interview_probability,
                             "semantic_similarity": m.semantic_similarity,
                             "application_status": m.application_status,
-                            "notes": m.notes,
                             "reasons": m.reasons,
                             "created_at": m.created_at,
                         }
