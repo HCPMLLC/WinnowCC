@@ -409,7 +409,6 @@ PLATFORM_SCORES = {
     "remotive": 80,
     "themuse": 75,
     "adzuna": 68,
-    "arbeitnow": 70,
     "jobicy": 75,
     "default": 70,
 }
