@@ -64,12 +64,14 @@ export default function JobsPage() {
   useEffect(() => {
     setIsLoading(true);
     fetchJobs(false).finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [statusFilter]);
 
   useEffect(() => {
     if (viewTab === "archived") {
       fetchJobs(true);
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [viewTab]);
 
   async function unarchiveJob(jobId: number) {

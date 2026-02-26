@@ -108,6 +108,7 @@ export default function RecruiterJobsPage() {
         .then((data) => setClients(data))
         .catch(() => {}),
     ]).finally(() => setIsLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [statusFilter]);
 
   const allSelected = jobs.length > 0 && jobs.every((j) => selected.has(j.id));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Employer = {
@@ -81,7 +81,7 @@ export default function AdminEmployersPage() {
   const [overrideTier, setOverrideTier] = useState("free");
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
 
-  const loadEmployers = async () => {
+  const loadEmployers = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/admin/employers`, {
         credentials: "include",
@@ -106,11 +106,11 @@ export default function AdminEmployersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadEmployers();
-  }, [router]);
+  }, [loadEmployers]);
 
   const filteredEmployers = employers.filter((e) => {
     if (!searchTerm) return true;

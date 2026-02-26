@@ -133,6 +133,7 @@ export default function RecruiterClientsPage() {
   useEffect(() => {
     setLoading(true);
     fetchClients().finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchClients is a closure over statusFilter/vehicleFilter, already tracked
   }, [statusFilter, vehicleFilter]);
 
   async function handleCreate(e: React.FormEvent) {

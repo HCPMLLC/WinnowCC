@@ -258,6 +258,7 @@ function MatchesPageContent() {
       }
     };
     void loadMatches();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: selectedMatchId is set by this effect
   }, []);
 
   const handlePrepare = async (jobId: number) => {

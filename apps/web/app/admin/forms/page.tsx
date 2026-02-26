@@ -31,7 +31,7 @@ export default function AdminFormsPage() {
     fetchAuthMe().then((u) => {
       if (!u) router.push("/login");
     });
-  }, []);
+  }, [router]);
 
   async function loadForms() {
     if (!jobId) return;
