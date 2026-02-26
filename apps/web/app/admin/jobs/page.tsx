@@ -4,7 +4,6 @@ import { Fragment, useEffect, useState, useCallback } from "react";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
 
 type AdminJob = {
   id: number;
@@ -76,9 +75,6 @@ export default function AdminJobsPage() {
 
       const res = await fetch(`${API_BASE}/api/admin/jobs/all?${params}`, {
         credentials: "include",
-        headers: ADMIN_TOKEN
-          ? { Authorization: `Bearer ${ADMIN_TOKEN}` }
-          : {},
       });
       if (!res.ok) throw new Error("Failed to load jobs.");
       const data = await res.json();
