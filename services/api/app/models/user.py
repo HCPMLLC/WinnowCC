@@ -55,6 +55,12 @@ class User(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Profile
+    first_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    last_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    full_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+
     # OAuth
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     oauth_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
