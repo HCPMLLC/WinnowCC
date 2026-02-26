@@ -14,7 +14,7 @@ with engine.connect() as conn:
         text("""
         SELECT source, title, company, LEFT(description_text, 800) as desc_preview
         FROM jobs
-        WHERE source IN ('remotive', 'themuse', 'arbeitnow', 'greenhouse')
+        WHERE source IN ('remotive', 'themuse', 'greenhouse')
         ORDER BY ingested_at DESC
         LIMIT 4
     """)

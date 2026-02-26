@@ -40,12 +40,12 @@ Configured sources (set via `JOB_SOURCES`):
 - greenhouse (public boards; requires `GREENHOUSE_COMPANIES` list)
 - lever (public boards; requires `LEVER_COMPANIES` list)
 - remoteok (public API)
-- arbeitnow (public API)
 - adzuna (API key required)
 - jooble (API key required)
 - usajobs (API key + email required)
-- ziprecruiter (API key required)
-- builtin (API key required; placeholder)
+- jsearch (RapidAPI key required; aggregates LinkedIn, Indeed, Glassdoor)
+- jobicy (public API; remote US jobs)
+- himalayas (public API; remote jobs, 3 pages / 60 jobs)
 - manual (JSON list via `MANUAL_JOBS_PATH`)
 
 Notes:

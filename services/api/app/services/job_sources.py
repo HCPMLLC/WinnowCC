@@ -365,40 +365,6 @@ class RemoteOkSource(JobSource):
         return jobs
 
 
-class ArbeitnowSource(JobSource):
-    name = "arbeitnow"
-    base_url = "https://www.arbeitnow.com/api/job-board-api"
-
-    def fetch_jobs(self, query: dict) -> list[JobPosting]:
-        response = httpx.get(self.base_url, timeout=30, follow_redirects=True)
-        if response.status_code != 200:
-            return []
-        payload = response.json()
-        jobs = []
-        for item in payload.get("data", []):
-            jobs.append(
-                JobPosting(
-                    source=self.name,
-                    source_job_id=str(item.get("slug") or item.get("url") or ""),
-                    url=item.get("url") or "",
-                    title=item.get("title") or "Untitled",
-                    company=item.get("company_name") or "Unknown",
-                    location=item.get("location") or "Unknown",
-                    remote_flag=bool(item.get("remote")),
-                    salary_min=None,
-                    salary_max=None,
-                    currency=None,
-                    description_text=item.get("description") or "",
-                    posted_at=_parse_dt(item.get("created_at") or item.get("posted_at")),
-                    application_deadline=None,
-                    hiring_manager_name=None,
-                    hiring_manager_email=None,
-                    hiring_manager_phone=None,
-                )
-            )
-        return jobs
-
-
 class AdzunaSource(JobSource):
     name = "adzuna"
 
@@ -559,62 +525,6 @@ class USAJobsSource(JobSource):
         return jobs
 
 
-class ZipRecruiterSource(JobSource):
-    name = "ziprecruiter"
-
-    def fetch_jobs(self, query: dict) -> list[JobPosting]:
-        api_key = os.getenv("ZIPRECRUITER_API_KEY")
-        if not api_key:
-            return []
-        params = {
-            "api_key": api_key,
-            "search": query.get("search") or "",
-            "location": query.get("location") or "",
-        }
-        response = httpx.get("https://api.ziprecruiter.com/jobs/v1", params=params, timeout=30)
-        if response.status_code != 200:
-            return []
-        data = response.json()
-        jobs = []
-        for item in data.get("jobs", []):
-            title = item.get("name") or "Untitled"
-            location = item.get("location") or "Unknown"
-            snippet = item.get("snippet") or ""
-
-            # Parse salary from ZipRecruiter fields or snippet
-            salary_min = item.get("salary_min_annual")
-            salary_max = item.get("salary_max_annual")
-            currency = item.get("salary_currency") or "USD"
-
-            # If no structured salary, try to parse from snippet
-            if salary_min is None and salary_max is None:
-                salary_min, salary_max, parsed_currency = _parse_salary_text(snippet)
-                if parsed_currency:
-                    currency = parsed_currency
-
-            jobs.append(
-                JobPosting(
-                    source=self.name,
-                    source_job_id=str(item.get("id") or ""),
-                    url=item.get("url") or "",
-                    title=title,
-                    company=item.get("hiring_company", {}).get("name") or "Unknown",
-                    location=location,
-                    remote_flag=_is_remote_job(title, location),
-                    salary_min=salary_min,
-                    salary_max=salary_max,
-                    currency=currency,
-                    description_text=snippet,
-                    posted_at=_parse_dt(item.get("posted_time") or item.get("posted_at")),
-                    application_deadline=None,
-                    hiring_manager_name=None,
-                    hiring_manager_email=None,
-                    hiring_manager_phone=None,
-                )
-            )
-        return jobs
-
-
 class JSearchSource(JobSource):
     """JSearch API via RapidAPI - aggregates jobs from LinkedIn, Indeed, Glassdoor, etc."""
     name = "jsearch"
@@ -720,21 +630,125 @@ class JSearchSource(JobSource):
         return jobs
 
 
-class BuiltInSource(JobSource):
-    name = "builtin"
+class JobicySource(JobSource):
+    """Jobicy - remote jobs board with US geo filter."""
+
+    name = "jobicy"
+    base_url = "https://jobicy.com/api/v2/remote-jobs"
 
     def fetch_jobs(self, query: dict) -> list[JobPosting]:
-        api_key = os.getenv("BUILTIN_API_KEY")
-        if not api_key:
+        params = {"count": 50, "geo": "usa"}
+        response = httpx.get(self.base_url, params=params, timeout=30)
+        if response.status_code != 200:
             return []
-        return []
+        payload = response.json()
+        jobs = []
+        for item in payload.get("jobs", []):
+            salary_min = None
+            salary_max = None
+            currency = None
+            if item.get("annualSalaryMin"):
+                try:
+                    salary_min = int(float(item["annualSalaryMin"]))
+                except (ValueError, TypeError):
+                    pass
+            if item.get("annualSalaryMax"):
+                try:
+                    salary_max = int(float(item["annualSalaryMax"]))
+                except (ValueError, TypeError):
+                    pass
+            if salary_min or salary_max:
+                currency = item.get("salaryCurrency") or "USD"
+
+            jobs.append(
+                JobPosting(
+                    source=self.name,
+                    source_job_id=str(item.get("id") or ""),
+                    url=item.get("url") or "",
+                    title=item.get("jobTitle") or "Untitled",
+                    company=item.get("companyName") or "Unknown",
+                    location=item.get("jobGeo") or "Remote",
+                    remote_flag=True,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=item.get("jobDescription") or "",
+                    posted_at=_parse_dt(item.get("pubDate")),
+                    application_deadline=None,
+                    hiring_manager_name=None,
+                    hiring_manager_email=None,
+                    hiring_manager_phone=None,
+                )
+            )
+        return jobs
+
+
+class HimalayasSource(JobSource):
+    """Himalayas - remote jobs board. Fetches 3 pages (60 jobs max)."""
+
+    name = "himalayas"
+    base_url = "https://himalayas.app/jobs/api"
+
+    def fetch_jobs(self, query: dict) -> list[JobPosting]:
+        jobs: list[JobPosting] = []
+        for page in range(3):
+            params = {"limit": 20, "offset": page * 20}
+            response = httpx.get(self.base_url, params=params, timeout=30)
+            if response.status_code != 200:
+                break
+            payload = response.json()
+            items = payload.get("jobs", [])
+            if not items:
+                break
+            for item in items:
+                salary_min = None
+                salary_max = None
+                currency = None
+                if item.get("minSalary"):
+                    try:
+                        salary_min = int(float(item["minSalary"]))
+                    except (ValueError, TypeError):
+                        pass
+                if item.get("maxSalary"):
+                    try:
+                        salary_max = int(float(item["maxSalary"]))
+                    except (ValueError, TypeError):
+                        pass
+                if salary_min or salary_max:
+                    currency = item.get("currency") or "USD"
+
+                # locationRestrictions is an array
+                restrictions = item.get("locationRestrictions") or []
+                location = ", ".join(restrictions) if restrictions else "Remote"
+
+                jobs.append(
+                    JobPosting(
+                        source=self.name,
+                        source_job_id=str(item.get("guid") or ""),
+                        url=item.get("applicationLink") or "",
+                        title=item.get("title") or "Untitled",
+                        company=item.get("companyName") or "Unknown",
+                        location=location,
+                        remote_flag=True,
+                        salary_min=salary_min,
+                        salary_max=salary_max,
+                        currency=currency,
+                        description_text=item.get("description") or "",
+                        posted_at=_parse_dt(item.get("pubDate")),
+                        application_deadline=None,
+                        hiring_manager_name=None,
+                        hiring_manager_email=None,
+                        hiring_manager_phone=None,
+                    )
+                )
+        return jobs
 
 
 def get_job_sources() -> list[JobSource]:
     configured = _split_list(
         os.getenv(
             "JOB_SOURCES",
-            "remotive,themuse,greenhouse,lever,remoteok,arbeitnow,adzuna,jooble,usajobs,ziprecruiter,builtin,manual",
+            "remotive,themuse,greenhouse,lever,remoteok,adzuna,jooble,usajobs,jobicy,himalayas,manual,jsearch",
         )
     )
     available = {
@@ -743,13 +757,12 @@ def get_job_sources() -> list[JobSource]:
         GreenhouseSource.name: GreenhouseSource(),
         LeverSource.name: LeverSource(),
         RemoteOkSource.name: RemoteOkSource(),
-        ArbeitnowSource.name: ArbeitnowSource(),
         AdzunaSource.name: AdzunaSource(),
         JoobleSource.name: JoobleSource(),
         USAJobsSource.name: USAJobsSource(),
-        ZipRecruiterSource.name: ZipRecruiterSource(),
         JSearchSource.name: JSearchSource(),
-        BuiltInSource.name: BuiltInSource(),
+        JobicySource.name: JobicySource(),
+        HimalayasSource.name: HimalayasSource(),
         ManualListSource.name: ManualListSource(),
     }
     return [available[name] for name in configured if name in available]
