@@ -171,6 +171,9 @@ export default function RootLayout() {
       }
 
       const data = await res.json();
+      if (!data.token) {
+        throw new Error("Signup failed — no token received.");
+      }
       await saveToken(data.token);
       setAuthState({
         token: data.token,
@@ -229,9 +232,10 @@ export default function RootLayout() {
     setMfaPendingEmail(null);
     setMfaPendingPassword(null);
 
-    if (data.token) {
-      await saveToken(data.token);
+    if (!data.token) {
+      throw new Error("Verification succeeded but no session token received.");
     }
+    await saveToken(data.token);
     setAuthState({
       token: data.token,
       userId: data.user_id,
