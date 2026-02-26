@@ -7,6 +7,13 @@ import IntroductionRequestModal from "../../../components/IntroductionRequestMod
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  const d = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+  return raw;
+}
+
 interface ExperienceEntry {
   title?: string;
   company?: string;
@@ -845,7 +852,7 @@ export default function CandidateDetailPage() {
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500">Phone</h3>
-                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.phone || <span className="italic text-slate-400">Not provided</span>}</p>
+                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.phone ? formatPhone(displayContact.phone) : <span className="italic text-slate-400">Not provided</span>}</p>
                 </div>
                 <div>
                   <h3 className="text-sm font-medium text-slate-500">Website</h3>
