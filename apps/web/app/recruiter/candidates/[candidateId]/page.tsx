@@ -248,7 +248,11 @@ export default function CandidateDetailPage() {
     if (Object.keys(ci).length) body.contact_info = ci;
 
     if (experience.length > 0) {
-      body.experience = experience.filter((x) => x.title || x.company);
+      body.experience = experience.filter((x) => x.title || x.company).map((x) => ({
+        ...x,
+        duties: (x.duties || []).filter((d) => d.trim()),
+        quantified_accomplishments: (x.quantified_accomplishments || []).filter((a) => a.trim()),
+      }));
     }
     if (education.length > 0) {
       body.education = education.filter((x) => x.school || x.degree);
@@ -502,7 +506,14 @@ export default function CandidateDetailPage() {
                       <input type="text" placeholder="Start date" value={exp.start_date || ""} onChange={(e) => { const u = [...experience]; u[idx] = { ...u[idx], start_date: e.target.value }; setExperience(u); }} className={inputCls} />
                       <input type="text" placeholder="End date" value={exp.end_date || ""} onChange={(e) => { const u = [...experience]; u[idx] = { ...u[idx], end_date: e.target.value }; setExperience(u); }} className={inputCls} />
                     </div>
-                    <textarea placeholder="Description" value={exp.description || ""} onChange={(e) => { const u = [...experience]; u[idx] = { ...u[idx], description: e.target.value }; setExperience(u); }} rows={2} className={inputCls} />
+                    <div>
+                      <label className="mb-0.5 block text-xs text-slate-500">Duties / Responsibilities (one per line)</label>
+                      <textarea placeholder="One duty per line..." value={(exp.duties || []).join("\n")} onChange={(e) => { const u = [...experience]; u[idx] = { ...u[idx], duties: e.target.value.split("\n") }; setExperience(u); }} rows={3} className={inputCls} />
+                    </div>
+                    <div>
+                      <label className="mb-0.5 block text-xs text-slate-500">Key Accomplishments (one per line)</label>
+                      <textarea placeholder="One accomplishment per line..." value={(exp.quantified_accomplishments || []).join("\n")} onChange={(e) => { const u = [...experience]; u[idx] = { ...u[idx], quantified_accomplishments: e.target.value.split("\n") }; setExperience(u); }} rows={2} className={inputCls} />
+                    </div>
                   </div>
                 ))}
               </div>
