@@ -10,6 +10,8 @@ Usage:
 import logging
 import os
 import sys
+import threading
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -34,7 +36,26 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class _HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        self.send_response(200)
+        self.end_headers()
+        self.wfile.write(b'{"status":"ok"}')
+
+    def log_message(self, format, *args):
+        pass  # suppress request logs
+
+
+def _start_health_server():
+    port = int(os.getenv("PORT", "8080"))
+    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    server.serve_forever()
+
+
 def main():
+    # Cloud Run requires a listening port for health checks
+    threading.Thread(target=_start_health_server, daemon=True).start()
+
     config = get_scheduler_config()
     logger.info(f"Scheduler configuration: {config}")
 
