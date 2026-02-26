@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
+from app.models.employer import EmployerProfile
+from app.models.recruiter import RecruiterProfile
 from app.models.user import User
 from app.schemas.profile import (
     CandidateProfileResponse,
@@ -26,6 +28,12 @@ class UserSummary(BaseModel):
     id: int
     email: str
     name: str | None
+    first_name: str | None = None
+    last_name: str | None = None
+    full_name: str | None = None
+    phone: str | None = None
+    role: str | None = None
+    company_name: str | None = None
     completeness_score: int
     onboarding_completed: bool
 
@@ -62,6 +70,15 @@ def list_users(
 ) -> list[UserSummary]:
     stmt = select(User).order_by(User.id.desc())
     users = session.execute(stmt).scalars().all()
+
+    # Pre-fetch company names for employer and recruiter users
+    employer_companies: dict[int, str] = {}
+    for ep in session.execute(select(EmployerProfile)).scalars().all():
+        employer_companies[ep.user_id] = ep.company_name or ""
+    recruiter_companies: dict[int, str] = {}
+    for rp in session.execute(select(RecruiterProfile)).scalars().all():
+        recruiter_companies[rp.user_id] = rp.company_name or ""
+
     results = []
     for user in users:
         profile_stmt = (
@@ -79,11 +96,23 @@ def list_users(
             completeness = compute_profile_completeness(default_profile_json())
             name = None
 
+        company_name = (
+            employer_companies.get(user.id)
+            or recruiter_companies.get(user.id)
+            or None
+        )
+
         results.append(
             UserSummary(
                 id=user.id,
                 email=user.email,
                 name=name,
+                first_name=user.first_name,
+                last_name=user.last_name,
+                full_name=user.full_name,
+                phone=user.phone,
+                role=user.role,
+                company_name=company_name,
                 completeness_score=completeness.score,
                 onboarding_completed=user.onboarding_completed_at is not None,
             )
