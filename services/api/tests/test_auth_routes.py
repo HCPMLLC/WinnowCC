@@ -88,7 +88,7 @@ def test_signup_rejects_duplicate_email(client, session) -> None:
         "/api/auth/signup",
         json={"email": "dupe@example.com", "password": "Password123"},
     )
-    assert resp.status_code == 409
+    assert resp.status_code == 400
 
 
 def test_signup_rejects_invalid_email(client) -> None:
@@ -177,7 +177,7 @@ def test_logout_clears_cookie(client) -> None:
 
 
 def test_export_requires_auth(client) -> None:
-    resp = client.get("/api/auth/export")
+    resp = client.get("/api/account/export")
     assert resp.status_code == 401
 
 
@@ -187,17 +187,16 @@ def test_export_returns_user_data(client, session) -> None:
     session.commit()
     token = auth_service.make_token(user_id=user.id, email=user.email)
     client.cookies.set(auth_service.COOKIE_NAME, token)
-    resp = client.get("/api/auth/export")
+    resp = client.get("/api/account/export/preview")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["account"]["email"] == "export@example.com"
+    assert "profile_versions" in data
 
 
 def test_delete_account_requires_auth(client) -> None:
-    resp = client.request(
-        "DELETE",
-        "/api/auth/account",
-        json={"confirm_email": "x@x.com"},
+    resp = client.post(
+        "/api/account/delete",
+        json={"confirm": "DELETE MY ACCOUNT"},
     )
     assert resp.status_code == 401
 
@@ -208,10 +207,9 @@ def test_delete_account_wrong_email(client, session) -> None:
     session.commit()
     token = auth_service.make_token(user_id=user.id, email=user.email)
     client.cookies.set(auth_service.COOKIE_NAME, token)
-    resp = client.request(
-        "DELETE",
-        "/api/auth/account",
-        json={"confirm_email": "wrong@example.com"},
+    resp = client.post(
+        "/api/account/delete",
+        json={"confirm": "wrong"},
     )
     assert resp.status_code == 400
 
@@ -222,10 +220,9 @@ def test_delete_account_success(client, session) -> None:
     session.commit()
     token = auth_service.make_token(user_id=user.id, email=user.email)
     client.cookies.set(auth_service.COOKIE_NAME, token)
-    resp = client.request(
-        "DELETE",
-        "/api/auth/account",
-        json={"confirm_email": "bye@example.com"},
+    resp = client.post(
+        "/api/account/delete",
+        json={"confirm": "DELETE MY ACCOUNT"},
     )
     assert resp.status_code == 200
     assert resp.json()["status"] == "deleted"

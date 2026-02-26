@@ -495,13 +495,13 @@ class TestRecruiterProfileGet:
         assert resp.status_code == 200
         assert resp.json()["company_name"] == "My Agency"
 
-    def test_no_profile_returns_404(self, client, session):
+    def test_no_profile_auto_creates(self, client, session):
         user = _create_recruiter_user(session, email="noprof@example.com")
         session.commit()
         _auth_cookie(client, user)
 
         resp = client.get("/api/recruiter/profile")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
 
 
 class TestRecruiterProfileUpdate:

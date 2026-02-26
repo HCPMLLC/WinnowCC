@@ -17,6 +17,8 @@ from app.services.storage import download_to_tempfile, is_gcs_path, upload_file
 
 logger = logging.getLogger(__name__)
 
+PACKETS_DIR = Path(tempfile.gettempdir()) / "winnow_packets"
+
 
 def merge_documents_to_pdf(
     documents: list[dict],

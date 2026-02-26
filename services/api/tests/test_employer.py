@@ -337,12 +337,12 @@ class TestAccessControl:
         resp = client.get("/api/employer/profile")
         assert resp.status_code == 403
 
-    def test_no_profile_returns_404(self, client, db_session):
+    def test_no_profile_auto_creates(self, client, db_session):
         user = _create_employer_user(db_session, role="employer")
         db_session.commit()
         _auth_cookie(client, user)
         resp = client.get("/api/employer/profile")
-        assert resp.status_code == 404
+        assert resp.status_code == 200
 
     def test_unauthenticated_returns_401(self, client):
         resp = client.get("/api/employer/profile")

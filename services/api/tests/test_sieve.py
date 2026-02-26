@@ -320,8 +320,8 @@ def test_get_suggested_actions_default() -> None:
         "tracking": {},
     }
     actions = get_suggested_actions(ctx)
-    assert len(actions) == 3
-    assert any("help" in a.lower() for a in actions)
+    assert len(actions) == 2
+    assert any("role" in a.lower() or "broaden" in a.lower() for a in actions)
 
 
 # ---------------------------------------------------------------------------

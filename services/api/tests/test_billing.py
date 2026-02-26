@@ -133,6 +133,8 @@ def test_checkout_creates_session(client, session, monkeypatch):
     user, _ = _create_user_and_candidate(session)
     _auth_cookie(client, user)
 
+    monkeypatch.setattr(billing_service, "STRIPE_SECRET_KEY", "sk_test_fake")
+    monkeypatch.setattr(billing_service, "STRIPE_WEBHOOK_SECRET", "whsec_test_fake")
     monkeypatch.setattr(billing_service, "STRIPE_PRICE_MONTHLY", "price_test_monthly")
     monkeypatch.setattr(billing_service, "STRIPE_PRICE_ANNUAL", "price_test_annual")
     # Unified checkout uses PRICE_IDS dict

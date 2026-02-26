@@ -152,37 +152,47 @@ def _build_resume_doc(path: Path, job: Job, profile_json: dict) -> None:
 
 
 def _build_cover_letter_doc(path: Path, job: Job, profile_json: dict) -> None:
-    doc = Document()
-    _set_default_font(doc)
+    from app.services.cover_letter_generator import generate_cover_letter_text
+    from app.services.docx_builder import build_cover_letter_docx
 
-    name = (profile_json.get("basics", {}) or {}).get("name") or "Candidate"
-    hiring_manager = job.hiring_manager_name or "Hiring Manager"
-    doc.add_paragraph(f"Dear {hiring_manager},")
+    basics = (profile_json.get("basics", {}) or {})
+    name = basics.get("name") or "Candidate"
 
-    doc.add_paragraph(
-        f"I am excited to apply for the {job.title} role at {job.company}. "
-        "My background aligns closely with your needs, and I would welcome the chance "
-        "to contribute immediately."
+    cl_text = generate_cover_letter_text(job, profile_json)
+
+    # Parse the generated text into structured content
+    lines = cl_text.strip().split("\n\n")
+    greeting = lines[0] if lines else "Dear Hiring Manager,"
+    sign_off_text = lines[-1] if len(lines) > 1 else f"Sincerely,\n{name}"
+    body_paragraphs = lines[1:-1] if len(lines) > 2 else []
+    closing = lines[-2] if len(lines) > 3 else ""
+
+    # Split sign-off into "Sincerely," and name
+    cover_letter_content = {
+        "greeting": greeting,
+        "body_paragraphs": body_paragraphs,
+        "closing": closing,
+        "sign_off": sign_off_text,
+    }
+    candidate_basics = {
+        "name": name,
+        "email": basics.get("email"),
+        "phone": basics.get("phone"),
+        "location": basics.get("location"),
+        "linkedin": basics.get("linkedin"),
+    }
+    job_info = {
+        "company": job.company,
+        "title": job.title,
+        "hiring_manager": getattr(job, "hiring_manager_name", None),
+    }
+
+    build_cover_letter_docx(
+        cover_letter_content=cover_letter_content,
+        candidate_basics=candidate_basics,
+        job_info=job_info,
+        output_path=str(path),
     )
-
-    doc.add_paragraph(
-        f"I am especially interested in {job.company}'s focus on [company mission or recent initiative]."
-    )
-
-    requirements = _top_requirements(job.description_text)
-    if requirements:
-        doc.add_paragraph("Key alignments:")
-        for req in requirements[:3]:
-            doc.add_paragraph(req, style="List Bullet")
-
-    doc.add_paragraph(
-        "I appreciate the opportunity to bring my experience to your team. "
-        "If helpful, I can share additional examples of impact and walk through "
-        "how I would approach your immediate priorities."
-    )
-
-    doc.add_paragraph(f"Sincerely,\n{name}")
-    doc.save(str(path))
 
 
 def _set_default_font(doc: Document) -> None:

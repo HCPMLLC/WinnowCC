@@ -51,7 +51,7 @@ class JobQualityListItem(BaseModel):
     fraud_score: float | None = None
     posting_quality_score: float | None = None
     is_likely_fraudulent: bool = False
-    red_flags: list[str] | None = None
+    red_flags: list[dict] | None = None
     is_stale: bool = False
     parsed_at: datetime | None = None
 

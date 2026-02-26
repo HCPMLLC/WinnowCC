@@ -43,17 +43,11 @@ def _create_new_version(
     current = session.execute(stmt).scalar()
     next_version = int(current or 0) + 1
 
-    # Update has_references flag
-    refs = profile_json.get("references", [])
-    active_refs = [r for r in refs if r.get("is_active", True)]
-    has_refs = len(active_refs) >= 3
-
     profile = CandidateProfile(
         user_id=user_id,
         resume_document_id=None,
         version=next_version,
         profile_json=profile_json,
-        has_references=has_refs,
     )
     session.add(profile)
     session.commit()

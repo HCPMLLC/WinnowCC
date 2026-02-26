@@ -334,6 +334,23 @@ def _top_keywords(tokens: set[str]) -> list[str]:
     return sorted(tokens)
 
 
+def _extract_skills_from_text(text: str) -> list[str]:
+    """Extract skill-like keywords from text using tokenization."""
+    if not text or not text.strip():
+        return []
+    tokens = _tokenize(text)
+    # Filter to tokens that look like meaningful skills (3+ chars, not stop words)
+    _STOP = {
+        "the", "and", "for", "are", "you", "our", "with", "this", "that", "will",
+        "have", "from", "your", "can", "all", "has", "not", "but", "they", "been",
+        "their", "which", "about", "would", "make", "like", "just", "over", "such",
+        "also", "into", "year", "some", "than", "them", "other", "new", "more",
+        "experience", "work", "team", "role", "ability", "strong", "must", "required",
+        "preferred", "years", "including", "working", "knowledge", "skills", "using",
+    }
+    return sorted(t for t in tokens if t not in _STOP)
+
+
 def _location_score(job: Job, preferences: dict) -> int:
     remote_ok = preferences.get("remote_ok")
     locations = [loc.lower() for loc in preferences.get("locations", []) if isinstance(loc, str)]

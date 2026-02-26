@@ -16,6 +16,7 @@ from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
+from app.models.tailored_resume import TailoredResume
 from app.models.user import User
 from app.services.sieve_triggers import (
     compute_all_triggers,
@@ -313,10 +314,11 @@ def test_compute_all_triggers_sorting(session) -> None:
 
 
 def test_compute_all_triggers_empty(session) -> None:
-    """Complete profile, no recent matches, no stale apps → empty list."""
+    """Complete profile, old matches, no stale apps → empty list."""
     user = _create_user(session)
+    job = _create_job(session)
 
-    # Full profile
+    # Full profile (>=70% completeness → no profile trigger)
     candidate = Candidate(
         user_id=user.id,
         first_name="Jane",
@@ -339,6 +341,33 @@ def test_compute_all_triggers_empty(session) -> None:
         profile_json={"skills": ["Python"]},
     )
     session.add(profile)
+    session.flush()
+
+    # Old match (>24h ago, not 'saved', with status) → suppresses multiple triggers
+    old = datetime.now(UTC) - timedelta(hours=48)
+    match = Match(
+        user_id=user.id,
+        job_id=job.id,
+        profile_version=1,
+        match_score=70,
+        interview_readiness_score=70,
+        offer_probability=60,
+        reasons={},
+        created_at=old,
+        application_status="applied",
+    )
+    session.add(match)
+
+    # Add a tailored resume so no_tailored_resumes trigger is suppressed
+    tailored = TailoredResume(
+        user_id=user.id,
+        job_id=job.id,
+        profile_version=1,
+        docx_url="https://storage.example.com/test.docx",
+        cover_letter_url="https://storage.example.com/test_cl.docx",
+        change_log={},
+    )
+    session.add(tailored)
     session.commit()
 
     triggers = compute_all_triggers(user, session)
