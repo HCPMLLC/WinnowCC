@@ -23,8 +23,6 @@ type FlaggedJob = {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
-const ADMIN_TOKEN =
-  process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "";
 
 export default function AdminJobQualityPage() {
   const [jobs, setJobs] = useState<FlaggedJob[]>([]);
@@ -38,9 +36,6 @@ export default function AdminJobQualityPage() {
       try {
         const response = await fetch(`${API_BASE}/api/admin/jobs/flagged`, {
           credentials: "include",
-          headers: ADMIN_TOKEN
-            ? { Authorization: `Bearer ${ADMIN_TOKEN}` }
-            : {},
         });
         if (!response.ok) {
           throw new Error("Failed to load flagged jobs.");
@@ -71,10 +66,7 @@ export default function AdminJobQualityPage() {
         `${API_BASE}/api/admin/jobs/${jobId}/fraud-override`,
         {
           method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            ...(ADMIN_TOKEN ? { Authorization: `Bearer ${ADMIN_TOKEN}` } : {}),
-          },
+          headers: { "Content-Type": "application/json" },
           credentials: "include",
           body: JSON.stringify({ is_fraudulent: isFraudulent }),
         }
