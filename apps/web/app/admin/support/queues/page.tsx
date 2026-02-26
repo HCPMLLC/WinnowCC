@@ -27,6 +27,193 @@ type QueueData = {
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
+type Diagnosis = { explanation: string; remedy: string };
+
+const ERROR_PATTERNS: { test: (e: string) => boolean; diagnosis: Diagnosis }[] =
+  [
+    {
+      test: (e) =>
+        /ConnectionRefused|Connection refused|ECONNREFUSED/i.test(e),
+      diagnosis: {
+        explanation:
+          "The worker couldn't connect to an external service (database, Redis, or API).",
+        remedy:
+          "Check that Postgres and Redis containers are running. Restart infra with docker compose up -d.",
+      },
+    },
+    {
+      test: (e) => /TimeoutError|timed out|deadline exceeded/i.test(e),
+      diagnosis: {
+        explanation:
+          "The job took too long to complete and was killed.",
+        remedy:
+          "Retry the job. If it keeps timing out, the external API may be down or overloaded.",
+      },
+    },
+    {
+      test: (e) =>
+        /ANTHROPIC_API_KEY|No LLM API keys|AuthenticationError.*anthropic/i.test(
+          e,
+        ),
+      diagnosis: {
+        explanation: "The AI/LLM API key is missing or invalid.",
+        remedy:
+          "Check that ANTHROPIC_API_KEY is set correctly in the API .env file.",
+      },
+    },
+    {
+      test: (e) => /rate.?limit|429|RateLimitError/i.test(e),
+      diagnosis: {
+        explanation: "The external API rate limit was hit.",
+        remedy:
+          "Wait a few minutes and retry. Consider reducing the number of concurrent jobs.",
+      },
+    },
+    {
+      test: (e) =>
+        /UniqueViolation|duplicate key|IntegrityError/i.test(e),
+      diagnosis: {
+        explanation:
+          "A duplicate record already exists in the database.",
+        remedy:
+          "Usually safe to ignore — the data already exists. Retrying should skip the duplicate.",
+      },
+    },
+    {
+      test: (e) =>
+        /FileNotFoundError|No such file|file.*not found/i.test(e),
+      diagnosis: {
+        explanation:
+          "A required file (resume or document) is missing from storage.",
+        remedy:
+          "The uploaded file may have been deleted. The user may need to re-upload their document.",
+      },
+    },
+    {
+      test: (e) => /LibreOffice|conversion failed/i.test(e),
+      diagnosis: {
+        explanation:
+          "Document format conversion failed (e.g. .doc to PDF).",
+        remedy:
+          "The uploaded file may be corrupted. Ask the user to re-upload in PDF format.",
+      },
+    },
+    {
+      test: (e) => /not a JSON|JSON.*pars|JSONDecodeError/i.test(e),
+      diagnosis: {
+        explanation:
+          "The AI returned a response that couldn't be parsed.",
+        remedy:
+          "Retry the job — AI responses vary and this is usually transient. If persistent, check the prompt template.",
+      },
+    },
+    {
+      test: (e) =>
+        /OperationalError|connection pool|too many clients/i.test(e),
+      diagnosis: {
+        explanation:
+          "Database connection issue — the pool may be exhausted or Postgres is unreachable.",
+        remedy:
+          "Check that Postgres is running. You may need to restart the API server to reset connections.",
+      },
+    },
+    {
+      test: (e) => /stripe/i.test(e),
+      diagnosis: {
+        explanation: "A payment processing error occurred with Stripe.",
+        remedy:
+          "Check Stripe API keys and webhook configuration in the .env file.",
+      },
+    },
+    {
+      test: (e) => /embedding|dimension|vector/i.test(e),
+      diagnosis: {
+        explanation: "Embedding generation or vector storage failed.",
+        remedy:
+          "Check the EMBEDDING_PROVIDER setting in the .env file and ensure the embedding service is available.",
+      },
+    },
+    {
+      test: (e) => /RESEND|email|smtp/i.test(e),
+      diagnosis: {
+        explanation: "Email delivery failed.",
+        remedy:
+          "Check that RESEND_API_KEY is configured and the email service is reachable.",
+      },
+    },
+  ];
+
+function diagnoseFailure(
+  _funcName: string | null,
+  error: string | null,
+): Diagnosis {
+  if (!error) {
+    return {
+      explanation: "No error details available.",
+      remedy: "Check the API logs for more information.",
+    };
+  }
+  for (const { test, diagnosis } of ERROR_PATTERNS) {
+    if (test(error)) return diagnosis;
+  }
+  return {
+    explanation: "An unexpected error occurred.",
+    remedy:
+      "Try retrying the job. If it persists, check the API logs for details.",
+  };
+}
+
+function FailedJobCard({ job }: { job: FailedJob }) {
+  const [showRaw, setShowRaw] = useState(false);
+  const diagnosis = diagnoseFailure(job.func_name, job.error);
+
+  return (
+    <div className="rounded-xl border border-red-100 bg-white p-3">
+      {/* Header */}
+      <div className="flex items-center justify-between text-xs">
+        <div className="flex items-center gap-2">
+          <span className="font-mono text-slate-500">
+            {job.job_id.substring(0, 12)}
+          </span>
+          <span className="font-medium text-slate-700">
+            {job.func_name ?? "-"}
+          </span>
+        </div>
+        <span className="text-slate-400">{job.ended_at ?? "-"}</span>
+      </div>
+
+      {/* Explanation */}
+      <div className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs">
+        <span className="font-semibold text-amber-800">What happened: </span>
+        <span className="text-amber-700">{diagnosis.explanation}</span>
+      </div>
+
+      {/* Remedy */}
+      <div className="mt-1.5 rounded-lg bg-slate-50 px-3 py-2 text-xs">
+        <span className="font-semibold text-slate-700">Suggested fix: </span>
+        <span className="text-slate-600">{diagnosis.remedy}</span>
+      </div>
+
+      {/* Raw error toggle */}
+      {job.error && (
+        <div className="mt-2">
+          <button
+            onClick={() => setShowRaw(!showRaw)}
+            className="text-[11px] font-medium text-slate-400 hover:text-slate-600"
+          >
+            {showRaw ? "Hide" : "Show"} raw error
+          </button>
+          {showRaw && (
+            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap rounded-lg bg-red-50 p-2 font-mono text-[11px] text-red-700">
+              {job.error}
+            </pre>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QueueCard({
   queue,
   onRetry,
@@ -89,36 +276,10 @@ function QueueCard({
             {expanded ? "Hide" : "Show"} failed jobs ({queue.failed_jobs.length})
           </button>
           {expanded && (
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="border-b text-left text-slate-500">
-                    <th className="pb-1 pr-3">Job ID</th>
-                    <th className="pb-1 pr-3">Function</th>
-                    <th className="pb-1 pr-3">Error</th>
-                    <th className="pb-1">Ended</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {queue.failed_jobs.map((fj) => (
-                    <tr key={fj.job_id} className="border-b border-slate-100">
-                      <td className="py-1 pr-3 font-mono text-slate-600">
-                        {fj.job_id.substring(0, 12)}...
-                      </td>
-                      <td className="py-1 pr-3">{fj.func_name ?? "-"}</td>
-                      <td
-                        className="max-w-xs truncate py-1 pr-3 text-red-600"
-                        title={fj.error ?? ""}
-                      >
-                        {fj.error ?? "-"}
-                      </td>
-                      <td className="py-1 text-slate-500">
-                        {fj.ended_at ?? "-"}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="mt-2 flex flex-col gap-2">
+              {queue.failed_jobs.map((fj) => (
+                <FailedJobCard key={fj.job_id} job={fj} />
+              ))}
             </div>
           )}
         </div>
