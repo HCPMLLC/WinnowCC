@@ -1,5 +1,6 @@
 """Admin API endpoints for scheduler management."""
 
+import json
 import os
 from datetime import datetime
 
@@ -12,7 +13,7 @@ from app.db.session import get_session
 from app.models.job_run import JobRun
 from app.models.user import User
 from app.services.auth import require_admin_user
-from app.services.queue import get_queue
+from app.services.queue import get_queue, get_redis_connection
 from app.services.scheduler_config import get_scheduler_config
 
 router = APIRouter(prefix="/api/admin/scheduler", tags=["admin-scheduler"])
@@ -43,8 +44,19 @@ class SchedulerRunResponse(BaseModel):
     job_type: str
     status: str
     error_message: str | None
+    finished_at: datetime | None
+    jobs_ingested: int | None
     created_at: datetime
     updated_at: datetime
+
+
+class IngestionProgressResponse(BaseModel):
+    running: bool
+    run_id: int | None = None
+    completed_sources: int = 0
+    total_sources: int = 0
+    percent: int = 0
+    jobs_so_far: int = 0
 
 
 @router.get("/status", response_model=SchedulerStatusResponse)
@@ -100,6 +112,47 @@ def trigger_ingestion(
     )
 
 
+@router.get("/progress", response_model=IngestionProgressResponse)
+def get_ingestion_progress(
+    session: Session = Depends(get_session),  # noqa: B008
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+) -> IngestionProgressResponse:
+    """Get progress of the currently running ingestion job."""
+    # Find the latest running ingestion run
+    stmt = (
+        select(JobRun)
+        .where(JobRun.job_type == "scheduled_ingest", JobRun.status == "running")
+        .order_by(JobRun.created_at.desc())
+        .limit(1)
+    )
+    run = session.execute(stmt).scalar_one_or_none()
+    if not run:
+        return IngestionProgressResponse(running=False)
+
+    # Read progress from Redis
+    try:
+        conn = get_redis_connection()
+        raw = conn.get(f"ingestion:{run.id}:progress")
+        if raw:
+            data = json.loads(raw)
+            total = data.get("total_sources", 0)
+            completed = data.get("completed_sources", 0)
+            percent = round((completed / total) * 100) if total > 0 else 0
+            return IngestionProgressResponse(
+                running=True,
+                run_id=run.id,
+                completed_sources=completed,
+                total_sources=total,
+                percent=percent,
+                jobs_so_far=data.get("jobs_so_far", 0),
+            )
+    except Exception:
+        pass
+
+    # Running but no Redis data yet
+    return IngestionProgressResponse(running=True, run_id=run.id)
+
+
 @router.get("/runs", response_model=list[SchedulerRunResponse])
 def get_scheduler_runs(
     limit: int = 20,
@@ -121,6 +174,8 @@ def get_scheduler_runs(
             job_type=run.job_type,
             status=run.status,
             error_message=run.error_message,
+            finished_at=run.finished_at,
+            jobs_ingested=run.jobs_ingested,
             created_at=run.created_at,
             updated_at=run.updated_at,
         )

@@ -6,7 +6,7 @@ from datetime import UTC, date, datetime
 from app.db.session import get_session_factory
 from app.models.employer import EmployerJob
 from app.models.job_run import JobRun
-from app.services.job_ingestion import ingest_jobs
+from app.services.job_ingestion import clear_progress, ingest_jobs
 from app.services.scheduler_config import (
     get_scheduler_default_location,
     get_scheduler_default_search,
@@ -49,11 +49,14 @@ def scheduled_ingest_jobs() -> dict:
             query["location"] = location
 
         # Run ingestion
-        jobs_count = ingest_jobs(session, query)
+        jobs_count = ingest_jobs(session, query, run_id=run.id)
 
         # Update run record
         run.status = "completed"
+        run.finished_at = datetime.now(UTC)
+        run.jobs_ingested = jobs_count
         session.commit()
+        clear_progress(run.id)
 
         logger.info(
             f"Scheduled job ingestion completed (run_id={run.id}, jobs={jobs_count})"
@@ -71,8 +74,10 @@ def scheduled_ingest_jobs() -> dict:
 
         if run:
             run.status = "failed"
+            run.finished_at = datetime.now(UTC)
             run.error_message = str(e)[:1000]  # Truncate long errors
             session.commit()
+            clear_progress(run.id)
 
         return {
             "run_id": run.id if run else None,
