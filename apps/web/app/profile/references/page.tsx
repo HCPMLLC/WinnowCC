@@ -61,7 +61,7 @@ export default function ReferencesPage() {
       }
       loadRefs();
     });
-  }, []);
+  }, [router]);
 
   async function loadRefs() {
     setLoading(true);

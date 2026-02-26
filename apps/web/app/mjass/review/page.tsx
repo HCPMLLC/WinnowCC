@@ -74,6 +74,7 @@ export default function MJASSReviewPage() {
 
   useEffect(() => {
     void loadDrafts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- loadDrafts is a closure over filter, already tracked
   }, [filter]);
 
   const loadDraftDetail = async (draftId: number) => {

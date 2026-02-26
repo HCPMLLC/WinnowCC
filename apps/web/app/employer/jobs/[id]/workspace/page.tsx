@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 const API_BASE =
@@ -64,11 +64,7 @@ export default function WorkspacePage() {
   const [strengths, setStrengths] = useState("");
   const [concerns, setConcerns] = useState("");
 
-  useEffect(() => {
-    fetchData();
-  }, [jobId]);
-
-  async function fetchData() {
+  const fetchData = useCallback(async function fetchData() {
     try {
       const [wsRes, scRes] = await Promise.all([
         fetch(`${API_BASE}/api/employer/jobs/${jobId}/workspace`, {
@@ -91,7 +87,11 @@ export default function WorkspacePage() {
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [jobId]);
+
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   async function submitFeedback(e: React.FormEvent) {
     e.preventDefault();

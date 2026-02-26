@@ -44,6 +44,7 @@ export default function ApplyPage() {
       }
       loadData();
     });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only auth check
   }, []);
 
   async function loadData() {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
 type Recruiter = {
@@ -102,7 +102,7 @@ export default function AdminRecruitersPage() {
   const [overrideBillingExempt, setOverrideBillingExempt] = useState(false);
   const [overrideSubmitting, setOverrideSubmitting] = useState(false);
 
-  const loadRecruiters = async () => {
+  const loadRecruiters = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/admin/recruiters`, {
         credentials: "include",
@@ -127,11 +127,11 @@ export default function AdminRecruitersPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadRecruiters();
-  }, [router]);
+  }, [loadRecruiters]);
 
   const filteredRecruiters = recruiters.filter((r) => {
     if (!searchTerm) return true;

@@ -53,6 +53,7 @@ export default function PipelinePage() {
 
   useEffect(() => {
     fetchPipeline();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchPipeline is a closure over filter, already tracked
   }, [filter]);
 
   async function fetchPipeline() {

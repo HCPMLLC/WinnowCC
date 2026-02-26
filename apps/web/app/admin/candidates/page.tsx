@@ -117,7 +117,7 @@ export default function AdminCandidatesPage() {
     }
   }, [previewResumeId, previewFilename, loadDocxPreview]);
 
-  const loadCandidates = async () => {
+  const loadCandidates = useCallback(async () => {
     try {
       const response = await fetch(`${API_BASE}/api/admin/candidates`, {
         credentials: "include",
@@ -144,11 +144,11 @@ export default function AdminCandidatesPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     void loadCandidates();
-  }, [router]);
+  }, [loadCandidates]);
 
   // Filter candidates by search term
   const filteredCandidates = candidates.filter((c) => {
