@@ -231,6 +231,10 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
     instead of ``description_text``, ``remote_policy`` instead of
     ``remote_flag``).  We build a lightweight proxy that maps to the
     attributes ``_score_job`` expects.
+
+    For sourced candidates whose preferences are empty, we synthesise
+    preferences from resume data (job titles → target_titles, profile
+    location → locations) so they score fairly.
     """
 
     class _JobProxy:
@@ -243,14 +247,77 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
         + "\n"
         + (getattr(posted_job, "requirements", None) or "")
     )
-    proxy.remote_flag = (posted_job.remote_policy or "").lower() == "remote"
+    proxy.remote_flag = (
+        (posted_job.remote_policy or "").lower() == "remote"
+    )
     proxy.location = posted_job.location or ""
     proxy.salary_min = posted_job.salary_min
     proxy.salary_max = posted_job.salary_max
-    proxy.posted_at = posted_job.posted_at or getattr(posted_job, "created_at", None)
+    proxy.posted_at = (
+        posted_job.posted_at
+        or getattr(posted_job, "created_at", None)
+    )
     proxy.source = "recruiter"
 
-    return _score_job(proxy, profile_json, None)
+    # Enrich empty preferences from resume data so sourced candidates
+    # don't lose points for missing preference fields.
+    enriched = dict(profile_json) if profile_json else {}
+    prefs = enriched.get("preferences") or {}
+    prefs = dict(prefs)
+
+    if not prefs.get("target_titles"):
+        titles = []
+        for exp in enriched.get("experience", []):
+            t = exp.get("title", "").strip()
+            if t and t not in titles:
+                titles.append(t)
+        if titles:
+            prefs["target_titles"] = titles
+
+    if not prefs.get("locations"):
+        loc = enriched.get("location", "")
+        if loc:
+            prefs["locations"] = [loc]
+
+    enriched["preferences"] = prefs
+
+    # Expand multi-word skills into individual tokens so that
+    # "Contract Management" matches when both "contract" and
+    # "management" appear in the job description.
+    raw_skills = enriched.get("skills", [])
+    seen: set[str] = set()
+    expanded: list[str] = []
+    for s in raw_skills:
+        name = s if isinstance(s, str) else s.get("name", "")
+        if not name:
+            continue
+        low = name.lower()
+        if low not in seen:
+            seen.add(low)
+            expanded.append(name)
+        for tok in _tokenize(name):
+            if tok not in seen:
+                seen.add(tok)
+                expanded.append(tok)
+    enriched["skills"] = expanded
+
+    # Build a lightweight Candidate stand-in for years scoring.
+    candidate_proxy = None
+    yrs = enriched.get("years_experience")
+    if yrs is None:
+        # Estimate from experience entries
+        experience = enriched.get("experience", [])
+        if experience:
+            yrs = len(experience) * 2  # rough heuristic
+    if yrs is not None:
+
+        class _CandProxy:
+            years_experience = None
+
+        candidate_proxy = _CandProxy()
+        candidate_proxy.years_experience = yrs
+
+    return _score_job(proxy, enriched, candidate_proxy)
 
 
 def _tokenize(text: str) -> set[str]:
