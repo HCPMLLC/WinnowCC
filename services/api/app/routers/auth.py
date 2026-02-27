@@ -40,9 +40,13 @@ MFA_MAX_ATTEMPTS = 5
 # ---------------------------------------------------------------------------
 # Request / response models
 # ---------------------------------------------------------------------------
+SIGNUP_ALLOWED_ROLES = {"candidate", "employer", "recruiter"}
+
+
 class AuthRequest(BaseModel):
     email: EmailStr
     password: str
+    role: str | None = None  # optional; used during signup only
 
 
 class MeResponse(BaseModel):
@@ -178,7 +182,13 @@ def signup(
     if existing is not None:
         raise HTTPException(status_code=400, detail="Email already registered.")
 
-    user = User(email=email, password_hash=hash_password(payload.password))
+    # Determine role (default to candidate)
+    role = payload.role if payload.role in SIGNUP_ALLOWED_ROLES else "candidate"
+
+    user = User(email=email, password_hash=hash_password(payload.password), role=role)
+    # Employer/recruiter accounts require MFA
+    if role in ("employer", "recruiter"):
+        user.mfa_required = True
     session.add(user)
     session.commit()
     session.refresh(user)
