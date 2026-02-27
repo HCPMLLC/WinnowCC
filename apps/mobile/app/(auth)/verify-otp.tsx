@@ -14,12 +14,13 @@ import { useAuth } from "../../lib/auth";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 export default function VerifyOtpScreen() {
-  const { verifyOtp, resendOtp, mfaPendingEmail, cancelMfa } = useAuth();
+  const { verifyOtp, resendOtp, mfaPendingEmail, mfaDeliveryMethod, mfaHasPhone, cancelMfa } = useAuth();
   const router = useRouter();
   const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
+  const isSms = mfaDeliveryMethod === "sms";
 
   // Guard: redirect to login if no pending MFA
   useEffect(() => {
@@ -44,13 +45,17 @@ export default function VerifyOtpScreen() {
     }
   };
 
-  const handleResend = async () => {
+  const handleResend = async (switchTo?: "email" | "sms") => {
     setResendBusy(true);
     setResendMsg(null);
     try {
-      await resendOtp();
+      const usedMethod = await resendOtp(switchTo);
       setOtpCode("");
-      setResendMsg("A new code has been sent to your email.");
+      setResendMsg(
+        usedMethod === "sms"
+          ? "A new code has been sent to your phone."
+          : "A new code has been sent to your email."
+      );
     } catch (err: any) {
       Alert.alert("Resend Failed", err.message || "Could not resend code.");
     } finally {
@@ -69,10 +74,15 @@ export default function VerifyOtpScreen() {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <View style={styles.inner}>
-        <Text style={styles.heading}>Check your email</Text>
+        <Text style={styles.heading}>
+          {isSms ? "Check your phone" : "Check your email"}
+        </Text>
         <Text style={styles.body}>
-          We sent a 6-digit code to{" "}
-          <Text style={styles.emailHighlight}>{mfaPendingEmail}</Text>
+          {isSms
+            ? "We sent a 6-digit code to your phone number on file."
+            : <>We sent a 6-digit code to{" "}
+                <Text style={styles.emailHighlight}>{mfaPendingEmail}</Text>
+              </>}
         </Text>
 
         <TextInput
@@ -102,13 +112,25 @@ export default function VerifyOtpScreen() {
 
         <TouchableOpacity
           style={styles.linkRow}
-          onPress={handleResend}
+          onPress={() => handleResend()}
           disabled={resendBusy}
         >
           <Text style={[styles.linkText, resendBusy && styles.linkDisabled]}>
             {resendBusy ? "Sending..." : "Resend code"}
           </Text>
         </TouchableOpacity>
+
+        {mfaHasPhone && (
+          <TouchableOpacity
+            style={styles.linkRow}
+            onPress={() => handleResend(isSms ? "email" : "sms")}
+            disabled={resendBusy}
+          >
+            <Text style={[styles.switchText, resendBusy && styles.linkDisabled]}>
+              {isSms ? "Send to my email instead" : "Send to my phone instead"}
+            </Text>
+          </TouchableOpacity>
+        )}
 
         <TouchableOpacity style={styles.linkRow} onPress={handleBack}>
           <Text style={styles.linkText}>Back to Sign In</Text>
@@ -179,4 +201,9 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
   },
   linkDisabled: { opacity: 0.5 },
+  switchText: {
+    color: colors.gray300,
+    fontSize: fontSize.sm,
+    textDecorationLine: "underline",
+  },
 });

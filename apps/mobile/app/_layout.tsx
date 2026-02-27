@@ -31,6 +31,8 @@ export default function RootLayout() {
 
   const [mfaPendingEmail, setMfaPendingEmail] = useState<string | null>(null);
   const [mfaPendingPassword, setMfaPendingPassword] = useState<string | null>(null);
+  const [mfaDeliveryMethod, setMfaDeliveryMethod] = useState<"email" | "sms">("email");
+  const [mfaHasPhone, setMfaHasPhone] = useState(false);
 
   const router = useRouter();
   const segments = useSegments();
@@ -157,6 +159,8 @@ export default function RootLayout() {
     if (data.requires_mfa) {
       setMfaPendingEmail(email);
       setMfaPendingPassword(password);
+      setMfaDeliveryMethod(data.mfa_delivery_method || "email");
+      setMfaHasPhone(!!data.has_phone);
       return { requiresMfa: true };
     }
 
@@ -271,11 +275,16 @@ export default function RootLayout() {
     });
   }, [mfaPendingEmail]);
 
-  const resendOtp = useCallback(async () => {
+  const resendOtp = useCallback(async (switchTo?: "email" | "sms") => {
+    const method = switchTo || mfaDeliveryMethod;
     const res = await fetch(`${API_BASE}/api/auth/resend-otp`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: mfaPendingEmail, password: mfaPendingPassword }),
+      body: JSON.stringify({
+        email: mfaPendingEmail,
+        password: mfaPendingPassword,
+        delivery_method: method,
+      }),
     });
 
     if (!res.ok) {
@@ -284,11 +293,18 @@ export default function RootLayout() {
       try { detail = JSON.parse(body).detail || detail; } catch {}
       throw new Error(detail);
     }
-  }, [mfaPendingEmail, mfaPendingPassword]);
+
+    const data = await res.json();
+    const usedMethod = data.delivery_method || method;
+    setMfaDeliveryMethod(usedMethod);
+    return usedMethod as "email" | "sms";
+  }, [mfaPendingEmail, mfaPendingPassword, mfaDeliveryMethod]);
 
   const cancelMfa = useCallback(() => {
     setMfaPendingEmail(null);
     setMfaPendingPassword(null);
+    setMfaDeliveryMethod("email");
+    setMfaHasPhone(false);
   }, []);
 
   console.log("[RootLayout] Render — isLoading:", authState.isLoading, "isAuth:", authState.isAuthenticated);
@@ -310,7 +326,7 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete, verifyOtp, resendOtp, mfaPendingEmail, cancelMfa }}>
+    <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete, verifyOtp, resendOtp, mfaPendingEmail, mfaDeliveryMethod, mfaHasPhone, cancelMfa }}>
       <StatusBar style="light" />
       <Stack
         screenOptions={{

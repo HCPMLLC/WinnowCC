@@ -22,9 +22,10 @@ anthropic>=0.78
 openai>=2.0
 # sentence-transformers omitted — large (PyTorch); use voyage/openai embeddings in production
 
-# ---------- Billing / Email ----------
+# ---------- Billing / Email / SMS ----------
 stripe>=5.0
 resend>=2.0
+telnyx>=2.0
 
 # ---------- Resume parsing ----------
 python-docx>=1.1.0

@@ -46,6 +46,9 @@ class User(Base):
     mfa_required: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false")
     )
+    mfa_delivery_method: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default=text("'email'")
+    )
 
     # Password reset
     password_reset_token: Mapped[str | None] = mapped_column(

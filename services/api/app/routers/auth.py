@@ -23,7 +23,7 @@ from app.services.auth import (
     verify_otp,
     verify_password,
 )
-from app.services.email import send_mfa_otp_email, send_password_reset_email
+from app.services.email import send_mfa_otp_email, send_mfa_otp_sms, send_password_reset_email
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +57,8 @@ class MeResponse(BaseModel):
 
 class LoginResponse(BaseModel):
     requires_mfa: bool = False
+    mfa_delivery_method: str | None = None
+    has_phone: bool | None = None
     user_id: int | None = None
     email: str | None = None
     first_name: str | None = None
@@ -74,6 +76,7 @@ class VerifyOtpRequest(BaseModel):
 class ResendOtpRequest(BaseModel):
     email: EmailStr
     password: str
+    delivery_method: str | None = None  # "email" or "sms"
 
 
 class OAuthCallbackRequest(BaseModel):
@@ -116,8 +119,18 @@ def _me_response(user: User) -> MeResponse:
     )
 
 
-def _send_otp_to_user(user: User, session: Session) -> None:
-    """Generate an OTP, persist hash + expiry, and email the code."""
+def _send_otp_to_user(
+    user: User, session: Session, delivery_method: str | None = None,
+) -> str:
+    """Generate an OTP, persist hash + expiry, and send via email or SMS.
+
+    Returns the delivery method actually used ("email" or "sms").
+    """
+    method = delivery_method or user.mfa_delivery_method or "email"
+    # Fall back to email if SMS requested but no phone on file
+    if method == "sms" and not user.phone:
+        method = "email"
+
     code, otp_hash = generate_otp()
     user.mfa_otp_hash = otp_hash
     user.mfa_otp_expires_at = datetime.now(timezone.utc) + timedelta(
@@ -125,13 +138,19 @@ def _send_otp_to_user(user: User, session: Session) -> None:
     )
     user.mfa_otp_attempts = 0
     session.commit()
+
     try:
-        send_mfa_otp_email(user.email, code)
+        if method == "sms":
+            send_mfa_otp_sms(user.phone, code)
+        else:
+            send_mfa_otp_email(user.email, code)
     except Exception:
-        import logging
-        logging.getLogger(__name__).warning(
-            "Failed to send MFA OTP email to %s", user.email, exc_info=True,
+        logger.warning(
+            "Failed to send MFA OTP via %s to user %s", method, user.id,
+            exc_info=True,
         )
+
+    return method
 
 
 # ---------------------------------------------------------------------------
@@ -185,8 +204,13 @@ def login(
 
     # --- MFA gate ---
     if user.mfa_required:
-        _send_otp_to_user(user, session)
-        return LoginResponse(requires_mfa=True, email=user.email)
+        method_used = _send_otp_to_user(user, session)
+        return LoginResponse(
+            requires_mfa=True,
+            mfa_delivery_method=method_used,
+            has_phone=bool(user.phone),
+            email=user.email,
+        )
 
     # No MFA — normal login
     set_auth_cookie(response, user_id=user.id, email=user.email)
@@ -264,8 +288,13 @@ def resend_otp(
     if not verify_password(payload.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
-    _send_otp_to_user(user, session)
-    return {"status": "sent"}
+    requested = payload.delivery_method
+    if requested and requested in ("email", "sms"):
+        user.mfa_delivery_method = requested
+        session.commit()
+
+    method_used = _send_otp_to_user(user, session, delivery_method=requested)
+    return {"status": "sent", "delivery_method": method_used}
 
 
 RESET_TOKEN_TTL_MINUTES = 30
@@ -483,3 +512,28 @@ def logout(response: Response) -> dict:
 @router.get("/me", response_model=MeResponse)
 def me(user: User = Depends(get_current_user)) -> MeResponse:
     return _me_response(user)
+
+
+class SetMfaDeliveryRequest(BaseModel):
+    delivery_method: str  # "email" or "sms"
+
+
+@router.post("/mfa-delivery")
+def set_mfa_delivery(
+    payload: SetMfaDeliveryRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Set the user's preferred MFA OTP delivery method."""
+    if payload.delivery_method not in ("email", "sms"):
+        raise HTTPException(
+            status_code=422, detail="delivery_method must be 'email' or 'sms'."
+        )
+    if payload.delivery_method == "sms" and not user.phone:
+        raise HTTPException(
+            status_code=400,
+            detail="Cannot use SMS delivery — no phone number on file. Update your profile first.",
+        )
+    user.mfa_delivery_method = payload.delivery_method
+    session.commit()
+    return {"status": "ok", "delivery_method": user.mfa_delivery_method}

@@ -20,8 +20,10 @@ export interface AuthContextType extends AuthState {
   logout: () => Promise<void>;
   markOnboardingComplete: () => void;
   verifyOtp: (otpCode: string) => Promise<void>;
-  resendOtp: () => Promise<void>;
+  resendOtp: (switchTo?: "email" | "sms") => Promise<"email" | "sms">;
   mfaPendingEmail: string | null;
+  mfaDeliveryMethod: "email" | "sms";
+  mfaHasPhone: boolean;
   cancelMfa: () => void;
 }
 
