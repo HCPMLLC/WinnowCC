@@ -59,7 +59,8 @@ jobs:
             --set-env-vars=^::^FRONTEND_URL=https://winnowcc.ai::AUTH_COOKIE_NAME=rm_session::AUTH_COOKIE_SECURE=true::EMBEDDING_PROVIDER=sentence-transformers::JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,adzuna,jooble,usajobs,jobicy,himalayas,manual,jsearch::GCS_BUCKET=winnow-resumes-prod::SCHEDULER_ENABLED=true \
             --memory=512Mi \
             --cpu=1 \
-            --min-instances=0 \
+            --concurrency=10 \
+            --min-instances=1 \
             --max-instances=10
 
       - name: Run migrations
