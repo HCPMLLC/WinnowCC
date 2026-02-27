@@ -767,7 +767,11 @@ def create_unified_checkout(
     # checkout would succeed but the plan_tier would never get updated because
     # the webhook handler can't verify or receive the subscription event.
     if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
-        if segment == "candidate" and candidate is not None:
+        if segment == "candidate":
+            if candidate is None:
+                raise HTTPException(
+                    status_code=404, detail="Complete onboarding first."
+                )
             candidate.plan_tier = tier
             session.flush()
         success_url = f"{FRONTEND_URL}/settings?billing=success"
@@ -776,12 +780,20 @@ def create_unified_checkout(
         )
         return success_url
 
-    price_id = get_price_id(segment, tier, interval)
+    # Validate segment-specific prerequisites before calling Stripe
+    if segment == "candidate" and candidate is None:
+        raise HTTPException(status_code=404, detail="Complete onboarding first.")
+
+    try:
+        price_id = get_price_id(segment, tier, interval)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Billing is not fully configured. Please contact support.",
+        ) from exc
 
     # Determine Stripe customer ID based on segment
     if segment == "candidate":
-        if candidate is None:
-            raise HTTPException(status_code=404, detail="Complete onboarding first.")
         customer_id = get_or_create_stripe_customer(session, user, candidate)
     elif segment == "recruiter":
         from app.models.recruiter import RecruiterProfile
