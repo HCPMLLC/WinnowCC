@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -594,14 +598,35 @@ class JSearchSource(JobSource):
         params = {
             "query": query.get("search") or "project manager",
             "page": "1",
-            "num_pages": "1",
+            "num_pages": "3",
             "date_posted": "week",
         }
         if query.get("location"):
             params["query"] = f"{params['query']} in {query['location']}"
+        if query.get("remote"):
+            params["remote_jobs_only"] = "true"
+        if query.get("employment_types"):
+            params["employment_types"] = query["employment_types"]
 
-        response = httpx.get(self.base_url, headers=headers, params=params, timeout=30)
+        # Retry once on transient failures (429, 5xx)
+        response = None
+        for attempt in range(2):
+            response = httpx.get(
+                self.base_url, headers=headers, params=params, timeout=30
+            )
+            if response.status_code == 200:
+                break
+            if attempt == 0 and response.status_code in (429, 500, 502, 503, 504):
+                time.sleep(2)
+                continue
+            break
+
         if response.status_code != 200:
+            logger.warning(
+                "JSearch API returned %d: %s",
+                response.status_code,
+                response.text[:200],
+            )
             return []
 
         data = response.json()
@@ -650,7 +675,8 @@ class JSearchSource(JobSource):
                     remote_flag=bool(item.get("job_is_remote")),
                     salary_min=salary_min,
                     salary_max=salary_max,
-                    currency="USD" if salary_min or salary_max else None,
+                    currency=item.get("job_salary_currency")
+                    or ("USD" if salary_min or salary_max else None),
                     description_text=description_text,
                     posted_at=_parse_dt(item.get("job_posted_at_datetime_utc")),
                     application_deadline=None,
