@@ -769,10 +769,10 @@ def create_unified_checkout(
     if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
         if segment == "candidate":
             if candidate is None:
-                raise HTTPException(
-                    status_code=404, detail="Complete onboarding first."
-                )
-            candidate.plan_tier = tier
+                candidate = Candidate(user_id=user.id, plan_tier=tier)
+                session.add(candidate)
+            else:
+                candidate.plan_tier = tier
             session.flush()
         success_url = f"{FRONTEND_URL}/settings?billing=success"
         logger.info(
@@ -883,10 +883,16 @@ def create_unified_checkout(
     return checkout.url
 
 
-def create_portal_session(session: Session, user: User, candidate: Candidate) -> str:
+def create_portal_session(
+    session: Session, user: User, candidate: Candidate | None
+) -> str:
     """Create a Stripe Customer Portal session and return the URL."""
     if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
         return f"{FRONTEND_URL}/settings"
+    if candidate is None:
+        raise HTTPException(
+            status_code=404, detail="Complete onboarding first."
+        )
     customer_id = get_or_create_stripe_customer(session, user, candidate)
     client = _stripe_client()
     try:
