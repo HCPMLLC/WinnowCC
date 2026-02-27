@@ -3,10 +3,10 @@ import random
 import string
 from datetime import datetime, timedelta
 
-import telnyx
+from telnyx import Telnyx
 
-# Configure Telnyx with your API key
-telnyx.api_key = os.getenv("TELNYX_API_KEY")
+# Configure Telnyx client
+_client = Telnyx(api_key=os.getenv("TELNYX_API_KEY"))
 TELNYX_PHONE = os.getenv("TELNYX_PHONE_NUMBER")
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 
@@ -33,7 +33,7 @@ def send_otp(phone_number: str) -> bool:
     _otp_store[phone_number] = {"code": code, "expires_at": expires_at}
 
     try:
-        telnyx.Message.create(
+        _client.messages.send(
             from_=TELNYX_PHONE,
             to=phone_number,
             text=(
