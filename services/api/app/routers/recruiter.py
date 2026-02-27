@@ -662,27 +662,8 @@ async def upload_pipeline_resumes(
                 )
                 continue
 
-            # 2. Parse profile (LLM first, regex fallback — same as resume_parse_job.py)
-            profile_json = None
-            used_llm = False
-            try:
-                from app.services.llm_parser import is_llm_parser_available, parse_with_llm
-                avail = is_llm_parser_available()
-                logger.warning("RECRUITER_UPLOAD: LLM available=%s for %s", avail, filename)
-                if avail:
-                    profile_json = parse_with_llm(text)
-                    used_llm = True
-                    logger.warning("RECRUITER_UPLOAD: LLM parse SUCCEEDED for %s", filename)
-            except Exception:
-                logger.warning("RECRUITER_UPLOAD: LLM parse FAILED for %s, falling back to regex", filename, exc_info=True)
-
-            if profile_json is None:
-                logger.warning("RECRUITER_UPLOAD: using regex fallback for %s", filename)
-                profile_json = parse_profile_from_text(text)
-
-            logger.warning("RECRUITER_UPLOAD: used_llm=%s exp=%d skills=%d for %s",
-                used_llm, len(profile_json.get("experience", [])),
-                len(profile_json.get("skills", [])), filename)
+            # 2. Parse profile (fast regex now, LLM upgrade queued to worker)
+            profile_json = parse_profile_from_text(text)
 
             # 3. Extract email and name from parsed profile
             basics = profile_json.get("basics", {})
@@ -714,7 +695,7 @@ async def upload_pipeline_resumes(
                 profile_json=profile_json,
                 profile_visibility="private",
                 open_to_opportunities=False,
-                llm_parse_status="succeeded" if used_llm else "pending",
+                llm_parse_status="pending",
             )
             session.add(new_cp)
             session.flush()
@@ -820,26 +801,25 @@ async def upload_pipeline_resumes(
             # 8. Increment usage counter
             increment_recruiter_counter(profile, "resume_imports_used", session)
 
-            # 9. Queue async LLM re-parse only if LLM didn't already succeed
-            if not used_llm:
-                try:
-                    from app.services.queue import get_queue
-                    from app.services.recruiter_llm_reparse import (
-                        recruiter_llm_reparse_job,
-                    )
+            # 9. Queue async LLM re-parse to worker (keeps upload fast)
+            try:
+                from app.services.queue import get_queue
+                from app.services.recruiter_llm_reparse import (
+                    recruiter_llm_reparse_job,
+                )
 
-                    get_queue().enqueue(
-                        recruiter_llm_reparse_job,
-                        new_cp.id,
-                        resume_doc.id,
-                        job_timeout="10m",
-                    )
-                except Exception:
-                    logger.warning(
-                        "Failed to enqueue LLM reparse for profile %d",
-                        new_cp.id,
-                        exc_info=True,
-                    )
+                get_queue().enqueue(
+                    recruiter_llm_reparse_job,
+                    new_cp.id,
+                    resume_doc.id,
+                    job_timeout="10m",
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to enqueue LLM reparse for profile %d",
+                    new_cp.id,
+                    exc_info=True,
+                )
 
             results.append(
                 ResumeUploadFileResult(
@@ -850,7 +830,7 @@ async def upload_pipeline_resumes(
                     candidate_profile_id=new_cp.id,
                     matched_email=parsed_email,
                     parsed_name=parsed_name,
-                    llm_parse_status="succeeded" if used_llm else "pending",
+                    llm_parse_status="pending",
                 )
             )
             succeeded += 1
