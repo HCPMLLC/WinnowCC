@@ -26,6 +26,7 @@ function LoginForm() {
   const searchParams = useSearchParams();
   const redirectParam = searchParams.get("redirect");
   const modeParam = searchParams.get("mode");
+  const roleParam = searchParams.get("role"); // "employer" | "recruiter" | null
   const baseRedirect = normalizeRedirect(redirectParam, "/dashboard");
   const redirectTarget =
     redirectParam === "/onboarding" ? "/upload" : baseRedirect;
@@ -64,11 +65,15 @@ function LoginForm() {
 
     try {
       if (isSignUp) {
+        const signupBody: Record<string, string> = { email, password };
+        if (roleParam && ["employer", "recruiter"].includes(roleParam)) {
+          signupBody.role = roleParam;
+        }
         const res = await fetch(`${API_BASE}/api/auth/signup`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ email, password }),
+          body: JSON.stringify(signupBody),
         });
         if (!res.ok) {
           const body = await res.text();
@@ -80,8 +85,14 @@ function LoginForm() {
           throw new Error(detail);
         }
         const signupData = await res.json();
-        if (signupData.token) await setAuthCookie(signupData.token, withRedirectParam("/onboarding", redirectTarget));
-        window.location.href = withRedirectParam("/onboarding", redirectTarget);
+        // Route to the correct onboarding page based on role
+        const signupRole = signupData.role || roleParam || "candidate";
+        const onboardingDest =
+          signupRole === "employer" ? "/employer/onboarding"
+          : signupRole === "recruiter" ? "/recruiter/onboarding"
+          : withRedirectParam("/onboarding", redirectTarget);
+        if (signupData.token) await setAuthCookie(signupData.token, onboardingDest);
+        window.location.href = onboardingDest;
       } else {
         const res = await fetch(`${API_BASE}/api/auth/login`, {
           method: "POST",
