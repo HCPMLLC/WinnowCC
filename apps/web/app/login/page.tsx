@@ -35,6 +35,9 @@ function LoginForm() {
   const isResetMode = modeParam === "reset" && !!resetToken;
 
   const [isSignUp, setIsSignUp] = useState(modeParam === "signup");
+  const [selectedRole, setSelectedRole] = useState<string>(
+    roleParam && ["employer", "recruiter"].includes(roleParam) ? roleParam : "candidate"
+  );
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -66,8 +69,8 @@ function LoginForm() {
     try {
       if (isSignUp) {
         const signupBody: Record<string, string> = { email, password };
-        if (roleParam && ["employer", "recruiter"].includes(roleParam)) {
-          signupBody.role = roleParam;
+        if (selectedRole && selectedRole !== "candidate") {
+          signupBody.role = selectedRole;
         }
         const res = await fetch(`${API_BASE}/api/auth/signup`, {
           method: "POST",
@@ -86,7 +89,7 @@ function LoginForm() {
         }
         const signupData = await res.json();
         // Route to the correct onboarding page based on role
-        const signupRole = signupData.role || roleParam || "candidate";
+        const signupRole = signupData.role || selectedRole || "candidate";
         const onboardingDest =
           signupRole === "employer" ? "/employer/onboarding"
           : signupRole === "recruiter" ? "/recruiter/onboarding"
@@ -663,6 +666,35 @@ function LoginForm() {
 
       {/* Email/password form */}
       <form onSubmit={onSubmit} className="space-y-4">
+        {/* Role selector (signup only) */}
+        {isSignUp && (
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              I am a...
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {([
+                { value: "candidate", label: "Job Seeker" },
+                { value: "employer", label: "Employer" },
+                { value: "recruiter", label: "Recruiter" },
+              ] as const).map((opt) => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setSelectedRole(opt.value)}
+                  className={`rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    selectedRole === opt.value
+                      ? "border-slate-900 bg-slate-900 text-white"
+                      : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div>
           <label htmlFor="email" className="block text-sm font-medium text-slate-700">
             Email
