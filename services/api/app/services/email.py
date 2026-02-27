@@ -1,4 +1,4 @@
-"""Transactional email via Resend SDK."""
+"""Transactional email via Resend SDK and SMS via Telnyx."""
 
 import logging
 import os
@@ -10,6 +10,10 @@ logger = logging.getLogger(__name__)
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
 RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <noreply@winnowcc.ai>").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+# Telnyx SMS config
+TELNYX_API_KEY = os.getenv("TELNYX_API_KEY", "").strip()
+TELNYX_FROM_NUMBER = os.getenv("TELNYX_FROM_NUMBER", "").strip()
 
 # Startup diagnostics — surface misconfiguration early in Cloud Run logs
 if not RESEND_API_KEY:
@@ -29,6 +33,12 @@ if "resend.dev" in RESEND_FROM:
         "domain only delivers to the account owner's email. Use a verified "
         "domain for production.",
         RESEND_FROM,
+    )
+
+if not TELNYX_API_KEY:
+    logger.warning(
+        "SMS CONFIG: TELNYX_API_KEY not set — "
+        "SMS OTP delivery will be unavailable"
     )
 
 
@@ -200,6 +210,30 @@ def send_migration_complete_email(
         },
         "migration_complete",
     )
+
+
+def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
+    """Send MFA verification code via SMS (Telnyx)."""
+    if not TELNYX_API_KEY:
+        logger.error("TELNYX_API_KEY not set; skipping MFA OTP SMS to %s", to_phone)
+        return
+    if not TELNYX_FROM_NUMBER:
+        logger.error("TELNYX_FROM_NUMBER not set; skipping MFA OTP SMS to %s", to_phone)
+        return
+
+    try:
+        import telnyx
+
+        telnyx.api_key = TELNYX_API_KEY
+        message = telnyx.Message.create(
+            from_=TELNYX_FROM_NUMBER,
+            to=to_phone,
+            text=f"Your Winnow verification code is {otp_code}. It expires in 10 minutes.",
+        )
+        logger.info("SMS sent: mfa_otp to=%s id=%s", to_phone, message.id)
+    except Exception:
+        logger.error("SMS FAILED: mfa_otp to=%s", to_phone, exc_info=True)
+        raise
 
 
 def send_verification_email(to_email: str, token: str) -> None:

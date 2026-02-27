@@ -50,6 +50,8 @@ function LoginForm() {
   // MFA state
   const [mfaRequired, setMfaRequired] = useState(false);
   const [mfaEmail, setMfaEmail] = useState("");
+  const [mfaDeliveryMethod, setMfaDeliveryMethod] = useState<"email" | "sms">("email");
+  const [mfaHasPhone, setMfaHasPhone] = useState(false);
   const [otpCode, setOtpCode] = useState("");
   const [resendBusy, setResendBusy] = useState(false);
   const [resendMsg, setResendMsg] = useState<string | null>(null);
@@ -103,6 +105,8 @@ function LoginForm() {
         if (data.requires_mfa) {
           setMfaRequired(true);
           setMfaEmail(data.email);
+          setMfaDeliveryMethod(data.mfa_delivery_method || "email");
+          setMfaHasPhone(!!data.has_phone);
           setOtpCode("");
           setErr(null);
           return;
@@ -165,16 +169,17 @@ function LoginForm() {
     }
   }
 
-  async function handleResendOtp() {
+  async function handleResendOtp(switchTo?: "email" | "sms") {
     setResendBusy(true);
     setResendMsg(null);
     setErr(null);
+    const method = switchTo || mfaDeliveryMethod;
     try {
       const res = await fetch(`${API_BASE}/api/auth/resend-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ email: mfaEmail, password }),
+        body: JSON.stringify({ email: mfaEmail, password, delivery_method: method }),
       });
       if (!res.ok) {
         const body = await res.text();
@@ -182,8 +187,15 @@ function LoginForm() {
         try { detail = JSON.parse(body).detail || detail; } catch {}
         throw new Error(detail);
       }
+      const data = await res.json();
+      const usedMethod = data.delivery_method || method;
+      setMfaDeliveryMethod(usedMethod);
       setOtpCode("");
-      setResendMsg("A new code has been sent to your email.");
+      setResendMsg(
+        usedMethod === "sms"
+          ? "A new code has been sent to your phone."
+          : "A new code has been sent to your email."
+      );
     } catch (e: any) {
       setErr(e?.message || "Could not resend code.");
     } finally {
@@ -271,14 +283,17 @@ function LoginForm() {
 
   // ---- MFA OTP screen ----
   if (mfaRequired) {
+    const isSms = mfaDeliveryMethod === "sms";
     return (
       <div className="flex min-h-screen flex-col justify-center px-8 py-4 lg:px-12">
         <div className="mb-4">
           <h1 className="text-3xl font-bold tracking-tight text-white">
-            Check your email
+            {isSms ? "Check your phone" : "Check your email"}
           </h1>
           <p className="mt-2 text-white">
-            We sent a 6-digit code to <strong>{mfaEmail}</strong>
+            {isSms
+              ? "We sent a 6-digit code to your phone number on file."
+              : <>We sent a 6-digit code to <strong>{mfaEmail}</strong></>}
           </p>
         </div>
 
@@ -323,27 +338,39 @@ function LoginForm() {
           </button>
         </form>
 
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <button
-            type="button"
-            onClick={handleResendOtp}
-            disabled={resendBusy}
-            className="text-slate-500 hover:text-slate-700 disabled:opacity-50"
-          >
-            {resendBusy ? "Sending..." : "Resend code"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMfaRequired(false);
-              setOtpCode("");
-              setErr(null);
-              setResendMsg(null);
-            }}
-            className="text-slate-500 hover:text-slate-700"
-          >
-            Back to sign in
-          </button>
+        <div className="mt-4 flex flex-col items-center gap-2 text-sm">
+          <div className="flex w-full items-center justify-between">
+            <button
+              type="button"
+              onClick={() => handleResendOtp()}
+              disabled={resendBusy}
+              className="text-slate-500 hover:text-slate-700 disabled:opacity-50"
+            >
+              {resendBusy ? "Sending..." : "Resend code"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setMfaRequired(false);
+                setOtpCode("");
+                setErr(null);
+                setResendMsg(null);
+              }}
+              className="text-slate-500 hover:text-slate-700"
+            >
+              Back to sign in
+            </button>
+          </div>
+          {mfaHasPhone && (
+            <button
+              type="button"
+              onClick={() => handleResendOtp(isSms ? "email" : "sms")}
+              disabled={resendBusy}
+              className="text-slate-500 hover:text-slate-700 underline disabled:opacity-50"
+            >
+              {isSms ? "Send to my email instead" : "Send to my phone instead"}
+            </button>
+          )}
         </div>
       </div>
     );
