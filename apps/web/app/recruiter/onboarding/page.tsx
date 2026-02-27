@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { ProgressRing } from "../../components/ProgressRing";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -23,6 +25,15 @@ export default function RecruiterOnboarding() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const completionPercent = useMemo(() => {
+    let pct = 0;
+    if (formData.company_name.trim()) pct += 40;
+    if (formData.company_type) pct += 20;
+    if (formData.company_website.trim()) pct += 20;
+    if (formData.specializations.trim()) pct += 20;
+    return pct;
+  }, [formData]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -62,9 +73,12 @@ export default function RecruiterOnboarding() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Welcome to Winnow!
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Welcome to Winnow!
+          </h1>
+          <ProgressRing percent={completionPercent} />
+        </div>
         <p className="mt-2 text-slate-600">
           Set up your recruiter profile to start sourcing candidates. Your
           14-day free trial begins when you complete this form.
