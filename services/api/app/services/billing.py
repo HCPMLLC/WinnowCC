@@ -853,40 +853,55 @@ def create_unified_checkout(
     }
 
     client = _stripe_client()
-    checkout = client.checkout.sessions.create(
-        params={
-            "customer": customer_id,
-            "mode": "subscription",
-            "line_items": [{"price": price_id, "quantity": quantity}],
-            "success_url": (
-                f"{FRONTEND_URL}"
-                f"{success_paths.get(segment, '/settings?billing=success')}"
-            ),
-            "cancel_url": (
-                f"{FRONTEND_URL}{cancel_paths.get(segment, '/settings?canceled=true')}"
-            ),
-            "metadata": {
-                "user_id": str(user.id),
-                "segment": segment,
-                "tier": tier,
-            },
-        }
-    )
+    try:
+        checkout = client.checkout.sessions.create(
+            params={
+                "customer": customer_id,
+                "mode": "subscription",
+                "line_items": [{"price": price_id, "quantity": quantity}],
+                "success_url": (
+                    f"{FRONTEND_URL}"
+                    f"{success_paths.get(segment, '/settings?billing=success')}"
+                ),
+                "cancel_url": (
+                    f"{FRONTEND_URL}"
+                    f"{cancel_paths.get(segment, '/settings?canceled=true')}"
+                ),
+                "metadata": {
+                    "user_id": str(user.id),
+                    "segment": segment,
+                    "tier": tier,
+                },
+            }
+        )
+    except Exception as exc:
+        logger.exception("Stripe checkout session creation failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Checkout is temporarily unavailable. Please try again later.",
+        ) from exc
     return checkout.url
 
 
 def create_portal_session(session: Session, user: User, candidate: Candidate) -> str:
     """Create a Stripe Customer Portal session and return the URL."""
-    if not STRIPE_SECRET_KEY:
+    if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
         return f"{FRONTEND_URL}/settings"
     customer_id = get_or_create_stripe_customer(session, user, candidate)
     client = _stripe_client()
-    portal = client.billing_portal.sessions.create(
-        params={
-            "customer": customer_id,
-            "return_url": f"{FRONTEND_URL}/settings",
-        }
-    )
+    try:
+        portal = client.billing_portal.sessions.create(
+            params={
+                "customer": customer_id,
+                "return_url": f"{FRONTEND_URL}/settings",
+            }
+        )
+    except Exception as exc:
+        logger.exception("Stripe portal session creation failed")
+        raise HTTPException(
+            status_code=503,
+            detail="Billing portal is temporarily unavailable. Please try again later.",
+        ) from exc
     return portal.url
 
 

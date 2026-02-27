@@ -217,6 +217,7 @@ function SettingsContent() {
       a.click();
       a.remove();
       window.URL.revokeObjectURL(url);
+      setToast("Your data has been downloaded as winnow-export.zip.");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Export failed");
     } finally {
