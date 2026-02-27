@@ -15,7 +15,12 @@ from app.models.job_form import JobForm
 from app.models.user import User
 from app.schemas.job_forms import JobFormResponse
 from app.services.auth import get_current_user, require_onboarded_user
-from app.services.storage import delete_file, download_to_tempfile, is_gcs_path, upload_file
+from app.services.storage import (
+    delete_file,
+    download_to_tempfile,
+    is_gcs_path,
+    upload_file,
+)
 
 logger = logging.getLogger(__name__)
 

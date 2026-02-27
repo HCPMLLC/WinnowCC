@@ -1,19 +1,21 @@
 """Find matches with posting red flags for a specific user."""
 
-import sys
 import os
+import sys
 
 # Add project root to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
+
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
 from sqlalchemy import select
+
 from app.db.session import get_session_factory
-from app.models.match import Match
 from app.models.job import Job
 from app.models.job_parsed_detail import JobParsedDetail
+from app.models.match import Match
 
 USER_ID = 215
 
@@ -28,10 +30,11 @@ try:
         .outerjoin(JobParsedDetail, JobParsedDetail.job_id == Job.id)
         .where(Match.user_id == USER_ID)
         .where(
-            # Has red flags (non-null, non-empty list) OR fraud score > 0 OR is_likely_fraudulent
+            # Has red flags (non-null, non-empty list)
+            # OR fraud score > 0 OR is_likely_fraudulent
             (JobParsedDetail.red_flags.isnot(None))
             | (JobParsedDetail.fraud_score > 0)
-            | (JobParsedDetail.is_likely_fraudulent == True)
+            | (JobParsedDetail.is_likely_fraudulent.is_(True))
         )
         .order_by(Match.match_score.desc())
     )
@@ -41,10 +44,7 @@ try:
     if not results:
         print(f"No matches with red flags found for user_id={USER_ID}")
         # Let's also check what parsed details exist at all for this user's matches
-        count_stmt = (
-            select(Match.id)
-            .where(Match.user_id == USER_ID)
-        )
+        count_stmt = select(Match.id).where(Match.user_id == USER_ID)
         total = len(session.execute(count_stmt).all())
 
         detail_stmt = (
@@ -69,7 +69,7 @@ try:
             print(f"  Interview Prob:    {match.interview_probability}")
             print(f"  App Status:        {match.application_status}")
             if detail:
-                print(f"  --- Quality & Fraud ---")
+                print("  --- Quality & Fraud ---")
                 print(f"  Posting Quality:   {detail.posting_quality_score}")
                 print(f"  Fraud Score:       {detail.fraud_score}")
                 print(f"  Likely Fraud:      {detail.is_likely_fraudulent}")

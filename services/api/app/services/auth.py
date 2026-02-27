@@ -2,8 +2,7 @@ import hashlib
 import hmac
 import os
 import secrets
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Cookie, Depends, Header, HTTPException, Request, Response
 from jose import JWTError, jwt
@@ -62,7 +61,9 @@ def generate_otp() -> tuple[str, str]:
 
 def verify_otp(code: str, otp_hash: str) -> bool:
     try:
-        digest = hmac.new(_OTP_HMAC_KEY, code.encode("utf-8"), hashlib.sha256).hexdigest()
+        digest = hmac.new(
+            _OTP_HMAC_KEY, code.encode("utf-8"), hashlib.sha256
+        ).hexdigest()
         return hmac.compare_digest(digest, otp_hash)
     except Exception:
         return False
@@ -72,7 +73,7 @@ def verify_otp(code: str, otp_hash: str) -> bool:
 # JWT + cookie helpers
 # -----------------------
 def make_token(*, user_id: int, email: str) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     exp = now + timedelta(days=SESSION_DAYS)
     payload = {
         "sub": str(user_id),
@@ -104,7 +105,7 @@ def decode_token(token: str) -> dict:
     try:
         return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
     except JWTError:
-        raise HTTPException(status_code=401, detail="Invalid session.")
+        raise HTTPException(status_code=401, detail="Invalid session.") from None
 
 
 # -----------------------
@@ -112,8 +113,8 @@ def decode_token(token: str) -> dict:
 # -----------------------
 def get_current_user(
     session: Session = Depends(get_session),
-    rm_session: Optional[str] = Cookie(default=None, alias=COOKIE_NAME),
-    authorization: Optional[str] = Header(default=None),
+    rm_session: str | None = Cookie(default=None, alias=COOKIE_NAME),
+    authorization: str | None = Header(default=None),
 ) -> User:
     # Accept Bearer token (mobile) or cookie (web)
     token = None
@@ -132,7 +133,7 @@ def get_current_user(
     try:
         user_id = int(sub)
     except ValueError:
-        raise HTTPException(status_code=401, detail="Invalid session.")
+        raise HTTPException(status_code=401, detail="Invalid session.") from None
 
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if user is None:

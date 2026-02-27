@@ -138,8 +138,14 @@ class TestDuplicateDetection:
 
     def test_description_similarity_similar(self, detector):
         """Similar descriptions should have moderate-high similarity."""
-        text1 = "We need a senior software engineer with Python and Django experience building REST APIs"
-        text2 = "Looking for a senior software engineer experienced in Python Django and REST API development"
+        text1 = (
+            "We need a senior software engineer with"
+            " Python and Django experience building REST APIs"
+        )
+        text2 = (
+            "Looking for a senior software engineer experienced"
+            " in Python Django and REST API development"
+        )
         similarity = detector._description_similarity(text1, text2)
         assert similarity > 0.3  # Jaccard on word sets; similar but not identical
 

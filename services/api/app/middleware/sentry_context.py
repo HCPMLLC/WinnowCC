@@ -31,6 +31,7 @@ class SentryUserContextMiddleware(BaseHTTPMiddleware):
             response = await call_next(request)
         except Exception:
             from starlette.responses import JSONResponse
+
             response = JSONResponse(
                 status_code=500,
                 content={"detail": "Internal server error"},

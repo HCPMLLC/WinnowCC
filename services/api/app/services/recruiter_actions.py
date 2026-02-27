@@ -237,7 +237,8 @@ def _check_stale_pipeline(recruiter_profile_id: int, session: Session) -> list[d
                 select(func.count())
                 .select_from(RecruiterPipelineCandidate)
                 .where(
-                    RecruiterPipelineCandidate.recruiter_profile_id == recruiter_profile_id,
+                    RecruiterPipelineCandidate.recruiter_profile_id
+                    == recruiter_profile_id,
                     RecruiterPipelineCandidate.stage.in_(
                         ["contacted", "screening", "interviewing"]
                     ),

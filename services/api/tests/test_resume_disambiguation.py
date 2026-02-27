@@ -246,5 +246,3 @@ class TestInferCompanyIndustry:
     def test_insufficient_signal(self):
         result = infer_company_industry("Acme Corp", ["Did things"])
         assert result is None
-
-

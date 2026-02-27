@@ -24,9 +24,12 @@ def test_ronald_levi_resume():
     New Braunfels, TX | 512-686-6808 | rlevi@hcpm.llc | LinkedIn
 
     Summary
-    Certified PMP with over 25 years of experience leading Waterfall, Agile and Hybrid programs. 
-    Successfully led and managed large-scale projects with cross-functional teams and vendors with 
-    budgets ranging from $5M-$15M. From concept through post-implementation the initiatives spanned 
+    Certified PMP with over 25 years of experience
+    leading Waterfall, Agile and Hybrid programs.
+    Successfully led and managed large-scale projects
+    with cross-functional teams and vendors with
+    budgets ranging from $5M-$15M. From concept through
+    post-implementation the initiatives spanned
     a variety of industries and geographies.
 
     Skills
@@ -47,34 +50,47 @@ def test_ronald_levi_resume():
 
     Rady Children's Hospital July 2025 -- Current
     Senior Project Manager (CTG Contract) San Diego, CA
-    Planning, scheduling, monitoring and reporting at all levels -- perform-team through executive 
+    Planning, scheduling, monitoring and reporting
+    at all levels -- perform-team through executive
     leadership for four projects concurrently:
-    - InfoSec Audit Remediation: Planning, monitoring and reporting the InfoSec response to audit exposures
+    - InfoSec Audit Remediation: Planning, monitoring
+      and reporting the InfoSec response to audit exposures
     - StrataJazz Integration: Consolidation of financial planning/management systems
     - EMS Communications System Replacement: General Devices CAREpoint 3 integration
-    - SPD Impress Replacement: Replacement of Impress system with Steris SPM Asset Tracking Software which integrates with EPIC
+    - SPD Impress Replacement: Replacement of Impress
+      system with Steris SPM Asset Tracking Software
+      which integrates with EPIC
 
     Tidelands Health January 2025 -- July 2025
     Program Manager (Medix Contract) Georgetown, SC
     - Led the Epic Optimization Program and Order Set Review Projects
-    - Implemented a SharePoint site collection integrating Lists, Libraries, Power Automate and Power BI
+    - Implemented a SharePoint site collection
+      integrating Lists, Libraries, Power Automate
+      and Power BI
     - Environment: MS 365, SharePoint, ServiceNow, SolarWinds, Hybrid Waterfall & Agile
 
     Methodist Le Bonheur Healthcare March 2023 -- September 2024
     Program Manager (CTG Contract) Memphis, TN
-    - Managed the Le Bonheur Hospital Expansion Project involving construction and installation of 
-      new equipment for acute care departments
+    - Managed the Le Bonheur Hospital Expansion
+      Project involving construction and installation
+      of new equipment for acute care departments
     - Managed the Kronos (UKG) migration to Dimensions Migration Project
-    - Managed a major IT infrastructure Uplift Program with wireless upgrades of over 3,000 access points
-    - Environment: MS O365, MS Project, Visio, Smartsheet, Hybrid Waterfall & Agile methods
+    - Managed a major IT infrastructure Uplift Program
+      with wireless upgrades of over 3,000 access points
+    - Environment: MS O365, MS Project, Visio,
+      Smartsheet, Hybrid Waterfall & Agile methods
 
     Trinity Health January 2015 -- April 2020
     Senior Project Manager, Supply Chain Livonia, MI
-    - Established a leased-equipment repository resulting in an average savings of $294,000 in 
-      buyout/termination fees and average cost avoidance of over $28,000 per month
-    - Owned Program Management for Patient Access - Patient Financial Services strategic projects 
+    - Established a leased-equipment repository
+      resulting in an average savings of $294,000 in
+      buyout/termination fees and average cost
+      avoidance of over $28,000 per month
+    - Owned Program Management for Patient Access -
+      Patient Financial Services strategic projects
       including deployment of PNC Bank solutions
-    - Environment: MS O365, SharePoint, Tableau, MS Project, Hybrid Waterfall & Agile methods
+    - Environment: MS O365, SharePoint, Tableau,
+      MS Project, Hybrid Waterfall & Agile methods
 
     Education
     Wayne State University -- Detroit, MI

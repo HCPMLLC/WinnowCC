@@ -64,9 +64,7 @@ def overview(
         db_status = {"status": "error", "detail": str(exc)[:200]}
 
     queue_stats = get_queue_stats()
-    redis_status = {
-        "status": "ok" if queue_stats.get("redis_connected") else "error"
-    }
+    redis_status = {"status": "ok" if queue_stats.get("redis_connected") else "error"}
 
     total_pending = queue_stats.get("total_pending", 0)
     total_failed = queue_stats.get("total_failed", 0)
@@ -85,39 +83,44 @@ def overview(
     total_users = sum(role_counts.values())
 
     now = datetime.now(UTC)
-    users_7d = db.scalar(
-        select(func.count()).select_from(User).where(
-            User.created_at >= now - timedelta(days=7)
+    users_7d = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=7))
         )
-    ) or 0
-    users_30d = db.scalar(
-        select(func.count()).select_from(User).where(
-            User.created_at >= now - timedelta(days=30)
+        or 0
+    )
+    users_30d = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=30))
         )
-    ) or 0
+        or 0
+    )
 
     # --- Billing stats ---
     candidate_tiers = {
         (k or "free"): v
         for k, v in db.execute(
-            select(Candidate.plan_tier, func.count())
-            .group_by(Candidate.plan_tier)
+            select(Candidate.plan_tier, func.count()).group_by(Candidate.plan_tier)
         ).all()
     }
     employer_tiers = {
         (k or "free"): v
         for k, v in db.execute(
-            select(
-                EmployerProfile.subscription_tier, func.count()
-            ).group_by(EmployerProfile.subscription_tier)
+            select(EmployerProfile.subscription_tier, func.count()).group_by(
+                EmployerProfile.subscription_tier
+            )
         ).all()
     }
     recruiter_tiers = {
         (k or "free"): v
         for k, v in db.execute(
-            select(
-                RecruiterProfile.subscription_tier, func.count()
-            ).group_by(RecruiterProfile.subscription_tier)
+            select(RecruiterProfile.subscription_tier, func.count()).group_by(
+                RecruiterProfile.subscription_tier
+            )
         ).all()
     }
 
@@ -125,49 +128,67 @@ def overview(
     alerts = []
 
     if total_failed > 0:
-        alerts.append({
-            "type": "queue_failure",
-            "severity": "error",
-            "message": f"{total_failed} failed queue job(s)",
-            "action_url": "/admin/support/queues",
-        })
+        alerts.append(
+            {
+                "type": "queue_failure",
+                "severity": "error",
+                "message": f"{total_failed} failed queue job(s)",
+                "action_url": "/admin/support/queues",
+            }
+        )
 
-    past_due_count = db.scalar(
-        select(func.count()).select_from(Candidate).where(
-            Candidate.subscription_status == "past_due"
+    past_due_count = (
+        db.scalar(
+            select(func.count())
+            .select_from(Candidate)
+            .where(Candidate.subscription_status == "past_due")
         )
-    ) or 0
-    past_due_count += db.scalar(
-        select(func.count()).select_from(EmployerProfile).where(
-            EmployerProfile.subscription_status == "past_due"
+        or 0
+    )
+    past_due_count += (
+        db.scalar(
+            select(func.count())
+            .select_from(EmployerProfile)
+            .where(EmployerProfile.subscription_status == "past_due")
         )
-    ) or 0
-    past_due_count += db.scalar(
-        select(func.count()).select_from(RecruiterProfile).where(
-            RecruiterProfile.subscription_status == "past_due"
+        or 0
+    )
+    past_due_count += (
+        db.scalar(
+            select(func.count())
+            .select_from(RecruiterProfile)
+            .where(RecruiterProfile.subscription_status == "past_due")
         )
-    ) or 0
+        or 0
+    )
 
     if past_due_count > 0:
-        alerts.append({
-            "type": "past_due",
-            "severity": "warning",
-            "message": f"{past_due_count} subscription(s) past due",
-            "action_url": "/admin/support/billing",
-        })
-
-    trust_pending = db.scalar(
-        select(func.count()).select_from(CandidateTrust).where(
-            CandidateTrust.status.in_(["soft_quarantine", "hard_quarantine"])
+        alerts.append(
+            {
+                "type": "past_due",
+                "severity": "warning",
+                "message": f"{past_due_count} subscription(s) past due",
+                "action_url": "/admin/support/billing",
+            }
         )
-    ) or 0
+
+    trust_pending = (
+        db.scalar(
+            select(func.count())
+            .select_from(CandidateTrust)
+            .where(CandidateTrust.status.in_(["soft_quarantine", "hard_quarantine"]))
+        )
+        or 0
+    )
     if trust_pending > 0:
-        alerts.append({
-            "type": "trust_queue",
-            "severity": "warning",
-            "message": f"{trust_pending} candidate(s) in trust quarantine",
-            "action_url": "/admin/trust",
-        })
+        alerts.append(
+            {
+                "type": "trust_queue",
+                "severity": "warning",
+                "message": f"{trust_pending} candidate(s) in trust quarantine",
+                "action_url": "/admin/trust",
+            }
+        )
 
     return {
         "system_health": {
@@ -215,11 +236,7 @@ def user_lookup(
             users = [user]
     else:
         users = list(
-            db.scalars(
-                select(User)
-                .where(User.email.ilike(f"%{q}%"))
-                .limit(20)
-            ).all()
+            db.scalars(select(User).where(User.email.ilike(f"%{q}%")).limit(20)).all()
         )
 
     today = date.today()
@@ -228,23 +245,26 @@ def user_lookup(
 
     for user in users:
         # Candidate info
-        candidate = db.scalar(
-            select(Candidate).where(Candidate.user_id == user.id)
-        )
+        candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
         candidate_info = None
         if candidate:
             from app.models.match import Match
 
-            match_count = db.scalar(
-                select(func.count()).select_from(Match).where(
-                    Match.user_id == user.id
+            match_count = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(Match)
+                    .where(Match.user_id == user.id)
                 )
-            ) or 0
+                or 0
+            )
             trust_record = db.scalar(
-                select(CandidateTrust).join(
+                select(CandidateTrust)
+                .join(
                     ResumeDocument,
                     CandidateTrust.resume_document_id == ResumeDocument.id,
-                ).where(
+                )
+                .where(
                     ResumeDocument.user_id == user.id,
                     ResumeDocument.deleted_at.is_(None),
                 )
@@ -262,12 +282,17 @@ def user_lookup(
         )
         employer_info = None
         if employer:
-            active_jobs = db.scalar(
-                select(func.count()).select_from(EmployerJob).where(
-                    EmployerJob.employer_id == employer.id,
-                    EmployerJob.status == "active",
+            active_jobs = (
+                db.scalar(
+                    select(func.count())
+                    .select_from(EmployerJob)
+                    .where(
+                        EmployerJob.employer_id == employer.id,
+                        EmployerJob.status == "active",
+                    )
                 )
-            ) or 0
+                or 0
+            )
             employer_info = {
                 "company_name": employer.company_name,
                 "subscription_tier": employer.subscription_tier,
@@ -310,68 +335,82 @@ def user_lookup(
         }
 
         # Recent activity — job runs via resume_documents
-        job_runs = db.execute(
-            select(JobRun)
-            .join(ResumeDocument, JobRun.resume_document_id == ResumeDocument.id)
-            .where(
-                ResumeDocument.user_id == user.id,
-                ResumeDocument.deleted_at.is_(None),
+        job_runs = (
+            db.execute(
+                select(JobRun)
+                .join(ResumeDocument, JobRun.resume_document_id == ResumeDocument.id)
+                .where(
+                    ResumeDocument.user_id == user.id,
+                    ResumeDocument.deleted_at.is_(None),
+                )
+                .order_by(JobRun.created_at.desc())
+                .limit(10)
             )
-            .order_by(JobRun.created_at.desc())
-            .limit(10)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         activity: list[dict] = []
         for jr in job_runs:
-            activity.append({
-                "type": "job_run",
-                "detail": f"{jr.job_type} (#{jr.id})",
-                "status": jr.status,
-                "created_at": jr.created_at,
-            })
+            activity.append(
+                {
+                    "type": "job_run",
+                    "detail": f"{jr.job_type} (#{jr.id})",
+                    "status": jr.status,
+                    "created_at": jr.created_at,
+                }
+            )
 
         # Trust audit entries
-        trust_audits = db.execute(
-            select(TrustAuditLog)
-            .join(CandidateTrust, TrustAuditLog.trust_id == CandidateTrust.id)
-            .join(
-                ResumeDocument,
-                CandidateTrust.resume_document_id == ResumeDocument.id,
+        trust_audits = (
+            db.execute(
+                select(TrustAuditLog)
+                .join(CandidateTrust, TrustAuditLog.trust_id == CandidateTrust.id)
+                .join(
+                    ResumeDocument,
+                    CandidateTrust.resume_document_id == ResumeDocument.id,
+                )
+                .where(
+                    ResumeDocument.user_id == user.id,
+                    ResumeDocument.deleted_at.is_(None),
+                )
+                .order_by(TrustAuditLog.created_at.desc())
+                .limit(5)
             )
-            .where(
-                ResumeDocument.user_id == user.id,
-                ResumeDocument.deleted_at.is_(None),
-            )
-            .order_by(TrustAuditLog.created_at.desc())
-            .limit(5)
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
 
         for ta in trust_audits:
-            activity.append({
-                "type": "trust_audit",
-                "detail": f"{ta.action}: {ta.prev_status} -> {ta.new_status}",
-                "status": ta.new_status,
-                "created_at": ta.created_at,
-            })
+            activity.append(
+                {
+                    "type": "trust_audit",
+                    "detail": f"{ta.action}: {ta.prev_status} -> {ta.new_status}",
+                    "status": ta.new_status,
+                    "created_at": ta.created_at,
+                }
+            )
 
         activity.sort(key=lambda a: a["created_at"], reverse=True)
 
-        results.append({
-            "user": {
-                "id": user.id,
-                "email": user.email,
-                "role": user.role,
-                "is_admin": user.is_admin,
-                "created_at": user.created_at,
-                "onboarding_completed": user.onboarding_completed_at is not None,
-                "mfa_required": user.mfa_required,
-            },
-            "candidate": candidate_info,
-            "employer": employer_info,
-            "recruiter": recruiter_info,
-            "usage": usage_info,
-            "recent_activity": activity,
-        })
+        results.append(
+            {
+                "user": {
+                    "id": user.id,
+                    "email": user.email,
+                    "role": user.role,
+                    "is_admin": user.is_admin,
+                    "created_at": user.created_at,
+                    "onboarding_completed": user.onboarding_completed_at is not None,
+                    "mfa_required": user.mfa_required,
+                },
+                "candidate": candidate_info,
+                "employer": employer_info,
+                "recruiter": recruiter_info,
+                "usage": usage_info,
+                "recent_activity": activity,
+            }
+        )
 
     return results
 
@@ -401,10 +440,15 @@ def billing_issues(
         .join(User, Candidate.user_id == User.id)
         .where(Candidate.subscription_status == "past_due")
     ).all():
-        past_due.append(BillingIssueUser(
-            user_id=row[0], email=row[1], segment="candidate",
-            tier=row[2] or "free", subscription_status=row[3],
-        ).model_dump())
+        past_due.append(
+            BillingIssueUser(
+                user_id=row[0],
+                email=row[1],
+                segment="candidate",
+                tier=row[2] or "free",
+                subscription_status=row[3],
+            ).model_dump()
+        )
 
     for row in db.execute(
         select(
@@ -416,10 +460,15 @@ def billing_issues(
         .join(User, EmployerProfile.user_id == User.id)
         .where(EmployerProfile.subscription_status == "past_due")
     ).all():
-        past_due.append(BillingIssueUser(
-            user_id=row[0], email=row[1], segment="employer",
-            tier=row[2], subscription_status=row[3],
-        ).model_dump())
+        past_due.append(
+            BillingIssueUser(
+                user_id=row[0],
+                email=row[1],
+                segment="employer",
+                tier=row[2],
+                subscription_status=row[3],
+            ).model_dump()
+        )
 
     for row in db.execute(
         select(
@@ -431,10 +480,15 @@ def billing_issues(
         .join(User, RecruiterProfile.user_id == User.id)
         .where(RecruiterProfile.subscription_status == "past_due")
     ).all():
-        past_due.append(BillingIssueUser(
-            user_id=row[0], email=row[1], segment="recruiter",
-            tier=row[2], subscription_status=row[3],
-        ).model_dump())
+        past_due.append(
+            BillingIssueUser(
+                user_id=row[0],
+                email=row[1],
+                segment="recruiter",
+                tier=row[2],
+                subscription_status=row[3],
+            ).model_dump()
+        )
 
     # --- Near limits (candidates daily counters >= 80% of tier limit) ---
     today = date.today()
@@ -457,11 +511,16 @@ def billing_issues(
         tier_limits = CANDIDATE_PLAN_LIMITS.get(tier, {})
         limit = tier_limits.get(counter_name)
         if limit and isinstance(limit, int) and limit > 0 and count >= limit * 0.8:
-            near_limits.append(BillingIssueUser(
-                user_id=uid, email=email, segment="candidate",
-                tier=tier, subscription_status=None,
-                detail=f"{counter_name}: {count}/{limit}",
-            ).model_dump())
+            near_limits.append(
+                BillingIssueUser(
+                    user_id=uid,
+                    email=email,
+                    segment="candidate",
+                    tier=tier,
+                    subscription_status=None,
+                    detail=f"{counter_name}: {count}/{limit}",
+                ).model_dump()
+            )
 
     # --- Tier mismatches (plan_tier is paid but subscription canceled/past_due) ---
     for row in db.execute(
@@ -477,11 +536,16 @@ def billing_issues(
             Candidate.subscription_status.in_(["canceled", "unpaid", None]),
         )
     ).all():
-        tier_mismatches.append(BillingIssueUser(
-            user_id=row[0], email=row[1], segment="candidate",
-            tier=row[2] or "free", subscription_status=row[3],
-            detail="Paid tier but subscription not active",
-        ).model_dump())
+        tier_mismatches.append(
+            BillingIssueUser(
+                user_id=row[0],
+                email=row[1],
+                segment="candidate",
+                tier=row[2] or "free",
+                subscription_status=row[3],
+                detail="Paid tier but subscription not active",
+            ).model_dump()
+        )
 
     return {
         "past_due": past_due,
@@ -509,22 +573,26 @@ def queue_monitor(
         if failed_count > 0:
             raw_failed = get_failed_jobs(qname, 10)
             for fj in raw_failed:
-                failed_jobs.append({
-                    "job_id": fj.get("job_id", ""),
-                    "func_name": fj.get("func_name"),
-                    "error": fj.get("exc_info") or fj.get("error"),
-                    "enqueued_at": fj.get("enqueued_at"),
-                    "ended_at": fj.get("ended_at"),
-                })
+                failed_jobs.append(
+                    {
+                        "job_id": fj.get("job_id", ""),
+                        "func_name": fj.get("func_name"),
+                        "error": fj.get("exc_info") or fj.get("error"),
+                        "enqueued_at": fj.get("enqueued_at"),
+                        "ended_at": fj.get("ended_at"),
+                    }
+                )
 
-        queues.append({
-            "name": qname,
-            "pending": qdata.get("pending", 0),
-            "started": qdata.get("started", 0),
-            "failed": failed_count,
-            "deferred": qdata.get("deferred", 0),
-            "failed_jobs": failed_jobs,
-        })
+        queues.append(
+            {
+                "name": qname,
+                "pending": qdata.get("pending", 0),
+                "started": qdata.get("started", 0),
+                "failed": failed_count,
+                "deferred": qdata.get("deferred", 0),
+                "failed_jobs": failed_jobs,
+            }
+        )
 
     return {
         "redis_connected": stats.get("redis_connected", False),
@@ -583,30 +651,28 @@ def feature_usage(
         )
         .join(User, UsageCounter.user_id == User.id)
         .where(UsageCounter.period_start == first_of_month)
-        .order_by(
-            (UsageCounter.match_refreshes + UsageCounter.tailor_requests).desc()
-        )
+        .order_by((UsageCounter.match_refreshes + UsageCounter.tailor_requests).desc())
         .limit(10)
     ).all()
 
     top_users = [
-        {"user_id": r[0], "email": r[1], "total_usage": r[2]}
-        for r in top_users_rows
+        {"user_id": r[0], "email": r[1], "total_usage": r[2]} for r in top_users_rows
     ]
 
     # Sieve stats
     now = datetime.now(UTC)
-    total_conversations = db.scalar(
-        select(func.count(func.distinct(SieveConversation.user_id)))
-    ) or 0
-    total_messages = db.scalar(
-        select(func.count()).select_from(SieveConversation)
-    ) or 0
-    active_sieve_7d = db.scalar(
-        select(func.count(func.distinct(SieveConversation.user_id))).where(
-            SieveConversation.created_at >= now - timedelta(days=7)
+    total_conversations = (
+        db.scalar(select(func.count(func.distinct(SieveConversation.user_id)))) or 0
+    )
+    total_messages = db.scalar(select(func.count()).select_from(SieveConversation)) or 0
+    active_sieve_7d = (
+        db.scalar(
+            select(func.count(func.distinct(SieveConversation.user_id))).where(
+                SieveConversation.created_at >= now - timedelta(days=7)
+            )
         )
-    ) or 0
+        or 0
+    )
 
     return {
         "period": period_str,
@@ -660,15 +726,17 @@ def audit_log(
         ).all()
 
         for r in trust_rows:
-            entries.append({
-                "id": r[0],
-                "source": "trust",
-                "action": r[1],
-                "actor": r[2],
-                "user_email": r[5],
-                "details": r[3],
-                "created_at": r[4],
-            })
+            entries.append(
+                {
+                    "id": r[0],
+                    "source": "trust",
+                    "action": r[1],
+                    "actor": r[2],
+                    "user_email": r[5],
+                    "details": r[3],
+                    "created_at": r[4],
+                }
+            )
 
     # Employer compliance entries
     if source in ("all", "compliance"):
@@ -685,15 +753,17 @@ def audit_log(
         ).all()
 
         for r in compliance_rows:
-            entries.append({
-                "id": r[0],
-                "source": "compliance",
-                "action": r[1],
-                "actor": None,
-                "user_email": r[4],
-                "details": r[2],
-                "created_at": r[3],
-            })
+            entries.append(
+                {
+                    "id": r[0],
+                    "source": "compliance",
+                    "action": r[1],
+                    "actor": None,
+                    "user_email": r[4],
+                    "details": r[2],
+                    "created_at": r[3],
+                }
+            )
 
     # Sort combined and paginate in Python
     entries.sort(key=lambda e: e["created_at"], reverse=True)
@@ -826,9 +896,7 @@ def clear_daily_counters(
 
     today = date.today()
     result = db.execute(
-        text(
-            "DELETE FROM daily_usage_counters WHERE user_id = :uid AND date = :d"
-        ),
+        text("DELETE FROM daily_usage_counters WHERE user_id = :uid AND date = :d"),
         {"uid": user_id, "d": today},
     )
     db.commit()
@@ -838,9 +906,7 @@ def clear_daily_counters(
     }
 
 
-@router.post(
-    "/actions/reset-monthly-usage/{user_id}", response_model=ActionResponse
-)
+@router.post("/actions/reset-monthly-usage/{user_id}", response_model=ActionResponse)
 def reset_monthly_usage(
     user_id: int,
     admin: User = Depends(require_admin_user),  # noqa: ARG001, B008

@@ -73,10 +73,10 @@ print(f"Distribution results: {results}")
 # 4. Check distributions
 dists = list(
     session.execute(
-        select(JobDistribution).where(
-            JobDistribution.employer_job_id == job.id
-        )
-    ).scalars().all()
+        select(JobDistribution).where(JobDistribution.employer_job_id == job.id)
+    )
+    .scalars()
+    .all()
 )
 print(f"Distributions found: {len(dists)}")
 for d in dists:
@@ -88,7 +88,9 @@ events = list(
         select(DistributionEvent).where(
             DistributionEvent.distribution_id == dists[0].id
         )
-    ).scalars().all()
+    )
+    .scalars()
+    .all()
 )
 print(f"Events for first distribution: {len(events)}")
 for ev in events:

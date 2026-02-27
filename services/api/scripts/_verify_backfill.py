@@ -1,4 +1,5 @@
 """Quick verification that title_company_hash backfill completed."""
+
 import os
 import sys
 

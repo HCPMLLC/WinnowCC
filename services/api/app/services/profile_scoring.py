@@ -2,7 +2,8 @@
 Profile completeness scoring service.
 
 Scoring weights (100 points total):
-- Basics (20 pts): first_name(3), last_name(2), email(3), phone(2), location(3), years_exp(4), work_auth(3)
+- Basics (20 pts): first_name(3), last_name(2), email(3),
+  phone(2), location(3), years_exp(4), work_auth(3)
 - Experience (40 pts): has entries(15), company/title/dates/details per entry
 - Education (15 pts): has entries(8), degree(4), field(3)
 - Skills (15 pts): has skills(10), 5+ skills bonus(5)
@@ -168,7 +169,9 @@ def compute_profile_completeness(profile_json: dict) -> ProfileCompletenessRespo
             )
         if not has_any_accomplishments:
             recommendations.append(
-                "Include quantified accomplishments (e.g., 'Increased sales by 20%') to stand out"
+                "Include quantified accomplishments "
+                "(e.g., 'Increased sales by 20%') "
+                "to stand out"
             )
     else:
         deficiencies.append(
@@ -178,9 +181,7 @@ def compute_profile_completeness(profile_json: dict) -> ProfileCompletenessRespo
                 weight=40,
             )
         )
-        recommendations.append(
-            "Add your work experience to enable job matching"
-        )
+        recommendations.append("Add your work experience to enable job matching")
 
     # --- Education (15 pts) ---
     if len(education) > 0:
@@ -232,18 +233,12 @@ def compute_profile_completeness(profile_json: dict) -> ProfileCompletenessRespo
                     weight=5,
                 )
             )
-            recommendations.append(
-                "Add more skills to improve your match quality"
-            )
+            recommendations.append("Add more skills to improve your match quality")
     else:
         deficiencies.append(
-            ProfileDeficiency(
-                field="skills", message="No skills listed", weight=15
-            )
+            ProfileDeficiency(field="skills", message="No skills listed", weight=15)
         )
-        recommendations.append(
-            "Add your skills to enable accurate job matching"
-        )
+        recommendations.append("Add your skills to enable accurate job matching")
 
     # --- Preferences (10 pts) ---
     target_titles = preferences.get("target_titles") or []
@@ -261,9 +256,7 @@ def compute_profile_completeness(profile_json: dict) -> ProfileCompletenessRespo
                 weight=5,
             )
         )
-        recommendations.append(
-            "Add target job titles to receive relevant matches"
-        )
+        recommendations.append("Add target job titles to receive relevant matches")
 
     if len(locations) > 0 or preferences.get("remote_ok"):
         score += 3
@@ -296,7 +289,9 @@ def compute_profile_completeness(profile_json: dict) -> ProfileCompletenessRespo
         if d.field in critical_fields and d.weight >= 10:
             if d.field == "experience":
                 if "Upload your resume" not in recommendations:
-                    recommendations.insert(0, "Upload your resume to populate your profile")
+                    recommendations.insert(
+                        0, "Upload your resume to populate your profile"
+                    )
             break
 
     return ProfileCompletenessResponse(

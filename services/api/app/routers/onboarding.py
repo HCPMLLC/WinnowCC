@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
@@ -56,7 +56,7 @@ def complete_onboarding(
         for field, value in data.items():
             setattr(record, field, value)
 
-    user.onboarding_completed_at = datetime.now(timezone.utc)
+    user.onboarding_completed_at = datetime.now(UTC)
     session.add(user)
     session.commit()
     session.refresh(record)

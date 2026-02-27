@@ -2,7 +2,6 @@
 
 from app.models.candidate import Candidate
 from app.models.candidate_notification import CandidateNotification
-from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.candidate_profile import CandidateProfile
 from app.models.candidate_submission import CandidateSubmission
 from app.models.candidate_trust import CandidateTrust
@@ -12,6 +11,7 @@ from app.models.career_intelligence import (
     RecruiterCandidateBrief,
     TimeFillPrediction,
 )
+from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.distribution import (
     BoardConnection,
     DistributionEvent,
@@ -38,12 +38,6 @@ from app.models.merged_packet import MergedPacket
 from app.models.migration import MigrationEntityMap, MigrationJob
 from app.models.outreach_enrollment import OutreachEnrollment
 from app.models.outreach_sequence import OutreachSequence
-from app.models.recruiter import RecruiterProfile, RecruiterTeamMember
-from app.models.recruiter_activity import RecruiterActivity
-from app.models.recruiter_client import RecruiterClient
-from app.models.recruiter_job import RecruiterJob
-from app.models.recruiter_job_candidate import RecruiterJobCandidate
-from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.parsed_resume import (
     ExtractedSkill,
     JobExperience,
@@ -53,11 +47,18 @@ from app.models.parsed_resume import (
     ParsedResumeDocument,
     QuantifiedAccomplishment,
 )
+from app.models.recruiter import RecruiterProfile, RecruiterTeamMember
+from app.models.recruiter_activity import RecruiterActivity
+from app.models.recruiter_client import RecruiterClient
+from app.models.recruiter_job import RecruiterJob
+from app.models.recruiter_job_candidate import RecruiterJobCandidate
+from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
 from app.models.tailored_resume import TailoredResume
 from app.models.talent_pipeline import TalentPipeline
 from app.models.trust_audit_log import TrustAuditLog
+from app.models.upload_batch import UploadBatch, UploadBatchFile
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
 
@@ -115,6 +116,8 @@ __all__ = [
     "TalentPipeline",
     "TimeFillPrediction",
     "TrustAuditLog",
+    "UploadBatch",
+    "UploadBatchFile",
     "UsageCounter",
     "User",
 ]

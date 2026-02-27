@@ -70,11 +70,22 @@ class TestBatchLimits:
         "app.services.employer_job_parser.parse_job_document",
         return_value=_PARSED_JOB,
     )
-    def test_free_tier_allows_1_file(self, mock_parse, client, employer_user, db_session):
+    def test_free_tier_allows_1_file(
+        self, mock_parse, client, employer_user, db_session
+    ):
         _make_employer(db_session, employer_user, "free")
         c = _employer_client(client, employer_user)
 
-        files = [("files", ("job.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))]
+        files = [
+            (
+                "files",
+                (
+                    "job.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
+        ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
         assert resp.status_code == 200
         data = resp.json()
@@ -85,8 +96,22 @@ class TestBatchLimits:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", ("job1.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream")),
-            ("files", ("job2.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream")),
+            (
+                "files",
+                (
+                    "job1.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            ),
+            (
+                "files",
+                (
+                    "job2.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            ),
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
         assert resp.status_code == 400
@@ -96,12 +121,21 @@ class TestBatchLimits:
         "app.services.employer_job_parser.parse_job_document",
         return_value=_PARSED_JOB,
     )
-    def test_starter_tier_allows_5_files(self, mock_parse, client, employer_user, db_session):
+    def test_starter_tier_allows_5_files(
+        self, mock_parse, client, employer_user, db_session
+    ):
         _make_employer(db_session, employer_user, "starter")
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(5)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -113,7 +147,14 @@ class TestBatchLimits:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(6)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -125,7 +166,14 @@ class TestBatchLimits:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(11)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -146,7 +194,9 @@ class TestQuotaEnforcement:
         "app.services.employer_job_parser.parse_job_document",
         return_value=_PARSED_JOB,
     )
-    def test_starter_with_existing_jobs_clamps(self, mock_parse, client, employer_user, db_session):
+    def test_starter_with_existing_jobs_clamps(
+        self, mock_parse, client, employer_user, db_session
+    ):
         """Starter tier with 3 existing jobs can only create 2 more."""
         employer = _make_employer(db_session, employer_user, "starter")
         # Create 3 existing jobs
@@ -163,7 +213,14 @@ class TestQuotaEnforcement:
 
         c = _employer_client(client, employer_user)
         files = [
-            ("files", (f"new{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"new{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(5)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -191,7 +248,16 @@ class TestQuotaEnforcement:
         db_session.commit()
 
         c = _employer_client(client, employer_user)
-        files = [("files", ("new.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))]
+        files = [
+            (
+                "files",
+                (
+                    "new.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
+        ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
         assert resp.status_code == 400
         assert "limit reached" in resp.json()["detail"].lower()
@@ -214,7 +280,14 @@ class TestBulkUploadSuccess:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(3)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -263,9 +336,30 @@ class TestPartialFailure:
             side_effect=alternating_parse,
         ):
             files = [
-                ("files", ("good1.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream")),
-                ("files", ("bad1.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream")),
-                ("files", ("good2.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream")),
+                (
+                    "files",
+                    (
+                        "good1.docx",
+                        io.BytesIO(_fake_docx_bytes()),
+                        "application/octet-stream",
+                    ),
+                ),
+                (
+                    "files",
+                    (
+                        "bad1.docx",
+                        io.BytesIO(_fake_docx_bytes()),
+                        "application/octet-stream",
+                    ),
+                ),
+                (
+                    "files",
+                    (
+                        "good2.docx",
+                        io.BytesIO(_fake_docx_bytes()),
+                        "application/octet-stream",
+                    ),
+                ),
             ]
             resp = c.post("/api/employer/jobs/upload-documents", files=files)
 
@@ -312,7 +406,14 @@ class TestUpgradeRecommendation:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(10)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)
@@ -332,7 +433,14 @@ class TestUpgradeRecommendation:
         c = _employer_client(client, employer_user)
 
         files = [
-            ("files", (f"job{i}.docx", io.BytesIO(_fake_docx_bytes()), "application/octet-stream"))
+            (
+                "files",
+                (
+                    f"job{i}.docx",
+                    io.BytesIO(_fake_docx_bytes()),
+                    "application/octet-stream",
+                ),
+            )
             for i in range(5)
         ]
         resp = c.post("/api/employer/jobs/upload-documents", files=files)

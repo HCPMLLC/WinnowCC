@@ -39,6 +39,7 @@ def _get_bucket():
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def is_gcs_enabled() -> bool:
     return bool(os.environ.get("GCS_BUCKET"))
 
@@ -50,6 +51,7 @@ def is_gcs_path(path: str) -> bool:
 # ---------------------------------------------------------------------------
 # Upload
 # ---------------------------------------------------------------------------
+
 
 def upload_file(local_path: Path | str, prefix: str, filename: str) -> str:
     """Upload *local_path* to storage and return the stored path/URI.
@@ -94,6 +96,7 @@ def upload_bytes(data: bytes, prefix: str, filename: str) -> str:
 # Download
 # ---------------------------------------------------------------------------
 
+
 def download_to_tempfile(stored_path: str, suffix: str = "") -> Path:
     """Return a local ``Path`` for *stored_path*.
 
@@ -136,6 +139,7 @@ def download_as_bytes(stored_path: str) -> bytes | None:
 # FileResponse helper
 # ---------------------------------------------------------------------------
 
+
 def file_response_path(stored_path: str, suffix: str = "") -> Path:
     """Convenience wrapper for endpoints that return ``FileResponse``.
 
@@ -148,6 +152,7 @@ def file_response_path(stored_path: str, suffix: str = "") -> Path:
 # ---------------------------------------------------------------------------
 # Delete
 # ---------------------------------------------------------------------------
+
 
 def delete_file(stored_path: str) -> None:
     """Delete the file at *stored_path* (GCS or local). Best-effort."""

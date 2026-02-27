@@ -1,15 +1,19 @@
 """Debug trajectory parsing."""
+
 import json
 import os
-from sqlalchemy import select, create_engine
+
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 engine = create_engine(
-    os.getenv("DB_URL", "postgresql+psycopg://resumematch:resumematch@localhost:5432/resumematch")
+    os.getenv(
+        "DB_URL",
+        "postgresql+psycopg://resumematch:resumematch@localhost:5432/resumematch",
+    )
 )
 
 from app.models.career_intelligence import CareerTrajectory
-from app.services.career_intelligence import _extract_json
 
 with Session(engine) as s:
     ct = s.execute(
@@ -21,7 +25,7 @@ with Session(engine) as s:
     raw = ct.trajectory_json.get("raw_prediction", "")
     print(f"starts with: {repr(raw[:40])}")
     print(f"ends with: {repr(raw[-40:])}")
-    stripped = _strip_code_fences(raw)
+    stripped = raw.strip("`").removeprefix("json").strip()
     print(f"stripped starts: {repr(stripped[:60])}")
     print(f"stripped ends: {repr(stripped[-40:])}")
     try:

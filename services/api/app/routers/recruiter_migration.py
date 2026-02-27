@@ -63,9 +63,7 @@ async def upload_recruiter_migration_file(
         shutil.copyfileobj(file.file, f)
 
     detection = detect_platform(dest)
-    platform = (
-        source_platform if source_platform != "auto" else detection["platform"]
-    )
+    platform = source_platform if source_platform != "auto" else detection["platform"]
 
     job = MigrationJob(
         user_id=user.id,
@@ -183,7 +181,7 @@ def start_recruiter_migration(
         db.commit()
 
         try:
-            queue = get_queue()
+            queue = get_queue("low")
             queue.enqueue(run_resume_migration, job_id, job_timeout="4h")
         except Exception:
             logger.exception("Failed to enqueue resume migration job %d", job_id)
@@ -195,7 +193,7 @@ def start_recruiter_migration(
             raise HTTPException(
                 status_code=503,
                 detail="Queue not available. Ensure Redis is running.",
-            )
+            ) from None
 
         return {
             "job_id": job_id,

@@ -1,12 +1,15 @@
-"""Add job distribution tables (board_connections, job_distributions, distribution_events).
+"""Add job distribution tables.
+
+(board_connections, job_distributions, distribution_events).
 
 Revision ID: 20260210_03
 Revises: 20260210_02
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 revision = "20260210_03"
 down_revision = "20260210_02"
@@ -41,9 +44,13 @@ def upgrade():
             server_default=sa.func.now(),
         ),
         sa.Column("updated_at", sa.DateTime(timezone=True), onupdate=sa.func.now()),
-        sa.UniqueConstraint("employer_id", "board_type", name="uq_board_connections_employer_board"),
+        sa.UniqueConstraint(
+            "employer_id", "board_type", name="uq_board_connections_employer_board"
+        ),
     )
-    op.create_index("idx_board_connections_employer_id", "board_connections", ["employer_id"])
+    op.create_index(
+        "idx_board_connections_employer_id", "board_connections", ["employer_id"]
+    )
 
     # --- job_distributions ---
     op.create_table(

@@ -1,6 +1,15 @@
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, String, UniqueConstraint, func, select
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+    select,
+)
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.db.base import Base
@@ -9,7 +18,9 @@ from app.db.base import Base
 class DailyUsageCounter(Base):
     __tablename__ = "daily_usage_counters"
     __table_args__ = (
-        UniqueConstraint("user_id", "counter_name", "date", name="uq_daily_user_counter_date"),
+        UniqueConstraint(
+            "user_id", "counter_name", "date", name="uq_daily_user_counter_date"
+        ),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

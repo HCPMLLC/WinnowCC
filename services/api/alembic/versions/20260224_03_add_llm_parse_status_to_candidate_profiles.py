@@ -4,6 +4,7 @@ Revision ID: 20260224_03
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20260224_03"
@@ -29,10 +30,7 @@ def upgrade() -> None:
         )
     # Idempotent: only create index if it doesn't already exist
     result = conn.execute(
-        sa.text(
-            "SELECT 1 FROM pg_indexes "
-            "WHERE indexname = 'ix_cp_llm_parse_status'"
-        )
+        sa.text("SELECT 1 FROM pg_indexes WHERE indexname = 'ix_cp_llm_parse_status'")
     )
     if not result.fetchone():
         op.create_index(

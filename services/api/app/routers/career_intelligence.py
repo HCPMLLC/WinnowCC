@@ -16,7 +16,6 @@ from app.models.recruiter import RecruiterProfile
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.user import User
 from app.services.auth import get_current_user, require_employer
-from app.services.recruiter_service import _log_activity, add_to_pipeline
 from app.services.career_intelligence import (
     compute_market_position,
     generate_candidate_brief,
@@ -24,6 +23,7 @@ from app.services.career_intelligence import (
     predict_time_to_fill,
     salary_intelligence,
 )
+from app.services.recruiter_service import _log_activity, add_to_pipeline
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +75,13 @@ def create_brief(
         logger.exception("Brief generation failed for profile %s", candidate_profile_id)
         msg = str(e)
         if "credit balance" in msg or "billing" in msg.lower():
-            raise HTTPException(status_code=503, detail="AI service temporarily unavailable. Please try again later.") from e
-        raise HTTPException(status_code=500, detail="Failed to generate brief. Please try again.") from e
+            raise HTTPException(
+                status_code=503,
+                detail="AI service temporarily unavailable. Please try again later.",
+            ) from e
+        raise HTTPException(
+            status_code=500, detail="Failed to generate brief. Please try again."
+        ) from e
 
 
 # ---------------------------------------------------------------------------
@@ -182,8 +187,18 @@ def _estimate_years_experience(experience: list[dict]) -> int | None:
 
     total_months = 0
     month_map = {
-        "jan": 1, "feb": 2, "mar": 3, "apr": 4, "may": 5, "jun": 6,
-        "jul": 7, "aug": 8, "sep": 9, "oct": 10, "nov": 11, "dec": 12,
+        "jan": 1,
+        "feb": 2,
+        "mar": 3,
+        "apr": 4,
+        "may": 5,
+        "jun": 6,
+        "jul": 7,
+        "aug": 8,
+        "sep": 9,
+        "oct": 10,
+        "nov": 11,
+        "dec": 12,
     }
 
     for entry in experience:
@@ -240,7 +255,7 @@ def source_from_linkedin(
         logger.exception("LinkedIn source failed for %s", payload.linkedin_url)
         raise HTTPException(
             status_code=500, detail="Failed to save LinkedIn profile."
-        )
+        ) from None
 
 
 def _log_linkedin_source_activity(
@@ -289,14 +304,18 @@ def _wire_to_recruiter_pipeline(
     linkedin_url = payload.linkedin_url.rstrip("/")
 
     # Check for existing pipeline entry with same LinkedIn URL
-    existing_pc = db.execute(
-        select(RecruiterPipelineCandidate).where(
-            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
-            RecruiterPipelineCandidate.external_linkedin.in_(
-                [linkedin_url, linkedin_url + "/"]
-            ),
+    existing_pc = (
+        db.execute(
+            select(RecruiterPipelineCandidate).where(
+                RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+                RecruiterPipelineCandidate.external_linkedin.in_(
+                    [linkedin_url, linkedin_url + "/"]
+                ),
+            )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     if existing_pc:
         existing_pc.candidate_profile_id = candidate_profile_id
@@ -344,13 +363,17 @@ def _source_from_linkedin_impl(
 
     # Check for existing profile by LinkedIn URL (try both with and without trailing /)
     # Use .first() instead of .scalar_one_or_none() to avoid MultipleResultsFound
-    existing = db.execute(
-        select(CandidateProfile).where(
-            CandidateProfile.profile_json["linkedin_url"].astext.in_(
-                [linkedin_url, linkedin_url + "/"]
+    existing = (
+        db.execute(
+            select(CandidateProfile).where(
+                CandidateProfile.profile_json["linkedin_url"].astext.in_(
+                    [linkedin_url, linkedin_url + "/"]
+                )
             )
         )
-    ).scalars().first()
+        .scalars()
+        .first()
+    )
 
     # Parse name into first/last
     name_parts = (payload.name or "").split(",")[0].strip().split()
@@ -359,14 +382,14 @@ def _source_from_linkedin_impl(
 
     # Parse location into city/state
     location = payload.location or ""
-    city, state = None, None
+    _city, _state = None, None
     if location:
         loc_parts = [p.strip() for p in location.split(",")]
         if len(loc_parts) >= 2:
-            city = loc_parts[0]
-            state = loc_parts[1]
+            loc_parts[0]
+            loc_parts[1]
         elif len(loc_parts) == 1:
-            city = loc_parts[0]
+            loc_parts[0]
 
     # Estimate total years from experience date ranges
     total_years = _estimate_years_experience(payload.experience or [])
@@ -376,7 +399,7 @@ def _source_from_linkedin_impl(
 
     # Normalize skills to list of strings for consistency
     skill_list = []
-    for s in (payload.skills or []):
+    for s in payload.skills or []:
         if isinstance(s, dict):
             skill_list.append(s.get("name", str(s)))
         else:

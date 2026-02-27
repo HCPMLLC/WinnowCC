@@ -65,7 +65,7 @@ def test_add_reference_creates_new_profile_version(auth_client, db_session):
     )
 
     # Check versions
-    from sqlalchemy import select, func
+    from sqlalchemy import func, select
 
     count = db_session.execute(
         select(func.count(CandidateProfile.id)).where(

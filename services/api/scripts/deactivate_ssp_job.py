@@ -32,7 +32,10 @@ if not jobs:
     print("No active SSP Innovations jobs from Jooble found.")
 else:
     for job in jobs:
-        print(f"Deactivating job #{job.id}: {job.title} at {job.company} (source={job.source})")
+        print(
+            f"Deactivating job #{job.id}: {job.title}"
+            f" at {job.company} (source={job.source})"
+        )
         job.is_active = False
     session.commit()
     print(f"Done. Deactivated {len(jobs)} job(s).")

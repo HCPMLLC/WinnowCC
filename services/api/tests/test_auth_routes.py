@@ -22,12 +22,27 @@ def _compile_jsonb_sqlite(_type, _compiler, **_kw):
 
 # Raw SQL tables that cascade_delete references but have no ORM model
 _EXTRA_TABLES_SQL = [
-    "CREATE TABLE IF NOT EXISTS mjass_application_drafts (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS mjass_application_events (id INTEGER PRIMARY KEY, draft_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS consents (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS candidate_preferences_v1 (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS onboarding_state (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS parsed_resume_documents (id INTEGER PRIMARY KEY, resume_document_id INTEGER)",
+    (
+        "CREATE TABLE IF NOT EXISTS mjass_application_drafts"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS mjass_application_events"
+        " (id INTEGER PRIMARY KEY, draft_id INTEGER)"
+    ),
+    ("CREATE TABLE IF NOT EXISTS consents (id INTEGER PRIMARY KEY, user_id INTEGER)"),
+    (
+        "CREATE TABLE IF NOT EXISTS candidate_preferences_v1"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS onboarding_state"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS parsed_resume_documents"
+        " (id INTEGER PRIMARY KEY, resume_document_id INTEGER)"
+    ),
 ]
 
 

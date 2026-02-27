@@ -29,12 +29,27 @@ def _compile_jsonb_sqlite(_type, _compiler, **_kw):
 
 
 _EXTRA_TABLES_SQL = [
-    "CREATE TABLE IF NOT EXISTS mjass_application_drafts (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS mjass_application_events (id INTEGER PRIMARY KEY, draft_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS consents (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS candidate_preferences_v1 (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS onboarding_state (id INTEGER PRIMARY KEY, user_id INTEGER)",
-    "CREATE TABLE IF NOT EXISTS parsed_resume_documents (id INTEGER PRIMARY KEY, resume_document_id INTEGER)",
+    (
+        "CREATE TABLE IF NOT EXISTS mjass_application_drafts"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS mjass_application_events"
+        " (id INTEGER PRIMARY KEY, draft_id INTEGER)"
+    ),
+    ("CREATE TABLE IF NOT EXISTS consents (id INTEGER PRIMARY KEY, user_id INTEGER)"),
+    (
+        "CREATE TABLE IF NOT EXISTS candidate_preferences_v1"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS onboarding_state"
+        " (id INTEGER PRIMARY KEY, user_id INTEGER)"
+    ),
+    (
+        "CREATE TABLE IF NOT EXISTS parsed_resume_documents"
+        " (id INTEGER PRIMARY KEY, resume_document_id INTEGER)"
+    ),
 ]
 
 
@@ -141,7 +156,10 @@ def test_checkout_creates_session(client, session, monkeypatch):
     monkeypatch.setattr(
         billing_service,
         "PRICE_IDS",
-        {**billing_service.PRICE_IDS, ("candidate", "pro", "monthly"): "price_test_monthly"},
+        {
+            **billing_service.PRICE_IDS,
+            ("candidate", "pro", "monthly"): "price_test_monthly",
+        },
     )
 
     mock_customer = MagicMock()

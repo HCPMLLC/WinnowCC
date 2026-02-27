@@ -24,6 +24,10 @@ from app.schemas.employer import (
     ResumeUploadFileResult,
     ResumeUploadResponse,
 )
+from app.schemas.introduction import (
+    IntroductionRequestCreate,
+    IntroductionRequestResponse,
+)
 from app.schemas.recruiter import (
     RecruiterProfileCreate,
     RecruiterProfileResponse,
@@ -51,10 +55,6 @@ from app.schemas.recruiter_job import (
     RecruiterJobCreate,
     RecruiterJobResponse,
     RecruiterJobUpdate,
-)
-from app.schemas.introduction import (
-    IntroductionRequestCreate,
-    IntroductionRequestResponse,
 )
 from app.services.auth import get_recruiter_profile, require_recruiter
 
@@ -216,14 +216,22 @@ def create_client(
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Client hierarchy requires a Team or Agency plan. Upgrade to organize clients under parent entities.",
+            detail=(
+                "Client hierarchy requires a Team or Agency"
+                " plan. Upgrade to organize clients under"
+                " parent entities."
+            ),
         )
     if data.contract_vehicle and not check_recruiter_feature(
         profile, "contract_vehicle_management"
     ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Contract vehicle management requires a Team or Agency plan. Upgrade to classify clients by contract vehicle.",
+            detail=(
+                "Contract vehicle management requires a Team"
+                " or Agency plan. Upgrade to classify clients"
+                " by contract vehicle."
+            ),
         )
 
     tier = get_recruiter_tier(profile)
@@ -439,20 +447,15 @@ def list_pipeline(
     )
     # Batch-load linked profiles — select only needed columns to avoid
     # missing-column errors when migrations haven't been applied yet.
-    cp_ids = [
-        pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id
-    ]
+    cp_ids = [pc.candidate_profile_id for pc in pcs if pc.candidate_profile_id]
     profiles_map: dict[int, dict] = {}
     if cp_ids:
-        cps = (
-            session.execute(
-                select(
-                    CandidateProfile.id,
-                    CandidateProfile.profile_json,
-                ).where(CandidateProfile.id.in_(cp_ids))
-            )
-            .all()
-        )
+        cps = session.execute(
+            select(
+                CandidateProfile.id,
+                CandidateProfile.profile_json,
+            ).where(CandidateProfile.id.in_(cp_ids))
+        ).all()
         for cp_id, cp_profile_json in cps:
             try:
                 pj = cp_profile_json or {}
@@ -461,9 +464,7 @@ def list_pipeline(
                 basics = pj.get("basics") or {}
                 if not isinstance(basics, dict):
                     basics = {}
-                skills_raw = (
-                    pj.get("skills") or basics.get("top_skills") or []
-                )
+                skills_raw = pj.get("skills") or basics.get("top_skills") or []
                 skills = []
                 for s in skills_raw:
                     if isinstance(s, str):
@@ -485,8 +486,11 @@ def list_pipeline(
                         if not headline:
                             title = exp[0].get("title") or ""
                             company = exp[0].get("company") or ""
+                            raw = f"{title} at {company}"
                             headline = (
-                                f"{title} at {company}".strip(" at ")
+                                raw.rstrip()
+                                .removesuffix(" at")
+                                .strip()
                                 if title
                                 else company
                             )
@@ -494,9 +498,7 @@ def list_pipeline(
                             current_company = exp[0].get("company")
                 profiles_map[cp_id] = {
                     "headline": headline,
-                    "location": (
-                        pj.get("location") or basics.get("location")
-                    ),
+                    "location": (pj.get("location") or basics.get("location")),
                     "current_company": current_company,
                     "skills": [s for s in skills if s][:10],
                     "linkedin_url": pj.get("linkedin_url"),
@@ -536,9 +538,7 @@ def list_pipeline(
             resp.linkedin_url = info["linkedin_url"]
             resp.is_platform_candidate = info["is_platform_candidate"]
         if pc.candidate_profile_id:
-            resp.job_match_count = match_counts.get(
-                pc.candidate_profile_id, 0
-            )
+            resp.job_match_count = match_counts.get(pc.candidate_profile_id, 0)
         results.append(resp)
     return results
 
@@ -1011,7 +1011,7 @@ def get_activities(
     Solo tier: limited to last 7 days of history.
     Team/Agency: unlimited history.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
 
     from app.services.billing import get_recruiter_limit, get_recruiter_tier
     from app.services.recruiter_service import list_activities
@@ -1021,7 +1021,7 @@ def get_activities(
 
     since = None
     if crm_level == "basic":
-        since = datetime.now(timezone.utc) - timedelta(days=7)
+        since = datetime.now(UTC) - timedelta(days=7)
 
     activities = list_activities(
         session,
@@ -1414,8 +1414,8 @@ def get_sourced_candidate(
 
     # Allow if candidate is in any of recruiter's job candidates
     if not allowed:
-        from app.models.recruiter_job_candidate import RecruiterJobCandidate
         from app.models.recruiter_job import RecruiterJob
+        from app.models.recruiter_job_candidate import RecruiterJobCandidate
 
         in_job = session.execute(
             select(RecruiterJobCandidate.id)
@@ -1554,7 +1554,13 @@ def create_recruiter_job(
     try:
         from app.services.embedding import generate_embedding
 
-        text = f"Job Title: {job.title}\nCompany: {job.client_company_name or ''}\nDescription: {(job.description or '')[:2000]}\nRequirements: {(job.requirements or '')[:1000]}\nLocation: {job.location or ''}"
+        text = (
+            f"Job Title: {job.title}\n"
+            f"Company: {job.client_company_name or ''}\n"
+            f"Description: {(job.description or '')[:2000]}\n"
+            f"Requirements: {(job.requirements or '')[:1000]}\n"
+            f"Location: {job.location or ''}"
+        )
         job.embedding = generate_embedding(text)
     except Exception:
         logger.debug("Failed to generate embedding for recruiter job %s", job.id)
@@ -1955,7 +1961,10 @@ def update_recruiter_job(
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> RecruiterJobResponse:
-    """Update a recruiter job posting. If status changes to 'active', syncs to jobs table."""
+    """Update a recruiter job posting.
+
+    If status changes to 'active', syncs to jobs table.
+    """
     job = session.execute(
         select(RecruiterJob).where(
             RecruiterJob.id == job_id,
@@ -1993,7 +2002,13 @@ def update_recruiter_job(
         try:
             from app.services.embedding import generate_embedding
 
-            text = f"Job Title: {job.title}\nCompany: {job.client_company_name or ''}\nDescription: {(job.description or '')[:2000]}\nRequirements: {(job.requirements or '')[:1000]}\nLocation: {job.location or ''}"
+            text = (
+                f"Job Title: {job.title}\n"
+                f"Company: {job.client_company_name or ''}\n"
+                f"Description: {(job.description or '')[:2000]}\n"
+                f"Requirements: {(job.requirements or '')[:1000]}\n"
+                f"Location: {job.location or ''}"
+            )
             job.embedding = generate_embedding(text)
         except Exception:
             logger.debug("Failed to regenerate embedding for recruiter job %s", job.id)
@@ -2167,17 +2182,16 @@ def refresh_recruiter_job_candidates(
 
     # Capture values needed for the generator (session will be closed)
     the_job_id = job.id
-    the_profile_id = profile.id
 
     def _generate():
         import json as _json
 
         from app.db.session import get_session_factory
+        from app.models.recruiter import RecruiterProfile as RP
         from app.models.recruiter_job import RecruiterJob as RJ
         from app.models.recruiter_job_candidate import (
             RecruiterJobCandidate as RJC,
         )
-        from app.models.recruiter import RecruiterProfile as RP
         from app.services.matching import (
             find_top_candidates_for_recruiter_job,
         )
@@ -2186,7 +2200,11 @@ def refresh_recruiter_job_candidates(
         try:
             rj = db.execute(select(RJ).where(RJ.id == the_job_id)).scalar_one_or_none()
             if not rj:
-                yield f"data: {_json.dumps({'percent': 100, 'phase': 'error', 'message': 'Job not found'})}\n\n"
+                msg = _json.dumps(
+                    {'percent': 100, 'phase': 'error',
+                     'message': 'Job not found'}
+                )
+                yield f"data: {msg}\n\n"
                 return
 
             # Generate embedding if missing (backfill existing jobs)
@@ -2194,16 +2212,28 @@ def refresh_recruiter_job_candidates(
                 try:
                     from app.services.embedding import generate_embedding
 
-                    text = f"Job Title: {rj.title}\nCompany: {rj.client_company_name or ''}\nDescription: {(rj.description or '')[:2000]}\nRequirements: {(rj.requirements or '')[:1000]}\nLocation: {rj.location or ''}"
+                    text = (
+                        f"Job Title: {rj.title}\n"
+                        f"Company: {rj.client_company_name or ''}\n"
+                        f"Description: {(rj.description or '')[:2000]}\n"
+                        f"Requirements: {(rj.requirements or '')[:1000]}\n"
+                        f"Location: {rj.location or ''}"
+                    )
                     rj.embedding = generate_embedding(text)
                     db.commit()
                 except Exception:
                     logger.debug("Failed to generate embedding for job %s", the_job_id)
 
-            yield f"data: {_json.dumps({'percent': 5, 'phase': 'loading', 'message': 'Loading candidate profiles...'})}\n\n"
+            msg = _json.dumps(
+                {'percent': 5, 'phase': 'loading',
+                 'message': 'Loading candidate profiles...'}
+            )
+            yield f"data: {msg}\n\n"
 
             # Count eligible candidates (platform + sourced)
-            rp = db.execute(select(RP).where(RP.id == rj.recruiter_profile_id)).scalar_one()
+            rp = db.execute(
+                select(RP).where(RP.id == rj.recruiter_profile_id)
+            ).scalar_one()
             latest_sub = (
                 select(
                     CandidateProfile.user_id,
@@ -2247,12 +2277,22 @@ def refresh_recruiter_job_candidates(
             )
             total_profiles = platform_count + sourced_count
 
-            yield f"data: {_json.dumps({'percent': 10, 'phase': 'scoring', 'message': f'Scoring {total_profiles} candidates...'})}\n\n"
+            msg = _json.dumps(
+                {'percent': 10, 'phase': 'scoring',
+                 'message': f'Scoring {total_profiles} candidates...'}
+            )
+            yield f"data: {msg}\n\n"
 
             # Run matching (this is the heavy part)
-            results = find_top_candidates_for_recruiter_job(db, rj, rp.user_id, limit=100)
+            results = find_top_candidates_for_recruiter_job(
+                db, rj, rp.user_id, limit=100
+            )
 
-            yield f"data: {_json.dumps({'percent': 80, 'phase': 'saving', 'message': f'Found {len(results)} matches, saving...'})}\n\n"
+            msg = _json.dumps(
+                {'percent': 80, 'phase': 'saving',
+                 'message': f'Found {len(results)} matches, saving...'}
+            )
+            yield f"data: {msg}\n\n"
 
             # Delete old cached rows
             from sqlalchemy import delete as sa_delete
@@ -2275,7 +2315,11 @@ def refresh_recruiter_job_candidates(
 
             db.commit()
 
-            yield f"data: {_json.dumps({'percent': 90, 'phase': 'pipeline', 'message': 'Updating pipeline...'})}\n\n"
+            msg = _json.dumps(
+                {'percent': 90, 'phase': 'pipeline',
+                 'message': 'Updating pipeline...'}
+            )
+            yield f"data: {msg}\n\n"
 
             # Auto-populate pipeline if recruiter setting is enabled
             pipeline_added = 0
@@ -2323,11 +2367,21 @@ def refresh_recruiter_job_candidates(
             except Exception:
                 logger.warning("Auto-populate pipeline failed for job %s", the_job_id)
 
-            yield f"data: {_json.dumps({'percent': 100, 'phase': 'done', 'message': f'{inserted} candidates matched', 'inserted': inserted, 'pipeline_added': pipeline_added})}\n\n"
+            msg = _json.dumps(
+                {'percent': 100, 'phase': 'done',
+                 'message': f'{inserted} candidates matched',
+                 'inserted': inserted,
+                 'pipeline_added': pipeline_added}
+            )
+            yield f"data: {msg}\n\n"
 
         except Exception as exc:
             logger.exception("Refresh streaming failed for job %s", the_job_id)
-            yield f"data: {_json.dumps({'percent': 100, 'phase': 'error', 'message': str(exc)})}\n\n"
+            msg = _json.dumps(
+                {'percent': 100, 'phase': 'error',
+                 'message': str(exc)}
+            )
+            yield f"data: {msg}\n\n"
         finally:
             db.close()
 
@@ -2390,10 +2444,14 @@ def generate_brief(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(status_code=404, detail=str(exc))
+        raise HTTPException(
+            status_code=404, detail=str(exc)
+        ) from exc
     except Exception as exc:
         logger.exception("Brief generation failed")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(
+            status_code=500, detail=str(exc)
+        ) from exc
     increment_recruiter_counter(profile, "candidate_briefs_used", session)
     return result
 
@@ -2696,9 +2754,9 @@ def get_introduction_usage(
 ):
     """Get recruiter's introduction request usage for the current billing period."""
     from app.services.billing import (
+        _maybe_reset_recruiter_counters,
         get_recruiter_limit,
         get_recruiter_tier,
-        _maybe_reset_recruiter_counters,
     )
 
     profile = get_recruiter_profile(user, session)

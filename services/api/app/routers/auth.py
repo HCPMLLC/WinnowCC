@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
@@ -18,12 +18,15 @@ from app.services.auth import (
     get_current_user,
     hash_password,
     make_token,
-    require_admin_user,
     set_auth_cookie,
     verify_otp,
     verify_password,
 )
-from app.services.email import send_mfa_otp_email, send_mfa_otp_sms, send_password_reset_email
+from app.services.email import (
+    send_mfa_otp_email,
+    send_mfa_otp_sms,
+    send_password_reset_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,10 @@ def _validate_password(password: str) -> None:
             status_code=400,
             detail=(
                 "Password is too long for secure hashing. "
-                "Use 72 bytes or fewer (roughly <=72 ASCII characters; fewer if using emojis/special characters)."
+                "Use 72 bytes or fewer "
+                "(roughly <=72 ASCII characters; "
+                "fewer if using emojis/"
+                "special characters)."
             ),
         )
 
@@ -124,7 +130,9 @@ def _me_response(user: User) -> MeResponse:
 
 
 def _prepare_otp(
-    user: User, session: Session, delivery_method: str | None = None,
+    user: User,
+    session: Session,
+    delivery_method: str | None = None,
 ) -> tuple[str, str, str]:
     """Generate an OTP, persist hash + expiry, return (code, method, dest).
 
@@ -138,9 +146,7 @@ def _prepare_otp(
 
     code, otp_hash = generate_otp()
     user.mfa_otp_hash = otp_hash
-    user.mfa_otp_expires_at = datetime.now(timezone.utc) + timedelta(
-        minutes=MFA_OTP_TTL_MINUTES
-    )
+    user.mfa_otp_expires_at = datetime.now(UTC) + timedelta(minutes=MFA_OTP_TTL_MINUTES)
     user.mfa_otp_attempts = 0
     # Capture destination before commit (avoids lazy-load issues)
     dest = user.phone if method == "sms" else user.email
@@ -158,7 +164,9 @@ def _do_send_otp(code: str, method: str, dest: str, user_id: int) -> None:
             send_mfa_otp_email(dest, code)
     except Exception:
         logger.warning(
-            "Failed to send MFA OTP via %s to user %s", method, user_id,
+            "Failed to send MFA OTP via %s to user %s",
+            method,
+            user_id,
             exc_info=True,
         )
 
@@ -210,9 +218,7 @@ def login(
 
     email = payload.email.lower().strip()
 
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
@@ -252,22 +258,21 @@ def verify_otp_endpoint(
     session: Session = Depends(get_session),
 ) -> MeResponse:
     email = payload.email.lower().strip()
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid request.")
 
     # Check expiry
-    if (
-        user.mfa_otp_expires_at is None
-        or datetime.now(timezone.utc) > user.mfa_otp_expires_at
-    ):
-        raise HTTPException(status_code=401, detail="Code expired. Please request a new one.")
+    if user.mfa_otp_expires_at is None or datetime.now(UTC) > user.mfa_otp_expires_at:
+        raise HTTPException(
+            status_code=401, detail="Code expired. Please request a new one."
+        )
 
     # Check attempt limit
     if user.mfa_otp_attempts >= MFA_MAX_ATTEMPTS:
-        raise HTTPException(status_code=429, detail="Too many attempts. Please request a new code.")
+        raise HTTPException(
+            status_code=429, detail="Too many attempts. Please request a new code."
+        )
 
     # Increment attempts
     user.mfa_otp_attempts += 1
@@ -298,9 +303,7 @@ def resend_otp(
     _validate_password(payload.password)
     email = payload.email.lower().strip()
 
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
         raise HTTPException(status_code=401, detail="Invalid email or password.")
 
@@ -329,14 +332,12 @@ def forgot_password(
     import secrets as _secrets
 
     email = payload.email.lower().strip()
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
     if user is not None:
         token = _secrets.token_urlsafe(32)
         user.password_reset_token = token
-        user.password_reset_expires_at = datetime.now(timezone.utc) + timedelta(
+        user.password_reset_expires_at = datetime.now(UTC) + timedelta(
             minutes=RESET_TOKEN_TTL_MINUTES
         )
         session.commit()
@@ -370,12 +371,14 @@ def reset_password(
 
     if (
         user.password_reset_expires_at is None
-        or datetime.now(timezone.utc) > user.password_reset_expires_at
+        or datetime.now(UTC) > user.password_reset_expires_at
     ):
         user.password_reset_token = None
         user.password_reset_expires_at = None
         session.commit()
-        raise HTTPException(status_code=400, detail="Reset link has expired. Please request a new one.")
+        raise HTTPException(
+            status_code=400, detail="Reset link has expired. Please request a new one."
+        )
 
     user.password_hash = hash_password(payload.password)
     user.password_reset_token = None
@@ -452,7 +455,12 @@ def admin_set_role(
     if payload.is_admin is not None:
         user.is_admin = payload.is_admin
     session.commit()
-    return {"status": "ok", "email": user.email, "role": user.role, "is_admin": user.is_admin}
+    return {
+        "status": "ok",
+        "email": user.email,
+        "role": user.role,
+        "is_admin": user.is_admin,
+    }
 
 
 @router.post("/oauth/callback", response_model=MeResponse)
@@ -501,12 +509,12 @@ async def oauth_callback(
     sub = userinfo.get("sub", "")
 
     # Find or create user
-    user = session.execute(
-        select(User).where(User.email == email)
-    ).scalar_one_or_none()
+    user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
 
     if user is None:
-        user = User(email=email, password_hash="", oauth_provider="auth0", oauth_sub=sub)
+        user = User(
+            email=email, password_hash="", oauth_provider="auth0", oauth_sub=sub
+        )
         session.add(user)
         session.commit()
         session.refresh(user)
@@ -552,7 +560,11 @@ def set_mfa_delivery(
     if payload.delivery_method == "sms" and not user.phone:
         raise HTTPException(
             status_code=400,
-            detail="Cannot use SMS delivery — no phone number on file. Update your profile first.",
+            detail=(
+                "Cannot use SMS delivery — no phone "
+                "number on file. Update your "
+                "profile first."
+            ),
         )
     user.mfa_delivery_method = payload.delivery_method
     session.commit()

@@ -107,11 +107,7 @@ def embed_all_jobs() -> int:
     session = get_session_factory()()
     try:
         jobs = (
-            session.execute(
-                select(Job).where(Job.embedding.is_(None))
-            )
-            .scalars()
-            .all()
+            session.execute(select(Job).where(Job.embedding.is_(None))).scalars().all()
         )
         count = 0
         for job in jobs:
@@ -196,9 +192,7 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
         )
     except Exception:
         session.rollback()
-        logger.exception(
-            "populate_recruiter_job_candidates: failed for job %s", job_id
-        )
+        logger.exception("populate_recruiter_job_candidates: failed for job %s", job_id)
     finally:
         session.close()
 

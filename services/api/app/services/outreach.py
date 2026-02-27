@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import resend
 from fastapi import HTTPException
@@ -147,7 +147,11 @@ def update_sequence(
         if active_enrollments > 0:
             raise HTTPException(
                 status_code=409,
-                detail="Cannot change steps while candidates are actively enrolled. Pause or unenroll them first.",
+                detail=(
+                    "Cannot change steps while candidates "
+                    "are actively enrolled. Pause or "
+                    "unenroll them first."
+                ),
             )
         seq.steps = [s.model_dump() for s in data.steps]
 
@@ -199,7 +203,7 @@ def enroll_candidates(
 
     first_step = seq.steps[0]
     delay_days = first_step.get("delay_days", 0)
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     next_send = now + timedelta(days=delay_days)
 
     enrolled = 0
@@ -223,8 +227,11 @@ def enroll_candidates(
         except HTTPException:
             raise HTTPException(
                 status_code=429,
-                detail=f"Monthly enrollment limit reached. Enrolled {enrolled} of {len(pipeline_candidate_ids)} candidates.",
-            )
+                detail=(
+                    f"Monthly enrollment limit reached."
+                    f" Enrolled {enrolled} of {len(pipeline_candidate_ids)} candidates."
+                ),
+            ) from None
 
         # Skip if already enrolled (unique constraint)
         existing = session.execute(
@@ -394,11 +401,13 @@ def process_due_outreach() -> dict:
     completed = 0
 
     try:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         stmt = (
             select(OutreachEnrollment)
-            .join(OutreachSequence, OutreachEnrollment.sequence_id == OutreachSequence.id)
+            .join(
+                OutreachSequence, OutreachEnrollment.sequence_id == OutreachSequence.id
+            )
             .where(
                 and_(
                     OutreachEnrollment.status == "active",
@@ -416,9 +425,7 @@ def process_due_outreach() -> dict:
                 candidate = session.get(
                     RecruiterPipelineCandidate, enrollment.pipeline_candidate_id
                 )
-                profile = session.get(
-                    RecruiterProfile, enrollment.recruiter_profile_id
-                )
+                profile = session.get(RecruiterProfile, enrollment.recruiter_profile_id)
 
                 if not seq or not candidate or not profile:
                     enrollment.status = "bounced"
@@ -442,9 +449,7 @@ def process_due_outreach() -> dict:
                 subject = _resolve_template(
                     step.get("subject", ""), candidate, seq, profile
                 )
-                body = _resolve_template(
-                    step.get("body", ""), candidate, seq, profile
-                )
+                body = _resolve_template(step.get("body", ""), candidate, seq, profile)
 
                 success = send_outreach_email(
                     to=candidate.external_email,
@@ -497,9 +502,7 @@ def process_due_outreach() -> dict:
                     errors += 1
 
             except Exception as e:
-                logger.error(
-                    "Error processing enrollment %s: %s", enrollment.id, e
-                )
+                logger.error("Error processing enrollment %s: %s", enrollment.id, e)
                 errors += 1
 
         session.commit()

@@ -24,7 +24,10 @@ with engine.connect() as conn:
     row = (
         conn.execute(
             text(
-                "SELECT profile_json FROM candidate_profiles WHERE user_id = 10 ORDER BY id DESC LIMIT 1"
+                "SELECT profile_json "
+                "FROM candidate_profiles "
+                "WHERE user_id = 10 "
+                "ORDER BY id DESC LIMIT 1"
             )
         )
         .mappings()
@@ -41,7 +44,9 @@ with engine.connect() as conn:
         p["basics"]["phone"] = new_phone
         conn.execute(
             text(
-                "UPDATE candidate_profiles SET profile_json = CAST(:pj AS jsonb) WHERE user_id = 10"
+                "UPDATE candidate_profiles "
+                "SET profile_json = CAST(:pj AS jsonb) "
+                "WHERE user_id = 10"
             ),
             {"pj": json.dumps(p)},
         )

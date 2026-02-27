@@ -235,7 +235,11 @@ def compute_no_tailored_resumes_trigger(
 def compute_usage_limit_trigger(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if free-plan user has hit their tailored resume limit."""
     try:
-        from app.services.billing import get_or_create_usage, get_plan_tier, get_tier_limit
+        from app.services.billing import (
+            get_or_create_usage,
+            get_plan_tier,
+            get_tier_limit,
+        )
 
         candidate = (
             session.query(Candidate).filter(Candidate.user_id == user.id).first()
@@ -310,11 +314,56 @@ def compute_interview_coaching_trigger(
 
 # Two-letter US state abbreviations
 _US_STATE_ABBREVS = {
-    "al", "ak", "az", "ar", "ca", "co", "ct", "de", "fl", "ga",
-    "hi", "id", "il", "in", "ia", "ks", "ky", "la", "me", "md",
-    "ma", "mi", "mn", "ms", "mo", "mt", "ne", "nv", "nh", "nj",
-    "nm", "ny", "nc", "nd", "oh", "ok", "or", "pa", "ri", "sc",
-    "sd", "tn", "tx", "ut", "vt", "va", "wa", "wv", "wi", "wy",
+    "al",
+    "ak",
+    "az",
+    "ar",
+    "ca",
+    "co",
+    "ct",
+    "de",
+    "fl",
+    "ga",
+    "hi",
+    "id",
+    "il",
+    "in",
+    "ia",
+    "ks",
+    "ky",
+    "la",
+    "me",
+    "md",
+    "ma",
+    "mi",
+    "mn",
+    "ms",
+    "mo",
+    "mt",
+    "ne",
+    "nv",
+    "nh",
+    "nj",
+    "nm",
+    "ny",
+    "nc",
+    "nd",
+    "oh",
+    "ok",
+    "or",
+    "pa",
+    "ri",
+    "sc",
+    "sd",
+    "tn",
+    "tx",
+    "ut",
+    "vt",
+    "va",
+    "wa",
+    "wv",
+    "wi",
+    "wy",
     "dc",
 }
 
@@ -335,17 +384,56 @@ _CITY_ABBREVS = {
 _VAGUE_VALUES = {"any", "anywhere", "all", "nationwide", "n/a", "none", "usa", "us"}
 
 _FULL_STATE_NAMES = {
-    "alabama", "alaska", "arizona", "arkansas", "california",
-    "colorado", "connecticut", "delaware", "florida", "georgia",
-    "hawaii", "idaho", "illinois", "indiana", "iowa", "kansas",
-    "kentucky", "louisiana", "maine", "maryland", "massachusetts",
-    "michigan", "minnesota", "mississippi", "missouri", "montana",
-    "nebraska", "nevada", "new hampshire", "new jersey",
-    "new mexico", "new york", "north carolina", "north dakota",
-    "ohio", "oklahoma", "oregon", "pennsylvania", "rhode island",
-    "south carolina", "south dakota", "tennessee", "texas",
-    "utah", "vermont", "virginia", "washington", "west virginia",
-    "wisconsin", "wyoming",
+    "alabama",
+    "alaska",
+    "arizona",
+    "arkansas",
+    "california",
+    "colorado",
+    "connecticut",
+    "delaware",
+    "florida",
+    "georgia",
+    "hawaii",
+    "idaho",
+    "illinois",
+    "indiana",
+    "iowa",
+    "kansas",
+    "kentucky",
+    "louisiana",
+    "maine",
+    "maryland",
+    "massachusetts",
+    "michigan",
+    "minnesota",
+    "mississippi",
+    "missouri",
+    "montana",
+    "nebraska",
+    "nevada",
+    "new hampshire",
+    "new jersey",
+    "new mexico",
+    "new york",
+    "north carolina",
+    "north dakota",
+    "ohio",
+    "oklahoma",
+    "oregon",
+    "pennsylvania",
+    "rhode island",
+    "south carolina",
+    "south dakota",
+    "tennessee",
+    "texas",
+    "utah",
+    "vermont",
+    "virginia",
+    "washington",
+    "west virginia",
+    "wisconsin",
+    "wyoming",
 }
 
 
@@ -382,9 +470,7 @@ def _check_location_issues(locations: list[str]) -> list[str]:
     return issues
 
 
-def compute_no_matches_trigger(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def compute_no_matches_trigger(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if user has a profile but zero matches above threshold.
 
     Pulls the user's top skills from their profile and suggests broadening
@@ -399,9 +485,7 @@ def compute_no_matches_trigger(
         return None
 
     match_count = (
-        session.query(sa_func.count(Match.id))
-        .filter(Match.user_id == user.id)
-        .scalar()
+        session.query(sa_func.count(Match.id)).filter(Match.user_id == user.id).scalar()
         or 0
     )
     if match_count > 0:
@@ -431,14 +515,21 @@ def compute_no_matches_trigger(
             f"Want me to walk you through which ones give you the best "
             f"shot at an interview?"
         )
-        action_target = "Show me the jobs where my skills match and tell me which ones I should go after."
+        action_target = (
+            "Show me the jobs where my skills match "
+            "and tell me which ones I should go after."
+        )
     else:
         message = (
             "I ran your profile against all active jobs and none scored "
             "above the match threshold. I've identified some roles where "
             "your experience could transfer — let me show you."
         )
-        action_target = "What roles should I target to get interviews based on my skills and experience?"
+        action_target = (
+            "What roles should I target to get "
+            "interviews based on my skills "
+            "and experience?"
+        )
 
     return SieveTrigger(
         id="no_matches_after_profile",
@@ -451,7 +542,8 @@ def compute_no_matches_trigger(
 
 
 def compute_location_format_trigger(
-    user: User, session: Session,
+    user: User,
+    session: Session,
 ) -> SieveTrigger | None:
     """Trigger if location preferences contain values that hurt matching."""
     candidate = session.query(Candidate).filter(Candidate.user_id == user.id).first()
@@ -473,9 +565,7 @@ def compute_location_format_trigger(
         prefs = profile.profile_json.get("preferences", {})
         profile_locs = prefs.get("locations", [])
         if profile_locs:
-            locations.extend(
-                loc for loc in profile_locs if isinstance(loc, str)
-            )
+            locations.extend(loc for loc in profile_locs if isinstance(loc, str))
 
     if not locations:
         return None
@@ -573,8 +663,7 @@ def compute_career_trajectory_trigger(
         action_label="Career Coaching",
         action_type="chat",
         action_target=(
-            "Based on my career trajectory, "
-            "what skills should I focus on and how?"
+            "Based on my career trajectory, what skills should I focus on and how?"
         ),
     )
 
@@ -582,9 +671,7 @@ def compute_career_trajectory_trigger(
 # ── Employer trigger functions ──────────────────────────────────────────────
 
 
-def _employer_no_active_jobs(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_no_active_jobs(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if employer has 0 active jobs."""
     from app.models.employer import EmployerJob, EmployerProfile
 
@@ -611,7 +698,10 @@ def _employer_no_active_jobs(
 
     return SieveTrigger(
         id="employer_no_active_jobs",
-        message="You don't have any active job postings yet. Let's get your first role live!",
+        message=(
+            "You don't have any active job postings "
+            "yet. Let's get your first role live!"
+        ),
         priority=1,
         action_label="Create Job",
         action_type="navigate",
@@ -619,9 +709,7 @@ def _employer_no_active_jobs(
     )
 
 
-def _employer_low_application(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_low_application(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if an active job has 0 applications after 5+ days."""
     from app.models.employer import EmployerJob, EmployerProfile
 
@@ -652,7 +740,7 @@ def _employer_low_application(
     return SieveTrigger(
         id="employer_low_application",
         message=(
-            f"Your \"{stale_job.title}\" posting has been active for "
+            f'Your "{stale_job.title}" posting has been active for '
             f"{(datetime.now(UTC) - stale_job.created_at).days} days with "
             f"no applications. Let's figure out why."
         ),
@@ -663,9 +751,7 @@ def _employer_low_application(
     )
 
 
-def _employer_stale_intros(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_stale_intros(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if 3+ introduction requests are pending for 5+ days."""
     from app.models.employer import EmployerProfile
     from app.models.employer_introduction import EmployerIntroductionRequest
@@ -705,9 +791,7 @@ def _employer_stale_intros(
     )
 
 
-def _employer_no_boards(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_no_boards(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if employer has active jobs but 0 board connections."""
     from app.models.distribution import BoardConnection
     from app.models.employer import EmployerJob, EmployerProfile
@@ -758,9 +842,7 @@ def _employer_no_boards(
     )
 
 
-def _employer_salary_missing(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_salary_missing(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if an active job has no salary range set."""
     from app.models.employer import EmployerJob, EmployerProfile
 
@@ -789,7 +871,7 @@ def _employer_salary_missing(
     return SieveTrigger(
         id="employer_salary_missing",
         message=(
-            f"Your \"{job.title}\" posting has no salary range. "
+            f'Your "{job.title}" posting has no salary range. '
             f"Jobs with salary info get 30-50% more applications."
         ),
         priority=3,
@@ -799,9 +881,7 @@ def _employer_salary_missing(
     )
 
 
-def _employer_usage_limit(
-    user: User, session: Session
-) -> SieveTrigger | None:
+def _employer_usage_limit(user: User, session: Session) -> SieveTrigger | None:
     """Trigger if employer is at 80%+ of their intro request limit."""
     from app.models.employer import EmployerProfile
     from app.services.billing import EMPLOYER_PLAN_LIMITS, get_employer_tier

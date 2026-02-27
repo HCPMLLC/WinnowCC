@@ -1,7 +1,6 @@
 """Outreach sequence router — automated multi-step email campaigns for recruiters."""
 
 import logging
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
@@ -151,10 +150,12 @@ def unenroll_from_sequence(
     return result
 
 
-@router.get("/{sequence_id}/enrollments", response_model=list[OutreachEnrollmentResponse])
+@router.get(
+    "/{sequence_id}/enrollments", response_model=list[OutreachEnrollmentResponse]
+)
 def get_enrollments(
     sequence_id: int,
-    status: Optional[str] = Query(None),
+    status: str | None = Query(None),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     db: Session = Depends(get_session),
 ):

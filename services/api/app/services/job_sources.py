@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import re
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 import httpx
 
@@ -138,15 +137,17 @@ class GreenhouseSource(JobSource):
                         company=company,
                         location=location,
                         remote_flag="remote" in location.lower(),
-                    salary_min=None,
-                    salary_max=None,
-                    currency=None,
-                    description_text=item.get("content") or "",
-                    posted_at=_parse_dt(item.get("updated_at") or item.get("created_at")),
-                    application_deadline=None,
-                    hiring_manager_name=None,
-                    hiring_manager_email=None,
-                    hiring_manager_phone=None,
+                        salary_min=None,
+                        salary_max=None,
+                        currency=None,
+                        description_text=item.get("content") or "",
+                        posted_at=_parse_dt(
+                            item.get("updated_at") or item.get("created_at")
+                        ),
+                        application_deadline=None,
+                        hiring_manager_name=None,
+                        hiring_manager_email=None,
+                        hiring_manager_phone=None,
                     )
                 )
         return jobs
@@ -175,15 +176,17 @@ class LeverSource(JobSource):
                         company=company,
                         location=location,
                         remote_flag="remote" in location.lower(),
-                    salary_min=None,
-                    salary_max=None,
-                    currency=None,
-                    description_text=item.get("descriptionPlain") or "",
-                    posted_at=_parse_dt(item.get("createdAt") or item.get("created_at")),
-                    application_deadline=None,
-                    hiring_manager_name=None,
-                    hiring_manager_email=None,
-                    hiring_manager_phone=None,
+                        salary_min=None,
+                        salary_max=None,
+                        currency=None,
+                        description_text=item.get("descriptionPlain") or "",
+                        posted_at=_parse_dt(
+                            item.get("createdAt") or item.get("created_at")
+                        ),
+                        application_deadline=None,
+                        hiring_manager_name=None,
+                        hiring_manager_email=None,
+                        hiring_manager_phone=None,
                     )
                 )
         return jobs
@@ -231,13 +234,13 @@ def _split_list(value: str) -> list[str]:
 
 def _parse_dt(value: object) -> datetime | None:
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, (int, float)):
         timestamp = float(value)
         if timestamp > 1_000_000_000_000:
             timestamp = timestamp / 1000.0
         try:
-            return datetime.fromtimestamp(timestamp, tz=timezone.utc)
+            return datetime.fromtimestamp(timestamp, tz=UTC)
         except (OverflowError, OSError, ValueError):
             return None
     if isinstance(value, str) and value.strip():
@@ -258,8 +261,16 @@ def _is_remote_job(title: str, location: str) -> bool:
     """Detect if a job is remote based on title and location keywords."""
     text = f"{title} {location}".lower()
     remote_keywords = [
-        "remote", "virtual", "work from home", "wfh", "telecommute",
-        "telework", "anywhere", "distributed", "home-based", "home based"
+        "remote",
+        "virtual",
+        "work from home",
+        "wfh",
+        "telecommute",
+        "telework",
+        "anywhere",
+        "distributed",
+        "home-based",
+        "home based",
     ]
     return any(kw in text for kw in remote_keywords)
 
@@ -293,7 +304,7 @@ def _parse_salary_text(text: str) -> tuple[int | None, int | None, str | None]:
 
     # Extract salary amounts with optional 'k' suffix
     # Pattern matches: $100k, $100,000, 100k, 100000, etc.
-    amount_pattern = r'[\$€£]?\s*(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*([kK])?'
+    amount_pattern = r"[\$€£]?\s*(\d{1,3}(?:,\d{3})*|\d+)(?:\.\d+)?\s*([kK])?"
 
     # Find all potential salary amounts
     amounts = []
@@ -308,7 +319,11 @@ def _parse_salary_text(text: str) -> tuple[int | None, int | None, str | None]:
             # If amount is very small (< 500), might be hourly rate
             if amount < 500:
                 # Check if it's an hourly rate
-                if "hour" in text_lower or "/hr" in text_lower or "per hr" in text_lower:
+                if (
+                    "hour" in text_lower
+                    or "/hr" in text_lower
+                    or "per hr" in text_lower
+                ):
                     # Convert to annual (2080 work hours/year)
                     amount = amount * 2080
             # Filter out unreasonably small amounts (likely not salaries)
@@ -393,7 +408,8 @@ class AdzunaSource(JobSource):
                     source_job_id=str(item.get("id")),
                     url=item.get("redirect_url") or "",
                     title=title,
-                    company=(item.get("company") or {}).get("display_name") or "Unknown",
+                    company=(item.get("company") or {}).get("display_name")
+                    or "Unknown",
                     location=location,
                     remote_flag=_is_remote_job(title, location),
                     salary_min=item.get("salary_min"),
@@ -432,7 +448,8 @@ class JoobleSource(JobSource):
             # Detect remote jobs from title or location
             remote_flag = _is_remote_job(title, location)
 
-            # Parse salary from text (e.g., "$50,000 - $70,000", "Between $119-$239 an hour")
+            # Parse salary from text
+            # (e.g., "$50,000 - $70,000", "Between $119-$239 an hour")
             salary_min, salary_max, currency = _parse_salary_text(salary_text)
 
             # Also try to extract salary from snippet if not in salary field
@@ -472,9 +489,15 @@ class USAJobsSource(JobSource):
         if not api_key or not email:
             return []
         headers = {"Authorization-Key": api_key, "User-Agent": email}
-        params = {"Keyword": query.get("search") or "", "LocationName": query.get("location") or ""}
+        params = {
+            "Keyword": query.get("search") or "",
+            "LocationName": query.get("location") or "",
+        }
         response = httpx.get(
-            "https://data.usajobs.gov/api/search", headers=headers, params=params, timeout=30
+            "https://data.usajobs.gov/api/search",
+            headers=headers,
+            params=params,
+            timeout=30,
         )
         if response.status_code != 200:
             return []
@@ -483,7 +506,9 @@ class USAJobsSource(JobSource):
         for item in data.get("SearchResult", {}).get("SearchResultItems", []):
             matched = item.get("MatchedObjectDescriptor", {})
             title = matched.get("PositionTitle") or "Untitled"
-            location = (matched.get("PositionLocation") or [{}])[0].get("LocationName", "Unknown")
+            location = (matched.get("PositionLocation") or [{}])[0].get(
+                "LocationName", "Unknown"
+            )
 
             # Parse salary from USAJobs remuneration fields
             remuneration = (matched.get("PositionRemuneration") or [{}])[0]
@@ -512,9 +537,9 @@ class USAJobsSource(JobSource):
                     salary_min=salary_min,
                     salary_max=salary_max,
                     currency="USD",
-                    description_text=matched.get("UserArea", {}).get("Details", {}).get(
-                        "JobSummary", ""
-                    ),
+                    description_text=matched.get("UserArea", {})
+                    .get("Details", {})
+                    .get("JobSummary", ""),
                     posted_at=_parse_dt(matched.get("PublicationStartDate")),
                     application_deadline=_parse_dt(matched.get("ApplicationCloseDate")),
                     hiring_manager_name=None,
@@ -526,7 +551,11 @@ class USAJobsSource(JobSource):
 
 
 class JSearchSource(JobSource):
-    """JSearch API via RapidAPI - aggregates jobs from LinkedIn, Indeed, Glassdoor, etc."""
+    """JSearch API via RapidAPI.
+
+    Aggregates jobs from LinkedIn, Indeed, Glassdoor, etc.
+    """
+
     name = "jsearch"
     base_url = "https://jsearch.p.rapidapi.com/search"
 
@@ -541,7 +570,8 @@ class JSearchSource(JobSource):
         for section_name, items in highlights.items():
             if not items:
                 continue
-            # Convert section name to title case (e.g., "Qualifications" -> "Qualifications")
+            # Convert section name to title case
+            # (e.g., "Qualifications" -> "Qualifications")
             title = section_name.replace("_", " ").title()
             html_parts.append(f"<h3>{title}</h3>")
             html_parts.append("<ul>")
@@ -603,7 +633,9 @@ class JSearchSource(JobSource):
             highlights = item.get("job_highlights")
             if highlights and isinstance(highlights, dict):
                 # Use structured highlights to build formatted HTML
-                description_text = self._build_html_from_highlights(highlights, raw_description)
+                description_text = self._build_html_from_highlights(
+                    highlights, raw_description
+                )
             else:
                 description_text = raw_description
 

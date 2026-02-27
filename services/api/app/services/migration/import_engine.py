@@ -491,8 +491,7 @@ def _read_xlsx(file_path: str) -> list[dict]:
     rows = ws.iter_rows(values_only=True)
     header_row = next(rows, ())
     headers = [
-        str(h) if h is not None else f"col_{i}"
-        for i, h in enumerate(header_row)
+        str(h) if h is not None else f"col_{i}" for i, h in enumerate(header_row)
     ]
     result = []
     for row in rows:

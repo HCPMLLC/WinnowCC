@@ -69,5 +69,9 @@ class User(Base):
     oauth_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Back-references for ORM relationships declared on other models
-    employer_profile = relationship("EmployerProfile", back_populates="user", uselist=False)
-    recruiter_profile = relationship("RecruiterProfile", back_populates="user", uselist=False)
+    employer_profile = relationship(
+        "EmployerProfile", back_populates="user", uselist=False
+    )
+    recruiter_profile = relationship(
+        "RecruiterProfile", back_populates="user", uselist=False
+    )

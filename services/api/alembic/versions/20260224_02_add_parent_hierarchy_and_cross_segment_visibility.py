@@ -1,4 +1,5 @@
-"""Add parent hierarchy, contract vehicle, cross-segment job linking, and candidate submissions.
+"""Add parent hierarchy, contract vehicle, cross-segment
+job linking, and candidate submissions.
 
 Revision ID: 20260224_02
 Revises: 955f2dae948a

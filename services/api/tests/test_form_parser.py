@@ -7,11 +7,8 @@ import pytest
 from docx import Document
 
 from app.services.form_parser import (
-    ACKNOWLEDGEMENT,
     OTHER,
-    REFERENCE_FORM,
     SKILLS_MATRIX,
-    _classify_table,
     _is_never_fill,
     _map_field_to_profile,
     parse_form_document,

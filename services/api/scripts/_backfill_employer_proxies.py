@@ -1,13 +1,16 @@
 """Backfill proxy Job rows for all active employer jobs, then re-match Zachary."""
+
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from sqlalchemy import text
+
 from app.db.session import get_session_factory
 from app.services.job_pipeline import sync_employer_job_to_jobs
 
@@ -41,10 +44,15 @@ try:
     for i, m in enumerate(matches[:15], 1):
         job = session.execute(
             text("SELECT title, company, source FROM jobs WHERE id = :jid"),
-            {"jid": m.job_id}
+            {"jid": m.job_id},
         ).fetchone()
         if job:
             marker = " ** EMPLOYER **" if job[2] == "employer" else ""
-            print(f"  {i}. score={m.match_score} ips={m.interview_probability} - {job[0]} @ {job[1]} (source={job[2]}){marker}")
+            print(
+                f"  {i}. score={m.match_score}"
+                f" ips={m.interview_probability}"
+                f" - {job[0]} @ {job[1]}"
+                f" (source={job[2]}){marker}"
+            )
 finally:
     session.close()

@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import math
 import re
-from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import String, cast, delete, func, select
 from sqlalchemy.orm import Session
@@ -41,7 +41,7 @@ def compute_cosine_similarity(
     if len(vec_a) != len(vec_b) or len(vec_a) == 0:
         return None
 
-    dot = sum(a * b for a, b in zip(vec_a, vec_b))
+    dot = sum(a * b for a, b in zip(vec_a, vec_b, strict=False))
     mag_a = math.sqrt(sum(a * a for a in vec_a))
     mag_b = math.sqrt(sum(b * b for b in vec_b))
     if mag_a == 0 or mag_b == 0:
@@ -50,9 +50,7 @@ def compute_cosine_similarity(
     return max(0.0, min(1.0, similarity))
 
 
-def compute_blended_match_score(
-    deterministic: int, semantic: float | None
-) -> int:
+def compute_blended_match_score(deterministic: int, semantic: float | None) -> int:
     """Blend deterministic keyword score with semantic similarity.
 
     65% deterministic + 35% semantic. Falls back to deterministic-only
@@ -65,7 +63,9 @@ def compute_blended_match_score(
     return max(0, min(100, blended))
 
 
-def compute_matches(session: Session, user_id: int, profile_version: int) -> list[Match]:
+def compute_matches(
+    session: Session, user_id: int, profile_version: int
+) -> list[Match]:
     profile = _get_profile(session, user_id, profile_version)
     if profile is None:
         return []
@@ -75,7 +75,7 @@ def compute_matches(session: Session, user_id: int, profile_version: int) -> lis
 
     profile_embedding = _get_embedding_list(profile.embedding)
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=7)
     jobs = (
         session.execute(
             select(Job).where(Job.posted_at.is_not(None), Job.posted_at >= cutoff)
@@ -154,9 +154,13 @@ def _get_profile(
     return session.execute(stmt).scalars().first()
 
 
-def _score_job(job: Job, profile_json: dict, candidate: Candidate | None) -> MatchResult:
+def _score_job(
+    job: Job, profile_json: dict, candidate: Candidate | None
+) -> MatchResult:
     skills = [s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)]
-    preferences = profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
+    preferences = (
+        profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
+    )
 
     title = job.title.lower()
     title_tokens = _tokenize(title)
@@ -170,21 +174,23 @@ def _score_job(job: Job, profile_json: dict, candidate: Candidate | None) -> Mat
 
     job_tokens = _tokenize(job.description_text)
     matched_skills = [s for s in skills if s in job_tokens]
-    missing_skills = [token for token in _top_keywords(job_tokens) if token not in skills][:7]
+    missing_skills = [
+        token for token in _top_keywords(job_tokens) if token not in skills
+    ][:7]
     skill_score = min(40, int(len(matched_skills) * 4))
 
     location_score = _location_score(job, preferences)
     salary_score = _salary_score(job, preferences)
     years_score = _years_score(candidate, job)
 
-    match_score = min(100, skill_score + title_score + location_score + salary_score + years_score)
+    match_score = min(
+        100, skill_score + title_score + location_score + salary_score + years_score
+    )
 
     evidence_strength = _evidence_strength(profile_json, matched_skills)
     gaps_severity = min(20, len(missing_skills) * 2)
     readiness = int(
-        (match_score * 0.6)
-        + (evidence_strength * 0.2)
-        + ((20 - gaps_severity) * 0.2)
+        (match_score * 0.6) + (evidence_strength * 0.2) + ((20 - gaps_severity) * 0.2)
     )
     readiness = max(0, min(100, readiness))
 
@@ -203,7 +209,9 @@ def _score_job(job: Job, profile_json: dict, candidate: Candidate | None) -> Mat
     }
 
     # Compute new interview probability scores
-    resume_score = _compute_resume_score(job, profile_json, candidate, matched_skills, missing_skills)
+    resume_score = _compute_resume_score(
+        job, profile_json, candidate, matched_skills, missing_skills
+    )
     application_logistics_score = _compute_application_logistics_score(job)
     cover_letter_score = 50  # Default until cover letter is generated
     interview_probability = _compute_interview_probability(
@@ -247,16 +255,11 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
         + "\n"
         + (getattr(posted_job, "requirements", None) or "")
     )
-    proxy.remote_flag = (
-        (posted_job.remote_policy or "").lower() == "remote"
-    )
+    proxy.remote_flag = (posted_job.remote_policy or "").lower() == "remote"
     proxy.location = posted_job.location or ""
     proxy.salary_min = posted_job.salary_min
     proxy.salary_max = posted_job.salary_max
-    proxy.posted_at = (
-        posted_job.posted_at
-        or getattr(posted_job, "created_at", None)
-    )
+    proxy.posted_at = posted_job.posted_at or getattr(posted_job, "created_at", None)
     proxy.source = "recruiter"
 
     # Enrich empty preferences from resume data so sourced candidates
@@ -321,7 +324,11 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
 
 
 def _tokenize(text: str) -> set[str]:
-    return {token for token in re.findall(r"[a-zA-Z0-9+.#]+", text.lower()) if len(token) >= 3}
+    return {
+        token
+        for token in re.findall(r"[a-zA-Z0-9+.#]+", text.lower())
+        if len(token) >= 3
+    }
 
 
 def _overlap(a: set[str], b: set[str]) -> float:
@@ -341,19 +348,68 @@ def _extract_skills_from_text(text: str) -> list[str]:
     tokens = _tokenize(text)
     # Filter to tokens that look like meaningful skills (3+ chars, not stop words)
     _STOP = {
-        "the", "and", "for", "are", "you", "our", "with", "this", "that", "will",
-        "have", "from", "your", "can", "all", "has", "not", "but", "they", "been",
-        "their", "which", "about", "would", "make", "like", "just", "over", "such",
-        "also", "into", "year", "some", "than", "them", "other", "new", "more",
-        "experience", "work", "team", "role", "ability", "strong", "must", "required",
-        "preferred", "years", "including", "working", "knowledge", "skills", "using",
+        "the",
+        "and",
+        "for",
+        "are",
+        "you",
+        "our",
+        "with",
+        "this",
+        "that",
+        "will",
+        "have",
+        "from",
+        "your",
+        "can",
+        "all",
+        "has",
+        "not",
+        "but",
+        "they",
+        "been",
+        "their",
+        "which",
+        "about",
+        "would",
+        "make",
+        "like",
+        "just",
+        "over",
+        "such",
+        "also",
+        "into",
+        "year",
+        "some",
+        "than",
+        "them",
+        "other",
+        "new",
+        "more",
+        "experience",
+        "work",
+        "team",
+        "role",
+        "ability",
+        "strong",
+        "must",
+        "required",
+        "preferred",
+        "years",
+        "including",
+        "working",
+        "knowledge",
+        "skills",
+        "using",
     }
     return sorted(t for t in tokens if t not in _STOP)
 
 
 def _location_score(job: Job, preferences: dict) -> int:
     remote_ok = preferences.get("remote_ok")
-    locations = [loc.lower() for loc in preferences.get("locations", []) if isinstance(loc, str)]
+    locations = [
+        loc.lower() for loc in preferences.get("locations", []) if isinstance(loc, str)
+    ]
     if job.remote_flag and remote_ok:
         return 15
     if locations:
@@ -392,7 +448,9 @@ def _years_fit_bonus(candidate: Candidate | None) -> int:
 
 
 def _evidence_strength(profile_json: dict, matched_skills: list[str]) -> int:
-    experience = profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    experience = (
+        profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    )
     bullets = []
     for item in experience:
         bullets.extend(item.get("bullets") or [])
@@ -404,7 +462,9 @@ def _evidence_strength(profile_json: dict, matched_skills: list[str]) -> int:
 
 
 def _evidence_refs(profile_json: dict, matched_skills: list[str]) -> list[str]:
-    experience = profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    experience = (
+        profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    )
     refs = []
     for item in experience:
         for bullet in item.get("bullets") or []:
@@ -432,7 +492,11 @@ PLATFORM_SCORES = {
 
 
 def _compute_resume_score(
-    job: Job, profile_json: dict, candidate: Candidate | None, matched_skills: list[str], missing_skills: list[str]
+    job: Job,
+    profile_json: dict,
+    candidate: Candidate | None,
+    matched_skills: list[str],
+    missing_skills: list[str],
 ) -> int:
     """
     Compute Resume Score (R_s) using the formula:
@@ -444,11 +508,15 @@ def _compute_resume_score(
 
     # Skill component (0-100): ratio of matched skills to job requirements
     job_skill_count = max(len([t for t in job_tokens if len(t) >= 3]), 1)
-    skill_match_ratio = len(matched_skills) / min(job_skill_count, len(skills) if skills else 1)
+    skill_match_ratio = len(matched_skills) / min(
+        job_skill_count, len(skills) if skills else 1
+    )
     skill_component = min(100, int(skill_match_ratio * 100))
 
     # Title component (0-100): alignment with target titles
-    preferences = profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
+    preferences = (
+        profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
+    )
     target_titles = [t.lower() for t in preferences.get("target_titles", [])]
     title_tokens = _tokenize(job.title.lower())
     title_component = 50  # default
@@ -486,7 +554,7 @@ def _compute_application_logistics_score(job: Job) -> int:
     # Timing score
     timing_score = 100
     if job.posted_at:
-        days_old = (datetime.now(timezone.utc) - job.posted_at).days
+        days_old = (datetime.now(UTC) - job.posted_at).days
         if days_old <= 10:
             timing_score = 100
         elif days_old <= 30:
@@ -615,9 +683,7 @@ def find_top_candidates_for_recruiter_job(
         session.execute(
             select(CandidateProfile).where(
                 CandidateProfile.user_id.is_(None),
-                cast(
-                    CandidateProfile.profile_json["sourced_by_user_id"], String
-                )
+                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
                 == str(recruiter_user_id),
             )
         )
@@ -629,9 +695,7 @@ def find_top_candidates_for_recruiter_job(
 
     # Get job embedding for semantic blending (same approach as candidate
     # matching in compute_matches).
-    job_embedding = _get_embedding_list(
-        getattr(recruiter_job, "embedding", None)
-    )
+    job_embedding = _get_embedding_list(getattr(recruiter_job, "embedding", None))
 
     scored: list[dict] = []
     for cp in all_profiles:
@@ -640,12 +704,8 @@ def find_top_candidates_for_recruiter_job(
         if result.match_score > 0:
             # Blend deterministic score with semantic similarity
             profile_embedding = _get_embedding_list(cp.embedding)
-            semantic_sim = compute_cosine_similarity(
-                profile_embedding, job_embedding
-            )
-            blended = compute_blended_match_score(
-                result.match_score, semantic_sim
-            )
+            semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
+            blended = compute_blended_match_score(result.match_score, semantic_sim)
             scored.append(
                 {
                     "id": cp.id,

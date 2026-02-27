@@ -16,8 +16,8 @@ from app.schemas.billing import (
     BillingStatusResponse,
     CheckoutSessionResponse,
     FeatureAccess,
-    PlanTierDetail,
     PlansResponse,
+    PlanTierDetail,
     PortalSessionResponse,
     UnifiedCheckoutRequest,
     UsageSummary,
@@ -77,7 +77,9 @@ def billing_status(
     from app.models.daily_usage_counter import DailyUsageCounter
 
     sieve_today = DailyUsageCounter.get_today_count(session, user.id, "sieve_messages")
-    search_today = DailyUsageCounter.get_today_count(session, user.id, "semantic_searches")
+    search_today = DailyUsageCounter.get_today_count(
+        session, user.id, "semantic_searches"
+    )
     session.commit()
 
     # Tier limits for response
@@ -90,7 +92,9 @@ def billing_status(
         billing_cycle=candidate.plan_billing_cycle if candidate else None,
         subscription_status=candidate.subscription_status if candidate else None,
         match_refreshes_used=usage.match_refreshes,
-        match_refreshes_limit=int(match_refresh_limit) if int(match_refresh_limit) < 9999 else None,
+        match_refreshes_limit=int(match_refresh_limit)
+        if int(match_refresh_limit) < 9999
+        else None,
         tailor_requests_used=usage.tailor_requests,
         tailor_requests_limit=int(tailor_limit) if int(tailor_limit) < 9999 else None,
         usage=UsageSummary(
@@ -276,7 +280,8 @@ def admin_override(
 
     candidate.plan_tier = body.plan_tier
     candidate.plan_billing_cycle = body.billing_cycle
-    # Clear subscription status for admin overrides so get_plan_tier() uses the None path
+    # Clear subscription status for admin overrides
+    # so get_plan_tier() uses the None path
     candidate.subscription_status = None
     session.commit()
 

@@ -32,9 +32,7 @@ class IntroductionRequest(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="pending"
     )
-    candidate_response_message: Mapped[str | None] = mapped_column(
-        Text, nullable=True
-    )
+    candidate_response_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     created_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

@@ -13,7 +13,9 @@ with engine.connect() as conn:
     row = (
         conn.execute(
             text(
-                "SELECT id, user_id, profile_json FROM candidate_profiles ORDER BY id DESC LIMIT 1"
+                "SELECT id, user_id, profile_json "
+                "FROM candidate_profiles "
+                "ORDER BY id DESC LIMIT 1"
             )
         )
         .mappings()
@@ -30,5 +32,7 @@ with engine.connect() as conn:
         exps = p.get("experience", [])
         for i, e in enumerate(exps):
             print(
-                f"Exp {i}: {e.get('company')} | start={e.get('start_date')} | end={e.get('end_date')}"
+                f"Exp {i}: {e.get('company')}"
+                f" | start={e.get('start_date')}"
+                f" | end={e.get('end_date')}"
             )

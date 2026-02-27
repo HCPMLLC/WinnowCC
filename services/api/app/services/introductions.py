@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select, update
@@ -51,12 +51,17 @@ def create_introduction_request(
             detail="This candidate is not currently accepting introduction requests.",
         )
 
-    # Reject intro requests for recruiter-sourced candidates (LinkedIn, manual, uploaded)
+    # Reject intro requests for recruiter-sourced candidates
+    # (LinkedIn, manual, uploaded)
     pj = cp.profile_json or {}
     if pj.get("sourced_by_user_id") or pj.get("source") == "linkedin_extension":
         raise HTTPException(
             status_code=400,
-            detail="Introduction requests are only for candidates who registered on the platform.",
+            detail=(
+                "Introduction requests are only for "
+                "candidates who registered on "
+                "the platform."
+            ),
         )
 
     # 2. Check for existing pending request
@@ -70,7 +75,9 @@ def create_introduction_request(
     if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail="You already have a pending introduction request for this candidate.",
+            detail=(
+                "You already have a pending introduction request for this candidate."
+            ),
         )
 
     # 3. Check monthly limit
@@ -93,7 +100,7 @@ def create_introduction_request(
             raise HTTPException(status_code=404, detail="Job not found.")
 
     # 5. Create request
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     intro = IntroductionRequest(
         recruiter_profile_id=recruiter_profile.id,
         candidate_profile_id=candidate_profile_id,
@@ -111,7 +118,9 @@ def create_introduction_request(
 
     # 7. Send notification email (non-blocking, best-effort)
     try:
-        _send_intro_request_notification(session, cp, recruiter_profile, recruiter_job_id)
+        _send_intro_request_notification(
+            session, cp, recruiter_profile, recruiter_job_id
+        )
     except Exception:
         logger.exception("Failed to send introduction request email")
 
@@ -143,7 +152,7 @@ def respond_to_introduction(
             detail=f"Cannot respond to a request with status '{intro.status}'.",
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if action == "accept":
         intro.status = "accepted"
@@ -169,7 +178,9 @@ def respond_to_introduction(
         intro.candidate_response_message = response_message
         session.flush()
     else:
-        raise HTTPException(status_code=400, detail="Action must be 'accept' or 'decline'.")
+        raise HTTPException(
+            status_code=400, detail="Action must be 'accept' or 'decline'."
+        )
 
     return intro
 
@@ -181,7 +192,10 @@ def get_recruiter_introductions(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    """List introduction requests sent by this recruiter, enriched with candidate info."""
+    """List introduction requests sent by this recruiter.
+
+    Enriched with candidate info.
+    """
     q = select(IntroductionRequest).where(
         IntroductionRequest.recruiter_profile_id == recruiter_profile_id,
     )
@@ -199,7 +213,10 @@ def get_candidate_introductions(
     status_filter: str | None = None,
     limit: int = 50,
 ) -> list[dict]:
-    """List introduction requests received by this candidate, enriched with recruiter info."""
+    """List introduction requests received by this candidate.
+
+    Enriched with recruiter info.
+    """
     if isinstance(candidate_profile_ids, int):
         candidate_profile_ids = [candidate_profile_ids]
     q = select(IntroductionRequest).where(
@@ -233,7 +250,7 @@ def get_candidate_pending_count(
 
 def expire_stale_requests(session: Session) -> int:
     """Expire all pending requests past their expiration date. Returns count updated."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     result = session.execute(
         update(IntroductionRequest)
         .where(
@@ -256,7 +273,6 @@ def expire_stale_requests(session: Session) -> int:
 
 def _enrich_for_recruiter(session: Session, intro: IntroductionRequest) -> dict:
     """Build response dict for recruiter view (email only revealed on acceptance)."""
-    from sqlalchemy import func as sqlfunc
 
     data = {
         "id": intro.id,
@@ -273,7 +289,9 @@ def _enrich_for_recruiter(session: Session, intro: IntroductionRequest) -> dict:
 
     # Load candidate profile — resolve to latest version
     cp = session.execute(
-        select(CandidateProfile).where(CandidateProfile.id == intro.candidate_profile_id)
+        select(CandidateProfile).where(
+            CandidateProfile.id == intro.candidate_profile_id
+        )
     ).scalar_one_or_none()
     if cp and cp.user_id:
         latest = session.execute(
@@ -340,7 +358,9 @@ def _enrich_for_candidate(session: Session, intro: IntroductionRequest) -> dict:
 
     # Recruiter company info
     rp = session.execute(
-        select(RecruiterProfile).where(RecruiterProfile.id == intro.recruiter_profile_id)
+        select(RecruiterProfile).where(
+            RecruiterProfile.id == intro.recruiter_profile_id
+        )
     ).scalar_one_or_none()
     if rp:
         data["recruiter_company"] = rp.company_name
@@ -398,7 +418,9 @@ def _send_intro_accepted_notification(
 
     # Get recruiter's email
     rp = session.execute(
-        select(RecruiterProfile).where(RecruiterProfile.id == intro.recruiter_profile_id)
+        select(RecruiterProfile).where(
+            RecruiterProfile.id == intro.recruiter_profile_id
+        )
     ).scalar_one_or_none()
     if not rp:
         return
@@ -410,7 +432,9 @@ def _send_intro_accepted_notification(
 
     # Get candidate info
     cp = session.execute(
-        select(CandidateProfile).where(CandidateProfile.id == intro.candidate_profile_id)
+        select(CandidateProfile).where(
+            CandidateProfile.id == intro.candidate_profile_id
+        )
     ).scalar_one_or_none()
     if not cp:
         return

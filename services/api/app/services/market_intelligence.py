@@ -46,7 +46,9 @@ def get_salary_benchmarks(
             from app.services.career_intelligence import salary_intelligence
 
             fallback = salary_intelligence(
-                role_title=title, location=location, db=session,
+                role_title=title,
+                location=location,
+                db=session,
             )
             # If the fallback returned usable data (has p50), convert to our format
             if fallback.get("p50"):

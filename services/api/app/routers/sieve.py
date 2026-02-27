@@ -9,6 +9,9 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.candidate import Candidate
+from app.models.employer import EmployerProfile
+from app.models.recruiter import RecruiterProfile
 from app.models.sieve_conversation import SieveConversation
 from app.models.user import User
 from app.schemas.sieve import (
@@ -17,9 +20,6 @@ from app.schemas.sieve import (
     SieveTriggersRequest,
     SieveTriggersResponse,
 )
-from app.models.candidate import Candidate
-from app.models.employer import EmployerProfile
-from app.models.recruiter import RecruiterProfile
 from app.services.auth import get_current_user
 from app.services.billing import (
     check_daily_limit,
@@ -59,19 +59,31 @@ def sieve_triggers(
     is_employer = role == "employer"
     is_recruiter = role == "recruiter"
     if not is_employer and not is_recruiter and role == "candidate":
-        is_employer = session.execute(
-            select(EmployerProfile.id).where(EmployerProfile.user_id == user.id).limit(1)
-        ).scalar_one_or_none() is not None
+        is_employer = (
+            session.execute(
+                select(EmployerProfile.id)
+                .where(EmployerProfile.user_id == user.id)
+                .limit(1)
+            ).scalar_one_or_none()
+            is not None
+        )
         if not is_employer:
-            is_recruiter = session.execute(
-                select(RecruiterProfile.id).where(RecruiterProfile.user_id == user.id).limit(1)
-            ).scalar_one_or_none() is not None
+            is_recruiter = (
+                session.execute(
+                    select(RecruiterProfile.id)
+                    .where(RecruiterProfile.user_id == user.id)
+                    .limit(1)
+                ).scalar_one_or_none()
+                is not None
+            )
 
     if is_recruiter:
         # Recruiters use the FAB for chat but have no proactive triggers yet
         triggers = []
     elif is_employer:
-        triggers = compute_employer_triggers(user, session, dismissed_ids=body.dismissed_ids)
+        triggers = compute_employer_triggers(
+            user, session, dismissed_ids=body.dismissed_ids
+        )
     else:
         triggers = compute_all_triggers(user, session, dismissed_ids=body.dismissed_ids)
     return SieveTriggersResponse(triggers=triggers)
@@ -101,7 +113,14 @@ def sieve_chat(
             select(Candidate).where(Candidate.user_id == user.id)
         ).scalar_one_or_none()
         tier = get_plan_tier(candidate)
-    check_daily_limit(session, user.id, tier, "sieve_messages", "sieve_messages_per_day", request=request)
+    check_daily_limit(
+        session,
+        user.id,
+        tier,
+        "sieve_messages",
+        "sieve_messages_per_day",
+        request=request,
+    )
 
     platform = request.headers.get("X-Client-Platform", "web")
 

@@ -3,11 +3,11 @@ import re
 from logging.config import fileConfig
 from pathlib import Path
 
-from alembic import context
 from sqlalchemy import create_engine, inspect, pool, text
 
-from app.db.base import Base
 import app.models  # noqa: F401
+from alembic import context
+from app.db.base import Base
 
 config = context.config
 if config.config_file_name is not None:
@@ -16,6 +16,7 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 # Patterns that are destructive to production data
@@ -84,9 +85,7 @@ def _guard_destructive_migrations(connection) -> None:
         source = source_path.read_text()
         for pattern in _DESTRUCTIVE_PATTERNS:
             if pattern.search(source):
-                violations.append(
-                    f"  {rev.revision}: matched {pattern.pattern!r}"
-                )
+                violations.append(f"  {rev.revision}: matched {pattern.pattern!r}")
 
     if violations:
         raise RuntimeError(

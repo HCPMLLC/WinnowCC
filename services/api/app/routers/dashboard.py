@@ -200,9 +200,7 @@ def get_my_submissions(
         recruiter_company = None
         if detail_level in ("standard", "full"):
             recruiter_company = (
-                sub.recruiter_profile.company_name
-                if sub.recruiter_profile
-                else None
+                sub.recruiter_profile.company_name if sub.recruiter_profile else None
             )
 
         items.append(

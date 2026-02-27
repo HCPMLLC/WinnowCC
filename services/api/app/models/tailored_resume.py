@@ -11,7 +11,9 @@ class TailoredResume(Base):
     __tablename__ = "tailored_resumes"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
     job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=False)
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
     docx_url: Mapped[str] = mapped_column(String(1000), nullable=False)

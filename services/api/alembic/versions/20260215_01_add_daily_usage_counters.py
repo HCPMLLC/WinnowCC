@@ -6,6 +6,7 @@ Create Date: 2026-02-15
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20260215_01"
@@ -33,7 +34,9 @@ def upgrade() -> None:
             server_default=sa.func.now(),
             nullable=False,
         ),
-        sa.UniqueConstraint("user_id", "counter_name", "date", name="uq_daily_user_counter_date"),
+        sa.UniqueConstraint(
+            "user_id", "counter_name", "date", name="uq_daily_user_counter_date"
+        ),
     )
     op.create_index(
         "ix_daily_usage_user_counter_date",

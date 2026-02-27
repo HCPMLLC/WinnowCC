@@ -6,6 +6,7 @@ Create Date: 2026-02-17
 """
 
 import sqlalchemy as sa
+
 from alembic import op
 
 revision = "20260217_01"
@@ -17,9 +18,7 @@ depends_on = None
 def upgrade() -> None:
     op.add_column(
         "employer_profiles",
-        sa.Column(
-            "ai_parsing_used", sa.Integer(), server_default="0", nullable=False
-        ),
+        sa.Column("ai_parsing_used", sa.Integer(), server_default="0", nullable=False),
     )
     op.add_column(
         "employer_profiles",

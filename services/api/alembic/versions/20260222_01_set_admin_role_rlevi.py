@@ -14,14 +14,8 @@ depends_on = None
 
 def upgrade() -> None:
     # Only set the is_admin flag — do NOT overwrite role (candidate/employer/recruiter)
-    op.execute(
-        "UPDATE users SET is_admin = true"
-        " WHERE email = 'rlevi@hcpm.llc'"
-    )
+    op.execute("UPDATE users SET is_admin = true WHERE email = 'rlevi@hcpm.llc'")
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE users SET is_admin = false"
-        " WHERE email = 'rlevi@hcpm.llc'"
-    )
+    op.execute("UPDATE users SET is_admin = false WHERE email = 'rlevi@hcpm.llc'")

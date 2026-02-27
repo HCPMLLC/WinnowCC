@@ -8,6 +8,7 @@ import os
 import time
 import uuid
 from collections import defaultdict
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -17,8 +18,6 @@ from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
 from app.models.match import Match
 from app.models.user import User
-
-from datetime import UTC, datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +143,7 @@ def find_skill_matched_jobs(
     top = scored[:limit]
 
     results = []
-    for job, matched_skills, score, coverage in top:
+    for job, matched_skills, _score, coverage in top:
         # Clean up job titles: strip ID prefixes and trailing reference codes
         title = job.title or ""
         title = re.sub(r"^(Job\s+)?\d{4,}\s*", "", title).strip()
@@ -152,14 +151,16 @@ def find_skill_matched_jobs(
         if not title:
             title = job.title or "Untitled"
 
-        results.append({
-            "title": title,
-            "company": job.company,
-            "location": job.location or "Remote",
-            "matched_skills": matched_skills[:8],
-            "skill_overlap_count": len(matched_skills),
-            "coverage_pct": int(coverage * 100),
-        })
+        results.append(
+            {
+                "title": title,
+                "company": job.company,
+                "location": job.location or "Remote",
+                "matched_skills": matched_skills[:8],
+                "skill_overlap_count": len(matched_skills),
+                "coverage_pct": int(coverage * 100),
+            }
+        )
 
     return results
 
@@ -337,7 +338,11 @@ def load_user_context(user_id: int, session: Session) -> dict:
 
     # ── Billing / subscription ─────────────────
     try:
-        from app.services.billing import get_or_create_usage, get_plan_tier, get_tier_limit
+        from app.services.billing import (
+            get_or_create_usage,
+            get_plan_tier,
+            get_tier_limit,
+        )
 
         tier = get_plan_tier(candidate)
         usage = get_or_create_usage(session, user_id)
@@ -393,9 +398,12 @@ def load_user_context(user_id: int, session: Session) -> dict:
                 context["skill_matched_jobs"] = skill_recs
 
             # Also include job inventory summary for broader context
-            total_active = session.execute(
-                select(func.count(Job.id)).where(Job.is_active.is_(True))
-            ).scalar() or 0
+            total_active = (
+                session.execute(
+                    select(func.count(Job.id)).where(Job.is_active.is_(True))
+                ).scalar()
+                or 0
+            )
 
             title_rows = session.execute(
                 select(Job.title, func.count(Job.id).label("cnt"))
@@ -408,8 +416,7 @@ def load_user_context(user_id: int, session: Session) -> dict:
             context["job_inventory"] = {
                 "total_active_jobs": total_active,
                 "top_roles": [
-                    {"title": title, "count": count}
-                    for title, count in title_rows
+                    {"title": title, "count": count} for title, count in title_rows
                 ],
             }
         except Exception as exc:
@@ -476,9 +483,7 @@ silently hurt their match scores."""
             salary_6 = ""
             if t6.get("salary_range_min") and t6.get("salary_range_max"):
                 salary_6 = f" (${t6['salary_range_min']:,}–${t6['salary_range_max']:,})"
-            ct_lines.append(
-                f"- 6-month projection: {t6.get('role', 'N/A')}{salary_6}"
-            )
+            ct_lines.append(f"- 6-month projection: {t6.get('role', 'N/A')}{salary_6}")
         t12 = career_traj.get("trajectory_12mo")
         if t12:
             salary_12 = ""
@@ -497,9 +502,7 @@ silently hurt their match scores."""
             rec_sk = ", ".join(career_traj["recommended_skills"][:5])
             ct_lines.append(f"- Recommended skills: {rec_sk}")
         if career_traj.get("strengths"):
-            ct_lines.append(
-                f"- Strengths: {', '.join(career_traj['strengths'][:5])}"
-            )
+            ct_lines.append(f"- Strengths: {', '.join(career_traj['strengths'][:5])}")
         if career_traj.get("potential_obstacles"):
             obs = ", ".join(career_traj["potential_obstacles"][:5])
             ct_lines.append(f"- Potential obstacles: {obs}")
@@ -590,7 +593,8 @@ inventory that align with their transferable skills. Be concrete: \
 name 3-5 roles and explain WHY their skills transfer."""
 
     return f"""\
-You are Sieve (she/her), the personal AI concierge for Winnow \u2014 a job matching platform.
+You are Sieve (she/her), the personal AI concierge \
+for Winnow \u2014 a job matching platform.
 
 IDENTITY:
 Your name has a dual meaning. A sieve is a tool for sifting and filtering \
@@ -854,7 +858,9 @@ def load_employer_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
-    context["name"] = user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    context["name"] = (
+        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    )
 
     profile = session.execute(
         select(EmployerProfile).where(EmployerProfile.user_id == user_id)
@@ -882,38 +888,48 @@ def load_employer_context(user_id: int, session: Session) -> dict:
     }
 
     # Top 5 active jobs with stats
-    top_active = session.execute(
-        select(EmployerJob)
-        .where(
-            EmployerJob.employer_id == profile.id,
-            EmployerJob.status == "active",
-            EmployerJob.archived.is_(False),
+    top_active = (
+        session.execute(
+            select(EmployerJob)
+            .where(
+                EmployerJob.employer_id == profile.id,
+                EmployerJob.status == "active",
+                EmployerJob.archived.is_(False),
+            )
+            .order_by(EmployerJob.created_at.desc())
+            .limit(5)
         )
-        .order_by(EmployerJob.created_at.desc())
-        .limit(5)
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
 
     now_utc = datetime.now(UTC)
     top_jobs = []
     for job in top_active:
         days_active = (now_utc - job.created_at).days if job.created_at else 0
-        top_jobs.append({
-            "id": job.id,
-            "title": job.title,
-            "location": job.location or "Not specified",
-            "salary_min": job.salary_min,
-            "salary_max": job.salary_max,
-            "view_count": job.view_count or 0,
-            "application_count": job.application_count or 0,
-            "days_active": days_active,
-        })
+        top_jobs.append(
+            {
+                "id": job.id,
+                "title": job.title,
+                "location": job.location or "Not specified",
+                "salary_min": job.salary_min,
+                "salary_max": job.salary_max,
+                "view_count": job.view_count or 0,
+                "application_count": job.application_count or 0,
+                "days_active": days_active,
+            }
+        )
     context["jobs"]["top_active"] = top_jobs
 
     # Saved candidates count
-    saved_count = session.execute(
-        select(func.count(EmployerSavedCandidate.id))
-        .where(EmployerSavedCandidate.employer_id == profile.id)
-    ).scalar() or 0
+    saved_count = (
+        session.execute(
+            select(func.count(EmployerSavedCandidate.id)).where(
+                EmployerSavedCandidate.employer_id == profile.id
+            )
+        ).scalar()
+        or 0
+    )
     context["candidates"] = {"saved_count": saved_count}
 
     # Introduction status counts
@@ -934,10 +950,15 @@ def load_employer_context(user_id: int, session: Session) -> dict:
     }
 
     # Board connections
-    boards_connected = session.execute(
-        select(func.count(BoardConnection.id))
-        .where(BoardConnection.employer_id == profile.id, BoardConnection.is_active.is_(True))
-    ).scalar() or 0
+    boards_connected = (
+        session.execute(
+            select(func.count(BoardConnection.id)).where(
+                BoardConnection.employer_id == profile.id,
+                BoardConnection.is_active.is_(True),
+            )
+        ).scalar()
+        or 0
+    )
     context["boards"] = {"connected": boards_connected}
 
     # Analytics totals from distributions
@@ -992,7 +1013,8 @@ def build_employer_system_prompt(ctx: dict) -> str:
                 salary = f" (from ${j['salary_min']:,})"
             job_lines.append(
                 f"  {i}. {j['title']} \u2014 {j['location']}{salary}"
-                f"\n     Views: {j['view_count']} | Applications: {j['application_count']}"
+                f"\n     Views: {j['view_count']}"
+                f" | Applications: {j['application_count']}"
                 f" | Active {j['days_active']} days"
             )
         jobs_detail = "\n".join(job_lines)
@@ -1017,7 +1039,9 @@ def build_employer_system_prompt(ctx: dict) -> str:
     }
     upgrade_note = upgrade_map.get(tier, "")
 
-    # Pre-compute conditional strings (backslashes not allowed in f-string expressions in Python <3.12)
+    # Pre-compute conditional strings
+    # (backslashes not allowed in f-string expressions
+    # in Python <3.12)
     boards_note = (
         "Boards are not yet connected \u2014 suggest connecting boards first."
         if boards.get("connected", 0) == 0
@@ -1027,6 +1051,12 @@ def build_employer_system_prompt(ctx: dict) -> str:
         "available on your plan."
         if tier in ("pro", "enterprise")
         else "a Pro feature \u2014 upgrade for full access."
+    )
+
+    upgrade_line = (
+        "- Next upgrade: " + upgrade_note
+        if upgrade_note
+        else "- You are on the top-tier plan."
     )
 
     return f"""\
@@ -1158,7 +1188,7 @@ Usage this month:
 - Introduction requests: {billing.get("intro_used", 0)}/{billing.get("intro_limit", 0)}
 - Sieve messages: {billing.get("sieve_limit", 0)}/day limit
 - Active jobs: {jobs.get("active", 0)}
-{"- Next upgrade: " + upgrade_note if upgrade_note else "- You are on the top-tier plan."}
+{upgrade_line}
 
 TIER COMPARISON:
 {tier_comparison}
@@ -1271,7 +1301,11 @@ def get_employer_suggested_actions(ctx: dict) -> list[str]:
         suggestions.append("Which boards are performing best?")
 
     # No boards but has active jobs
-    if boards.get("connected", 0) == 0 and jobs.get("active", 0) > 0 and len(suggestions) < 4:
+    if (
+        boards.get("connected", 0) == 0
+        and jobs.get("active", 0) > 0
+        and len(suggestions) < 4
+    ):
         suggestions.append("Which job boards should I distribute to?")
 
     # Free tier upgrade prompt
@@ -1301,7 +1335,9 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
-    context["name"] = user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    context["name"] = (
+        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+    )
 
     profile = session.execute(
         select(RecruiterProfile).where(RecruiterProfile.user_id == user_id)
@@ -1311,7 +1347,9 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
 
     context["company"] = profile.company_name
     context["tier"] = profile.subscription_tier or "trial"
-    context["trial_days"] = profile.trial_days_remaining if profile.is_trial_active else None
+    context["trial_days"] = (
+        profile.trial_days_remaining if profile.is_trial_active else None
+    )
     context["specializations"] = profile.specializations or []
     context["auto_populate_pipeline"] = profile.auto_populate_pipeline
 
@@ -1328,11 +1366,14 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     context["pipeline_total"] = sum(c for _, c in pipeline_stages)
 
     # Client stats
-    client_count = session.execute(
-        select(func.count(RecruiterClient.id)).where(
-            RecruiterClient.recruiter_profile_id == profile.id
-        )
-    ).scalar() or 0
+    client_count = (
+        session.execute(
+            select(func.count(RecruiterClient.id)).where(
+                RecruiterClient.recruiter_profile_id == profile.id
+            )
+        ).scalar()
+        or 0
+    )
     context["client_count"] = client_count
 
     # Job stats
@@ -1352,26 +1393,35 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
 
     # Outreach sequences
     try:
-        from app.models.outreach_sequence import OutreachSequence
         from app.models.outreach_enrollment import OutreachEnrollment
+        from app.models.outreach_sequence import OutreachSequence
 
-        seq_count = session.execute(
-            select(func.count(OutreachSequence.id)).where(
-                OutreachSequence.recruiter_profile_id == profile.id
-            )
-        ).scalar() or 0
-        active_seq = session.execute(
-            select(func.count(OutreachSequence.id)).where(
-                OutreachSequence.recruiter_profile_id == profile.id,
-                OutreachSequence.is_active.is_(True),
-            )
-        ).scalar() or 0
-        active_enrollments = session.execute(
-            select(func.count(OutreachEnrollment.id)).where(
-                OutreachEnrollment.recruiter_profile_id == profile.id,
-                OutreachEnrollment.status == "active",
-            )
-        ).scalar() or 0
+        seq_count = (
+            session.execute(
+                select(func.count(OutreachSequence.id)).where(
+                    OutreachSequence.recruiter_profile_id == profile.id
+                )
+            ).scalar()
+            or 0
+        )
+        active_seq = (
+            session.execute(
+                select(func.count(OutreachSequence.id)).where(
+                    OutreachSequence.recruiter_profile_id == profile.id,
+                    OutreachSequence.is_active.is_(True),
+                )
+            ).scalar()
+            or 0
+        )
+        active_enrollments = (
+            session.execute(
+                select(func.count(OutreachEnrollment.id)).where(
+                    OutreachEnrollment.recruiter_profile_id == profile.id,
+                    OutreachEnrollment.status == "active",
+                )
+            ).scalar()
+            or 0
+        )
         context["sequences"] = {
             "total": seq_count,
             "active": active_seq,
@@ -1402,10 +1452,54 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
 
     # Tier-specific limits for reference
     TIER_LIMITS = {
-        "trial": {"briefs": 999, "salary": 999, "intros": 999, "jobs": 999, "pipeline": 999, "clients": 999, "seats": 1, "job_parsing": 10, "crm": "full", "price": "Free (14 days)"},
-        "solo": {"briefs": 20, "salary": 5, "intros": 20, "jobs": 10, "pipeline": 100, "clients": 5, "seats": 1, "job_parsing": 0, "crm": "basic", "price": "$29/mo"},
-        "team": {"briefs": 100, "salary": 50, "intros": 75, "jobs": 50, "pipeline": 500, "clients": 25, "seats": 10, "job_parsing": 10, "crm": "full", "price": "$69/user/mo"},
-        "agency": {"briefs": 500, "salary": 999, "intros": 999, "jobs": 999, "pipeline": 999, "clients": 999, "seats": 999, "job_parsing": 999, "crm": "full", "price": "$99/user/mo"},
+        "trial": {
+            "briefs": 999,
+            "salary": 999,
+            "intros": 999,
+            "jobs": 999,
+            "pipeline": 999,
+            "clients": 999,
+            "seats": 1,
+            "job_parsing": 10,
+            "crm": "full",
+            "price": "Free (14 days)",
+        },
+        "solo": {
+            "briefs": 20,
+            "salary": 5,
+            "intros": 20,
+            "jobs": 10,
+            "pipeline": 100,
+            "clients": 5,
+            "seats": 1,
+            "job_parsing": 0,
+            "crm": "basic",
+            "price": "$29/mo",
+        },
+        "team": {
+            "briefs": 100,
+            "salary": 50,
+            "intros": 75,
+            "jobs": 50,
+            "pipeline": 500,
+            "clients": 25,
+            "seats": 10,
+            "job_parsing": 10,
+            "crm": "full",
+            "price": "$69/user/mo",
+        },
+        "agency": {
+            "briefs": 500,
+            "salary": 999,
+            "intros": 999,
+            "jobs": 999,
+            "pipeline": 999,
+            "clients": 999,
+            "seats": 999,
+            "job_parsing": 999,
+            "crm": "full",
+            "price": "$99/user/mo",
+        },
     }
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["trial"])
     briefs_used = ctx.get("briefs_used", 0)
@@ -1413,8 +1507,17 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
     intros_used = ctx.get("intro_requests_used", 0)
 
     # Build upgrade note
-    upgrade_map = {"trial": "Solo ($29/mo)", "solo": "Team ($69/user/mo)", "team": "Agency ($99/user/mo)"}
+    upgrade_map = {
+        "trial": "Solo ($29/mo)",
+        "solo": "Team ($69/user/mo)",
+        "team": "Agency ($99/user/mo)",
+    }
     upgrade_note = upgrade_map.get(tier, "")
+    upgrade_line = (
+        "- Next upgrade: " + upgrade_note
+        if upgrade_note
+        else "- You are on the top-tier plan."
+    )
 
     return f"""\
 You are Sieve (she/her), the AI recruiting concierge for Winnow.
@@ -1612,12 +1715,20 @@ Usage this month:
 - Pipeline candidates: {ctx.get("pipeline_total", 0)}/{limits["pipeline"]}
 - Outreach sequences: {seq_summary}
 - Seats: {limits["seats"]}
-{"- Next upgrade: " + upgrade_note if upgrade_note else "- You are on the top-tier plan."}
+{upgrade_line}
 
 TIER COMPARISON (for upgrade recommendations):
-- Solo ($29/mo): 20 briefs, 5 salary lookups, 20 intros, 10 jobs, 100 pipeline, basic CRM, no sequences
-- Team ($69/user/mo): 100 briefs, 50 salary lookups, 75 intros, 50 jobs, 500 pipeline, full CRM, 10 seats, smart job parsing, outreach sequences
-- Agency ($99/user/mo): 500 briefs, unlimited salary/intros/jobs/pipeline, full CRM, unlimited seats, smart job parsing, outreach sequences
+- Solo ($29/mo): 20 briefs, 5 salary lookups, \
+20 intros, 10 jobs, 100 pipeline, basic CRM, \
+no sequences
+- Team ($69/user/mo): 100 briefs, 50 salary \
+lookups, 75 intros, 50 jobs, 500 pipeline, \
+full CRM, 10 seats, smart job parsing, \
+outreach sequences
+- Agency ($99/user/mo): 500 briefs, unlimited \
+salary/intros/jobs/pipeline, full CRM, \
+unlimited seats, smart job parsing, \
+outreach sequences
 
 ═══ CURRENT RECRUITER STATE ═══
 
@@ -1717,15 +1828,19 @@ def handle_chat(
 
     # Fallback: if role is still "candidate", check for profile existence
     if not is_recruiter and not is_employer and user:
-        from app.models.recruiter import RecruiterProfile
         from app.models.employer import EmployerProfile
+        from app.models.recruiter import RecruiterProfile
 
         if session.execute(
-            select(RecruiterProfile.id).where(RecruiterProfile.user_id == user_id).limit(1)
+            select(RecruiterProfile.id)
+            .where(RecruiterProfile.user_id == user_id)
+            .limit(1)
         ).scalar_one_or_none():
             is_recruiter = True
         elif session.execute(
-            select(EmployerProfile.id).where(EmployerProfile.user_id == user_id).limit(1)
+            select(EmployerProfile.id)
+            .where(EmployerProfile.user_id == user_id)
+            .limit(1)
         ).scalar_one_or_none():
             is_employer = True
 
@@ -1769,9 +1884,7 @@ available on WinnowCC.ai." Do NOT explain why or mention plan tiers.
     # 5. Call LLM (admin requests prefer Anthropic for better instruction following)
     is_admin = bool(user and user.is_admin)
     try:
-        response_text = _call_llm(
-            system_prompt, messages, prefer_anthropic=is_admin
-        )
+        response_text = _call_llm(system_prompt, messages, prefer_anthropic=is_admin)
     except Exception as exc:
         logger.error("Sieve LLM error: %s", exc)
         return "I'm having trouble connecting right now. Please try again in a moment."
@@ -1931,7 +2044,10 @@ def _get_fallback_response(message: str) -> str:
             "your Profile page to review and update your skills, "
             "experience, and preferences."
         )
-    if any(w in lower for w in ["ips", "interview probability", "score", "improve", "optimize"]):
+    if any(
+        w in lower
+        for w in ["ips", "interview probability", "score", "improve", "optimize"]
+    ):
         return (
             "To improve your IPS, evidence your skills in context: "
             "weave job-posting keywords into real accomplishments "
@@ -1940,7 +2056,10 @@ def _get_fallback_response(message: str) -> str:
             "Or let Winnow handle it \u2014 click 'Prepare Materials' "
             "on any match to auto-generate an optimized resume."
         )
-    if any(w in lower for w in ["search", "find", "looking for", "can't find", "cannot find"]):
+    if any(
+        w in lower
+        for w in ["search", "find", "looking for", "can't find", "cannot find"]
+    ):
         return (
             "AI Search works best with descriptive queries rather than "
             "single words. Instead of just a company name like 'Baylor', "
@@ -2098,16 +2217,22 @@ def load_admin_context(session: Session) -> dict:
         ).all()
     }
     total_users = sum(role_counts.values())
-    users_7d = session.scalar(
-        select(func.count()).select_from(User).where(
-            User.created_at >= now - timedelta(days=7)
+    users_7d = (
+        session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=7))
         )
-    ) or 0
-    users_30d = session.scalar(
-        select(func.count()).select_from(User).where(
-            User.created_at >= now - timedelta(days=30)
+        or 0
+    )
+    users_30d = (
+        session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=30))
         )
-    ) or 0
+        or 0
+    )
 
     ctx["platform"] = {
         "total_users": total_users,
@@ -2120,22 +2245,23 @@ def load_admin_context(session: Session) -> dict:
     candidate_tiers = {
         (k or "free"): v
         for k, v in session.execute(
-            select(Candidate.plan_tier, func.count())
-            .group_by(Candidate.plan_tier)
+            select(Candidate.plan_tier, func.count()).group_by(Candidate.plan_tier)
         ).all()
     }
     employer_tiers = {
         (k or "free"): v
         for k, v in session.execute(
-            select(EmployerProfile.subscription_tier, func.count())
-            .group_by(EmployerProfile.subscription_tier)
+            select(EmployerProfile.subscription_tier, func.count()).group_by(
+                EmployerProfile.subscription_tier
+            )
         ).all()
     }
     recruiter_tiers = {
         (k or "free"): v
         for k, v in session.execute(
-            select(RecruiterProfile.subscription_tier, func.count())
-            .group_by(RecruiterProfile.subscription_tier)
+            select(RecruiterProfile.subscription_tier, func.count()).group_by(
+                RecruiterProfile.subscription_tier
+            )
         ).all()
     }
     ctx["billing"] = {
@@ -2185,6 +2311,7 @@ def load_admin_context(session: Session) -> dict:
     queue_pending_sample: dict[str, list[str]] = {}
     try:
         from rq import Queue as RQQueue
+
         from app.services.worker_health import get_redis_connection
 
         rq_conn = get_redis_connection()
@@ -2214,44 +2341,62 @@ def load_admin_context(session: Session) -> dict:
     alerts: list[dict] = []
 
     if total_failed > 0:
-        alerts.append({
-            "severity": "error",
-            "message": f"{total_failed} failed queue job(s)",
-        })
+        alerts.append(
+            {
+                "severity": "error",
+                "message": f"{total_failed} failed queue job(s)",
+            }
+        )
 
-    past_due_count = session.scalar(
-        select(func.count()).select_from(Candidate).where(
-            Candidate.subscription_status == "past_due"
+    past_due_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(Candidate)
+            .where(Candidate.subscription_status == "past_due")
         )
-    ) or 0
-    past_due_count += session.scalar(
-        select(func.count()).select_from(EmployerProfile).where(
-            EmployerProfile.subscription_status == "past_due"
+        or 0
+    )
+    past_due_count += (
+        session.scalar(
+            select(func.count())
+            .select_from(EmployerProfile)
+            .where(EmployerProfile.subscription_status == "past_due")
         )
-    ) or 0
-    past_due_count += session.scalar(
-        select(func.count()).select_from(RecruiterProfile).where(
-            RecruiterProfile.subscription_status == "past_due"
+        or 0
+    )
+    past_due_count += (
+        session.scalar(
+            select(func.count())
+            .select_from(RecruiterProfile)
+            .where(RecruiterProfile.subscription_status == "past_due")
         )
-    ) or 0
+        or 0
+    )
 
     if past_due_count > 0:
-        alerts.append({
-            "severity": "warning",
-            "message": f"{past_due_count} subscription(s) past due",
-        })
-
-    quarantine_count = session.scalar(
-        select(func.count()).select_from(CandidateTrust).where(
-            CandidateTrust.status.in_(["soft_quarantine", "hard_quarantine"])
+        alerts.append(
+            {
+                "severity": "warning",
+                "message": f"{past_due_count} subscription(s) past due",
+            }
         )
-    ) or 0
+
+    quarantine_count = (
+        session.scalar(
+            select(func.count())
+            .select_from(CandidateTrust)
+            .where(CandidateTrust.status.in_(["soft_quarantine", "hard_quarantine"]))
+        )
+        or 0
+    )
 
     if quarantine_count > 0:
-        alerts.append({
-            "severity": "warning",
-            "message": f"{quarantine_count} candidate(s) in trust quarantine",
-        })
+        alerts.append(
+            {
+                "severity": "warning",
+                "message": f"{quarantine_count} candidate(s) in trust quarantine",
+            }
+        )
 
     ctx["alerts"] = alerts
     ctx["past_due_count"] = past_due_count
@@ -2347,9 +2492,7 @@ def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
                 exc = j.get("exc_info", "")
                 fn = j.get("func_name", "unknown")
                 ended = j.get("ended_at", "?")
-                failed_detail_lines.append(
-                    f"    - {fn} (ended {ended}): {exc}"
-                )
+                failed_detail_lines.append(f"    - {fn} (ended {ended}): {exc}")
         failed_details_section = "\n".join(failed_detail_lines)
     else:
         failed_details_section = "  No failed job details."
@@ -2358,9 +2501,7 @@ def build_admin_system_prompt(admin_ctx: dict, base_prompt: str) -> str:
     if queue_pending_sample:
         pending_sample_lines = []
         for qname, funcs in queue_pending_sample.items():
-            pending_sample_lines.append(
-                f"  [{qname}]: {', '.join(funcs)}"
-            )
+            pending_sample_lines.append(f"  [{qname}]: {', '.join(funcs)}")
         pending_sample_section = "\n".join(pending_sample_lines)
     else:
         pending_sample_section = "  No pending job samples available."
@@ -2390,22 +2531,37 @@ You have access to live system data below and MUST give deeply \
 actionable, specific advice — never vague suggestions.
 
 ADMIN PAGE DIRECTORY (always link to these with markdown):
-- [Queue Monitor]({frontend_url}/admin/support/queues) — view/retry failed jobs, monitor pending
-- [Billing Diagnostics]({frontend_url}/admin/support/billing) — subscription status, past-due, overrides
-- [User Lookup]({frontend_url}/admin/support/lookup) — search users, view profiles, usage
+- [Queue Monitor]({frontend_url}/admin/support/queues) \
+— view/retry failed jobs, monitor pending
+- [Billing Diagnostics]\
+({frontend_url}/admin/support/billing) \
+— subscription status, past-due, overrides
+- [User Lookup]\
+({frontend_url}/admin/support/lookup) \
+— search users, view profiles, usage
 - [Trust Quarantine]({frontend_url}/admin/trust) — review quarantined candidates
 - [Candidates]({frontend_url}/admin/candidates) — candidate management
 - [Employers]({frontend_url}/admin/employers) — employer management
 - [Recruiters]({frontend_url}/admin/recruiters) — recruiter management
 - [Jobs]({frontend_url}/admin/jobs) — job listing management
 - [Job Quality]({frontend_url}/admin/job-quality) — fraud scores, quality review
-- [Scheduler Control]({frontend_url}/admin/support/scheduler) — ingestion config, trigger runs, run history
+- [Scheduler Control]\
+({frontend_url}/admin/support/scheduler) \
+— ingestion config, trigger runs, run history
 
 ADMIN API ACTION CATALOG (reference these when recommending fixes):
-- POST /admin/retry-queue/{{queue_name}} — retry all failed jobs in a queue (use for transient errors)
-- POST /admin/reparse/{{user_id}} — re-run resume parsing for a user (use when parse jobs failed)
-- POST /admin/clear-daily-counters/{{user_id}} — reset daily rate limits (use when user hit limits incorrectly)
-- POST /admin/tier-override — override a user's billing tier (use for billing mismatches)
+- POST /admin/retry-queue/{{queue_name}} \
+— retry all failed jobs in a queue \
+(use for transient errors)
+- POST /admin/reparse/{{user_id}} \
+— re-run resume parsing for a user \
+(use when parse jobs failed)
+- POST /admin/clear-daily-counters/{{user_id}} \
+— reset daily rate limits \
+(use when user hit limits incorrectly)
+- POST /admin/tier-override \
+— override a user's billing tier \
+(use for billing mismatches)
 - PUT /admin/trust/{{trust_id}}/set — resolve trust quarantine status
 - POST /admin/jobs/{{job_id}}/reparse — reparse a specific job
 - POST /admin/jobs/reparse-all — reparse all jobs
@@ -2440,15 +2596,19 @@ RECENT FAILED JOB RUNS (from database — with error messages):
 {failure_section}
 
 MANDATORY RESPONSE RULES:
-1. ALWAYS include markdown hyperlinks to the relevant admin page(s) from the directory above.
-2. For queue issues: identify WHICH queue, examine the error messages above for root cause, \
-categorize as transient (retry will fix), persistent (code/config bug), or data-related \
-(bad input), and recommend the specific API action.
+1. ALWAYS include markdown hyperlinks to the relevant \
+admin page(s) from the directory above.
+2. For queue issues: identify WHICH queue, examine \
+the error messages above for root cause, categorize \
+as transient (retry will fix), persistent \
+(code/config bug), or data-related (bad input), \
+and recommend the specific API action.
 3. For billing issues: state exact counts from the data above, link to \
 [Billing Diagnostics]({frontend_url}/admin/support/billing), and recommend specific \
 override actions with the API endpoint.
 4. ALWAYS propose a numbered multi-step remediation plan.
-5. Reference exact counts, queue names, func_names, and error patterns from the data above.
+5. Reference exact counts, queue names, func_names, \
+and error patterns from the data above.
 6. NEVER give vague advice like "check your dashboard" or "look into it" — always \
 be specific about what to do, where to do it, and why.
 7. When asked "what needs attention", produce a severity-ranked list \

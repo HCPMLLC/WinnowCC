@@ -4,8 +4,9 @@ Revision ID: 20260219_02
 Revises: 20260219_01
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 revision = "20260219_02"
 down_revision = "20260219_01"
@@ -60,12 +61,18 @@ def upgrade() -> None:
     # Add monthly intro counter to employer_profiles
     op.add_column(
         "employer_profiles",
-        sa.Column("intro_requests_used", sa.Integer(), server_default="0", nullable=False),
+        sa.Column(
+            "intro_requests_used", sa.Integer(), server_default="0", nullable=False
+        ),
     )
 
 
 def downgrade() -> None:
     op.drop_column("employer_profiles", "intro_requests_used")
-    op.drop_index("ix_emp_intro_candidate_status", table_name="employer_introduction_requests")
-    op.drop_index("ix_emp_intro_employer_status", table_name="employer_introduction_requests")
+    op.drop_index(
+        "ix_emp_intro_candidate_status", table_name="employer_introduction_requests"
+    )
+    op.drop_index(
+        "ix_emp_intro_employer_status", table_name="employer_introduction_requests"
+    )
     op.drop_table("employer_introduction_requests")

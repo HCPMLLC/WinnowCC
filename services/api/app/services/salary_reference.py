@@ -284,7 +284,10 @@ def _tokenize(text: str) -> set[str]:
 
 
 def _token_overlap(tokens_a: set[str], tokens_b: set[str]) -> float:
-    """Compute overlap ratio between two token sets (Jaccard-like, biased to smaller set)."""
+    """Compute overlap ratio between two token sets.
+
+    Jaccard-like, biased to smaller set.
+    """
     if not tokens_a or not tokens_b:
         return 0.0
     intersection = tokens_a & tokens_b

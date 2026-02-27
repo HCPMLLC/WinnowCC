@@ -15,7 +15,16 @@ def get_engine() -> Engine:
         db_url = os.getenv("DB_URL", "").strip()
         if not db_url:
             raise RuntimeError("DB_URL is not set")
-        _ENGINE = create_engine(db_url, pool_pre_ping=True)
+        # Differentiate pool sizes: workers need fewer connections than the API.
+        is_worker = os.getenv("WINNOW_PROCESS_TYPE") == "worker"
+        _ENGINE = create_engine(
+            db_url,
+            pool_pre_ping=True,
+            pool_size=2 if is_worker else 3,
+            max_overflow=3 if is_worker else 7,
+            pool_timeout=10,
+            pool_recycle=1800,
+        )
     return _ENGINE
 
 

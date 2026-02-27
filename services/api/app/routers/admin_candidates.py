@@ -124,8 +124,7 @@ def get_all_candidates(
 
     # Get match counts for all users in a single query
     match_count_rows = session.execute(
-        select(Match.user_id, func.count(Match.id))
-        .group_by(Match.user_id)
+        select(Match.user_id, func.count(Match.id)).group_by(Match.user_id)
     ).all()
     match_count_map: dict[int, int] = {uid: cnt for uid, cnt in match_count_rows}
 
@@ -169,9 +168,7 @@ def get_all_candidates(
                 first_name = name_parts[0]
                 last_name = " ".join(name_parts[1:]) if len(name_parts) > 1 else None
         if not full_name:
-            full_name = (
-                f"{first_name or ''} {last_name or ''}".strip() or None
-            )
+            full_name = f"{first_name or ''} {last_name or ''}".strip() or None
 
         # Get title from most recent experience, or from headline
         title = None
@@ -181,11 +178,7 @@ def get_all_candidates(
             title = basics.get("headline") or profile_json.get("headline")
 
         # Parse location into city and state — support both structures
-        location = (
-            basics.get("location")
-            or profile_json.get("location")
-            or ""
-        )
+        location = basics.get("location") or profile_json.get("location") or ""
         city = None
         state = None
         if location:
@@ -438,13 +431,18 @@ def reparse_candidate_profile(
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ):
-    """Re-parse a candidate profile by ID with LLM (works for recruiter-sourced profiles)."""
+    """Re-parse a candidate profile by ID with LLM.
+
+    Works for recruiter-sourced profiles.
+    """
     cp = session.get(CandidateProfile, profile_id)
     if cp is None:
         raise HTTPException(status_code=404, detail="CandidateProfile not found.")
 
     if not cp.resume_document_id:
-        raise HTTPException(status_code=400, detail="No resume document linked to this profile.")
+        raise HTTPException(
+            status_code=400, detail="No resume document linked to this profile."
+        )
 
     resume = session.get(ResumeDocument, cp.resume_document_id)
     if resume is None or resume.deleted_at is not None:
@@ -487,7 +485,9 @@ def update_user_role(
         if payload.role not in ALLOWED_ROLES:
             raise HTTPException(
                 status_code=422,
-                detail=f"Invalid role. Must be one of: {', '.join(sorted(ALLOWED_ROLES))}",
+                detail=(
+                    f"Invalid role. Must be one of: {', '.join(sorted(ALLOWED_ROLES))}"
+                ),
             )
         user.role = payload.role
         user.mfa_required = payload.role in ("employer", "recruiter", "both")
@@ -527,10 +527,14 @@ def get_resume_file(
         raise HTTPException(status_code=404, detail="Resume not found.")
 
     try:
-        suffix = Path(resume.path).suffix if not is_gcs_path(resume.path) else Path(resume.filename).suffix
+        suffix = (
+            Path(resume.path).suffix
+            if not is_gcs_path(resume.path)
+            else Path(resume.filename).suffix
+        )
         local_path = file_response_path(resume.path, suffix=suffix)
     except Exception:
-        raise HTTPException(status_code=404, detail="Resume file not found.")
+        raise HTTPException(status_code=404, detail="Resume file not found.") from None
 
     if not local_path.exists():
         raise HTTPException(status_code=404, detail="Resume file not found on disk.")
@@ -658,7 +662,7 @@ def download_candidate_resume(
     try:
         path = file_response_path(tailored.docx_url, suffix=".docx")
     except Exception:
-        raise HTTPException(status_code=404, detail="File not found.")
+        raise HTTPException(status_code=404, detail="File not found.") from None
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk.")
     background_tasks.add_task(_cleanup_temp, path, tailored.docx_url)
@@ -682,7 +686,7 @@ def download_candidate_cover_letter(
     try:
         path = file_response_path(tailored.cover_letter_url, suffix=".docx")
     except Exception:
-        raise HTTPException(status_code=404, detail="File not found.")
+        raise HTTPException(status_code=404, detail="File not found.") from None
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found on disk.")
     background_tasks.add_task(_cleanup_temp, path, tailored.cover_letter_url)
