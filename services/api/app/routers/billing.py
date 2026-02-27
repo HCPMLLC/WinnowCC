@@ -198,9 +198,6 @@ def portal(
     session: Session = Depends(get_session),
 ) -> PortalSessionResponse:
     candidate = _get_candidate(session, user.id)
-    if candidate is None:
-        raise HTTPException(status_code=404, detail="Complete onboarding first.")
-
     url = create_portal_session(session, user, candidate)
     session.commit()
     return PortalSessionResponse(portal_url=url)
