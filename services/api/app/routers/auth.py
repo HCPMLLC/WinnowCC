@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -119,12 +119,13 @@ def _me_response(user: User) -> MeResponse:
     )
 
 
-def _send_otp_to_user(
+def _prepare_otp(
     user: User, session: Session, delivery_method: str | None = None,
-) -> str:
-    """Generate an OTP, persist hash + expiry, and send via email or SMS.
+) -> tuple[str, str, str]:
+    """Generate an OTP, persist hash + expiry, return (code, method, dest).
 
-    Returns the delivery method actually used ("email" or "sms").
+    DB work happens here (must run before the response).
+    The actual send is deferred to a BackgroundTask via ``_do_send_otp``.
     """
     method = delivery_method or user.mfa_delivery_method or "email"
     # Fall back to email if SMS requested but no phone on file
@@ -137,20 +138,25 @@ def _send_otp_to_user(
         minutes=MFA_OTP_TTL_MINUTES
     )
     user.mfa_otp_attempts = 0
+    # Capture destination before commit (avoids lazy-load issues)
+    dest = user.phone if method == "sms" else user.email
     session.commit()
 
+    return code, method, dest
+
+
+def _do_send_otp(code: str, method: str, dest: str, user_id: int) -> None:
+    """Send the OTP via email or SMS.  Runs as a BackgroundTask."""
     try:
         if method == "sms":
-            send_mfa_otp_sms(user.phone, code)
+            send_mfa_otp_sms(dest, code)
         else:
-            send_mfa_otp_email(user.email, code)
+            send_mfa_otp_email(dest, code)
     except Exception:
         logger.warning(
-            "Failed to send MFA OTP via %s to user %s", method, user.id,
+            "Failed to send MFA OTP via %s to user %s", method, user_id,
             exc_info=True,
         )
-
-    return method
 
 
 # ---------------------------------------------------------------------------
@@ -187,6 +193,7 @@ def signup(
 def login(
     payload: AuthRequest,
     response: Response,
+    bg: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> LoginResponse:
     _validate_password(payload.password)
@@ -204,7 +211,8 @@ def login(
 
     # --- MFA gate ---
     if user.mfa_required:
-        method_used = _send_otp_to_user(user, session)
+        code, method_used, dest = _prepare_otp(user, session)
+        bg.add_task(_do_send_otp, code, method_used, dest, user.id)
         return LoginResponse(
             requires_mfa=True,
             mfa_delivery_method=method_used,
@@ -274,6 +282,7 @@ def verify_otp_endpoint(
 @router.post("/resend-otp")
 def resend_otp(
     payload: ResendOtpRequest,
+    bg: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> dict:
     _validate_password(payload.password)
@@ -293,7 +302,8 @@ def resend_otp(
         user.mfa_delivery_method = requested
         session.commit()
 
-    method_used = _send_otp_to_user(user, session, delivery_method=requested)
+    code, method_used, dest = _prepare_otp(user, session, delivery_method=requested)
+    bg.add_task(_do_send_otp, code, method_used, dest, user.id)
     return {"status": "sent", "delivery_method": method_used}
 
 
