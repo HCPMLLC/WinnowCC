@@ -38,10 +38,12 @@ if __name__ == "__main__":
     # Pre-import heavy modules and warm up SQLAlchemy mappers so they
     # don't timeout on the first RQ job (Cloud Run cold-start issue).
     try:
-        import app.models  # noqa: F401 — triggers pgvector/numpy import
         from sqlalchemy import select, text
+
+        import app.models  # noqa: F401 — triggers pgvector/numpy import
         from app.db.session import get_session_factory
         from app.models.user import User
+
         session = get_session_factory()()
         session.execute(text("SELECT 1"))  # warm up connection pool
         session.execute(select(User).limit(1))  # configure all ORM mappers
@@ -49,6 +51,8 @@ if __name__ == "__main__":
     except Exception:
         pass
 
+    from app.services.queue import QUEUE_NAMES
+
     worker_cls = SimpleWorker if os.name == "nt" else Worker
-    worker = worker_cls(["default"], connection=redis_conn)
+    worker = worker_cls(QUEUE_NAMES, connection=redis_conn)
     worker.work()

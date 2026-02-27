@@ -100,9 +100,7 @@ def list_users(
             name = None
 
         company_name = (
-            employer_companies.get(user.id)
-            or recruiter_companies.get(user.id)
-            or None
+            employer_companies.get(user.id) or recruiter_companies.get(user.id) or None
         )
 
         results.append(
@@ -135,9 +133,7 @@ def list_purgeable_users(
 
     # Pre-fetch user IDs that have at least one candidate profile
     users_with_profile = set(
-        session.execute(
-            select(CandidateProfile.user_id).distinct()
-        ).scalars().all()
+        session.execute(select(CandidateProfile.user_id).distinct()).scalars().all()
     )
 
     results: list[PurgeableUser] = []
@@ -316,31 +312,41 @@ def get_user_profile(
 
     if role == "recruiter":
         rp = session.execute(
-            select(RecruiterProfile).where(
-                RecruiterProfile.user_id == user_id
-            )
+            select(RecruiterProfile).where(RecruiterProfile.user_id == user_id)
         ).scalar_one_or_none()
         if rp:
-            team_count = session.execute(
-                select(func.count(RecruiterTeamMember.id)).where(
-                    RecruiterTeamMember.recruiter_profile_id == rp.id
-                )
-            ).scalar() or 0
-            client_count = session.execute(
-                select(func.count(RecruiterClient.id)).where(
-                    RecruiterClient.recruiter_profile_id == rp.id
-                )
-            ).scalar() or 0
-            pipeline_count = session.execute(
-                select(func.count(RecruiterPipelineCandidate.id)).where(
-                    RecruiterPipelineCandidate.recruiter_profile_id == rp.id
-                )
-            ).scalar() or 0
-            jobs_count = session.execute(
-                select(func.count(RecruiterJob.id)).where(
-                    RecruiterJob.recruiter_profile_id == rp.id
-                )
-            ).scalar() or 0
+            team_count = (
+                session.execute(
+                    select(func.count(RecruiterTeamMember.id)).where(
+                        RecruiterTeamMember.recruiter_profile_id == rp.id
+                    )
+                ).scalar()
+                or 0
+            )
+            client_count = (
+                session.execute(
+                    select(func.count(RecruiterClient.id)).where(
+                        RecruiterClient.recruiter_profile_id == rp.id
+                    )
+                ).scalar()
+                or 0
+            )
+            pipeline_count = (
+                session.execute(
+                    select(func.count(RecruiterPipelineCandidate.id)).where(
+                        RecruiterPipelineCandidate.recruiter_profile_id == rp.id
+                    )
+                ).scalar()
+                or 0
+            )
+            jobs_count = (
+                session.execute(
+                    select(func.count(RecruiterJob.id)).where(
+                        RecruiterJob.recruiter_profile_id == rp.id
+                    )
+                ).scalar()
+                or 0
+            )
             result.recruiter_profile = AdminRecruiterProfileData(
                 profile_id=rp.id,
                 company_name=rp.company_name,
@@ -372,27 +378,34 @@ def get_user_profile(
             )
     elif role == "employer":
         ep = session.execute(
-            select(EmployerProfile).where(
-                EmployerProfile.user_id == user_id
-            )
+            select(EmployerProfile).where(EmployerProfile.user_id == user_id)
         ).scalar_one_or_none()
         if ep:
-            total_jobs = session.execute(
-                select(func.count(EmployerJob.id)).where(
-                    EmployerJob.employer_id == ep.id
-                )
-            ).scalar() or 0
-            active_jobs = session.execute(
-                select(func.count(EmployerJob.id)).where(
-                    EmployerJob.employer_id == ep.id,
-                    EmployerJob.status == "active",
-                )
-            ).scalar() or 0
-            saved_count = session.execute(
-                select(func.count(EmployerSavedCandidate.id)).where(
-                    EmployerSavedCandidate.employer_id == ep.id
-                )
-            ).scalar() or 0
+            total_jobs = (
+                session.execute(
+                    select(func.count(EmployerJob.id)).where(
+                        EmployerJob.employer_id == ep.id
+                    )
+                ).scalar()
+                or 0
+            )
+            active_jobs = (
+                session.execute(
+                    select(func.count(EmployerJob.id)).where(
+                        EmployerJob.employer_id == ep.id,
+                        EmployerJob.status == "active",
+                    )
+                ).scalar()
+                or 0
+            )
+            saved_count = (
+                session.execute(
+                    select(func.count(EmployerSavedCandidate.id)).where(
+                        EmployerSavedCandidate.employer_id == ep.id
+                    )
+                ).scalar()
+                or 0
+            )
             result.employer_profile = AdminEmployerProfileData(
                 profile_id=ep.id,
                 company_name=ep.company_name,

@@ -12,8 +12,9 @@ Create Date: 2026-02-11
 """
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers
 revision = "20260211_02"
@@ -60,16 +61,10 @@ def upgrade() -> None:
         ),
         sa.Column("original_filename", sa.String(500), nullable=False),
         sa.Column("storage_url", sa.String(1000), nullable=False),
-        sa.Column(
-            "file_type", sa.String(10), nullable=False, server_default="docx"
-        ),
-        sa.Column(
-            "form_type", sa.String(50), nullable=False, server_default="other"
-        ),
+        sa.Column("file_type", sa.String(10), nullable=False, server_default="docx"),
+        sa.Column("form_type", sa.String(50), nullable=False, server_default="other"),
         sa.Column("parsed_structure", postgresql.JSONB(), nullable=True),
-        sa.Column(
-            "is_parsed", sa.Boolean(), nullable=False, server_default="false"
-        ),
+        sa.Column("is_parsed", sa.Boolean(), nullable=False, server_default="false"),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),

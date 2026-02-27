@@ -51,7 +51,9 @@ from app.routers.admin_support import router as admin_support_router  # noqa: E4
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
 from app.routers.billing import router as billing_router  # noqa: E402
-from app.routers.candidate_insights import router as candidate_insights_router  # noqa: E402
+from app.routers.candidate_insights import (
+    router as candidate_insights_router,  # noqa: E402
+)
 from app.routers.career_intelligence import (  # noqa: E402
     router as career_intelligence_router,
 )
@@ -82,6 +84,7 @@ from app.routers.mjass import router as mjass_router  # noqa: E402
 from app.routers.observability import router as observability_router  # noqa: E402
 from app.routers.onboarding import router as onboarding_router  # noqa: E402
 from app.routers.onboarding_v1 import router as onboarding_v1_router  # noqa: E402
+from app.routers.outreach import router as outreach_router  # noqa: E402
 from app.routers.profile import router as profile_router  # noqa: E402
 from app.routers.ready import router as ready_router  # noqa: E402
 from app.routers.recruiter import router as recruiter_router  # noqa: E402
@@ -91,7 +94,6 @@ from app.routers.recruiter_actions import (  # noqa: E402
 from app.routers.recruiter_migration import (  # noqa: E402
     router as recruiter_migration_router,
 )
-from app.routers.outreach import router as outreach_router  # noqa: E402
 from app.routers.references import router as references_router  # noqa: E402
 from app.routers.resume import router as resume_router  # noqa: E402
 from app.routers.scheduler import router as scheduler_router  # noqa: E402
@@ -101,6 +103,7 @@ from app.routers.sms_otp import router as sms_otp_router  # noqa: E402
 from app.routers.tailor import router as tailor_router  # noqa: E402
 from app.routers.talent_pipeline import router as talent_pipeline_router  # noqa: E402
 from app.routers.trust import router as trust_router  # noqa: E402
+from app.routers.upload_batches import router as upload_batches_router  # noqa: E402
 from app.routers.webhooks import router as webhooks_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
@@ -119,7 +122,10 @@ async def _unhandled_exception_handler(request, exc):  # noqa: ARG001
     import traceback
 
     _logging.getLogger("winnow.errors").error(
-        "Unhandled %s: %s\n%s", type(exc).__name__, exc, traceback.format_exc(),
+        "Unhandled %s: %s\n%s",
+        type(exc).__name__,
+        exc,
+        traceback.format_exc(),
     )
     from starlette.responses import JSONResponse
 
@@ -218,6 +224,7 @@ app.include_router(market_intelligence_router)
 app.include_router(career_intelligence_router)
 app.include_router(candidate_insights_router)
 app.include_router(migration_router)
+app.include_router(upload_batches_router)
 app.include_router(sms_otp_router)
 
 
@@ -284,7 +291,10 @@ async def _provision_founder_accounts():
                 select(Candidate).where(Candidate.user_id == user.id)
             ).scalar_one_or_none()
             if candidate is not None:
-                if candidate.plan_tier != "pro" or candidate.subscription_status is not None:
+                if (
+                    candidate.plan_tier != "pro"
+                    or candidate.subscription_status is not None
+                ):
                     candidate.plan_tier = "pro"
                     candidate.subscription_status = None
                     changed = True
@@ -311,7 +321,10 @@ async def _provision_founder_accounts():
                 select(EmployerProfile).where(EmployerProfile.user_id == user.id)
             ).scalar_one_or_none()
             if ep is not None:
-                if ep.subscription_tier != "enterprise" or ep.subscription_status is not None:
+                if (
+                    ep.subscription_tier != "enterprise"
+                    or ep.subscription_status is not None
+                ):
                     ep.subscription_tier = "enterprise"
                     ep.subscription_status = None
                     changed = True

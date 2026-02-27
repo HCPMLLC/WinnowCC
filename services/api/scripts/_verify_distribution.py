@@ -1,6 +1,5 @@
 """Quick verification that distribution tables were created correctly."""
 
-import os
 import sys
 from pathlib import Path
 
@@ -22,7 +21,10 @@ session = get_session_factory()()
 tables = session.execute(
     text(
         "SELECT table_name FROM information_schema.tables "
-        "WHERE table_name IN ('board_connections','job_distributions','distribution_events') "
+        "WHERE table_name IN ("
+        "'board_connections',"
+        "'job_distributions',"
+        "'distribution_events') "
         "ORDER BY table_name"
     )
 ).fetchall()
@@ -42,7 +44,10 @@ for tbl in ["board_connections", "job_distributions", "distribution_events"]:
 idxs = session.execute(
     text(
         "SELECT indexname FROM pg_indexes "
-        "WHERE tablename IN ('board_connections','job_distributions','distribution_events') "
+        "WHERE tablename IN ("
+        "'board_connections',"
+        "'job_distributions',"
+        "'distribution_events') "
         "AND indexname LIKE 'idx_%'"
     )
 ).fetchall()
@@ -52,7 +57,9 @@ print("Custom indexes:", [i[0] for i in idxs])
 uqs = session.execute(
     text(
         "SELECT conname FROM pg_constraint "
-        "WHERE conname LIKE 'uq_%' AND conname LIKE '%board%' OR conname LIKE '%distribution%'"
+        "WHERE conname LIKE 'uq_%' "
+        "AND conname LIKE '%board%' "
+        "OR conname LIKE '%distribution%'"
     )
 ).fetchall()
 print("Unique constraints:", [u[0] for u in uqs])

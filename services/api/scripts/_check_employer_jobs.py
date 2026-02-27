@@ -1,13 +1,16 @@
 """Check active employer jobs and whether proxy Job rows exist."""
+
 import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from dotenv import load_dotenv
+
 load_dotenv()
 
 from sqlalchemy import text
+
 from app.db.session import get_session_factory
 
 session = get_session_factory()()
@@ -25,11 +28,18 @@ try:
     ).fetchall()
     print(f"Active employer jobs: {len(rows)}\n")
     for r in rows:
-        print(f"  EJ #{r[0]}: {r[1]} @ {r[2]} (status={r[3]}, posted={r[4]}, loc={r[5]}, remote={r[6]})")
+        print(
+            f"  EJ #{r[0]}: {r[1]} @ {r[2]}"
+            f" (status={r[3]}, posted={r[4]},"
+            f" loc={r[5]}, remote={r[6]})"
+        )
 
     # Check for existing proxy Job rows
     proxies = session.execute(
-        text("SELECT id, source_job_id, title, company, is_active FROM jobs WHERE source = 'employer'")
+        text(
+            "SELECT id, source_job_id, title, company, "
+            "is_active FROM jobs WHERE source = 'employer'"
+        )
     ).fetchall()
     print(f"\nExisting proxy Job rows (source='employer'): {len(proxies)}")
     for p in proxies:

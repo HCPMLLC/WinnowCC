@@ -109,5 +109,3 @@ class TestPrepareProfileText:
         assert "Role 0" in text
         assert "Role 2" in text
         assert "Role 3" not in text
-
-

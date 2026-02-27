@@ -113,7 +113,10 @@ def set_trust_status(
             action="admin_set_status",
             prev_status=prev_status,
             new_status=trust.status,
-            details={"internal_notes": payload.internal_notes, "admin_user_id": admin.id},
+            details={
+                "internal_notes": payload.internal_notes,
+                "admin_user_id": admin.id,
+            },
         )
     )
     session.commit()

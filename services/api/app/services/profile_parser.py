@@ -471,7 +471,7 @@ def _split_chunks(lines: list[str]) -> list[list[str]]:
     chunks = []
     current = []
 
-    for i, line in enumerate(lines):
+    for _i, line in enumerate(lines):
         stripped = line.strip()
         if not stripped:
             # Blank line - end current chunk
@@ -480,7 +480,8 @@ def _split_chunks(lines: list[str]) -> list[list[str]]:
                 current = []
             continue
 
-        # Check if this line starts a new chunk (contains a date range and isn't a bullet)
+        # Check if this line starts a new chunk
+        # (contains a date range and isn't a bullet)
         is_bullet = stripped.startswith(("-", "*", "•", "○", "►", "▪"))
         has_date = DATE_RANGE_RE.search(line) is not None
 
@@ -489,7 +490,7 @@ def _split_chunks(lines: list[str]) -> list[list[str]]:
             # Check if current chunk has at least one bullet or multiple lines
             # to avoid splitting too aggressively
             has_content = len(current) > 1 or any(
-                l.strip().startswith(("-", "*", "•", "○", "►", "▪")) for l in current
+                ln.strip().startswith(("-", "*", "•", "○", "►", "▪")) for ln in current
             )
             if has_content:
                 chunks.append(current)
@@ -504,12 +505,28 @@ def _split_chunks(lines: list[str]) -> list[list[str]]:
 
 
 _TITLE_WORDS = {
-    "engineer", "manager", "developer", "analyst",
-    "director", "specialist", "consultant", "lead",
-    "senior", "junior", "associate", "coordinator",
-    "administrator", "designer", "architect", "scientist",
-    "intern", "executive", "officer", "president",
-    "vp", "head",
+    "engineer",
+    "manager",
+    "developer",
+    "analyst",
+    "director",
+    "specialist",
+    "consultant",
+    "lead",
+    "senior",
+    "junior",
+    "associate",
+    "coordinator",
+    "administrator",
+    "designer",
+    "architect",
+    "scientist",
+    "intern",
+    "executive",
+    "officer",
+    "president",
+    "vp",
+    "head",
 }
 
 
@@ -537,10 +554,7 @@ def _parse_role_section(lines: list[str]) -> list[dict]:
                 company = parts[1].strip()
         # Try "Title | Company" or "Company | Title"
         elif " | " in headline:
-            left, right = [
-                part.strip()
-                for part in headline.split(" | ", 1)
-            ]
+            left, right = [part.strip() for part in headline.split(" | ", 1)]
             if left and right:
                 right_is_title = _has_title_word(right)
                 left_is_title = _has_title_word(left)
@@ -561,10 +575,7 @@ def _parse_role_section(lines: list[str]) -> list[dict]:
                 company = m.group(2).strip()
         # Try "Company - Title" or "Title - Company" format
         elif " - " in headline:
-            left, right = [
-                part.strip()
-                for part in headline.split(" - ", 1)
-            ]
+            left, right = [part.strip() for part in headline.split(" - ", 1)]
             if left and right:
                 if _has_title_word(right):
                     company = left
@@ -575,9 +586,7 @@ def _parse_role_section(lines: list[str]) -> list[dict]:
         # Try to extract from separate lines (common format)
         elif len(chunk) >= 2:
             line1 = chunk[0].strip()
-            is_bullet = chunk[1].startswith(
-                ("-", "*", "•")
-            )
+            is_bullet = chunk[1].startswith(("-", "*", "•"))
             line2 = chunk[1].strip() if not is_bullet else None
 
             if line2:

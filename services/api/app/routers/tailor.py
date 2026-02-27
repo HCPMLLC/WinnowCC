@@ -10,9 +10,9 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
+from app.models.job import Job as JobModel
 from app.models.tailored_resume import TailoredResume
 from app.models.user import User
-from app.models.job import Job as JobModel
 from app.schemas.tailor import (
     DocumentListItem,
     DocumentListResponse,
@@ -90,7 +90,7 @@ def request_tailor(
     session: Session = Depends(get_session),
 ) -> TailorRequestResponse:
     profile_version = _latest_profile_version(session, user.id)
-    queue = get_queue()
+    queue = get_queue("critical")
     job = queue.enqueue(tailor_job, user.id, job_id, profile_version)
     return TailorRequestResponse(status="queued", job_id=job.id)
 
@@ -158,7 +158,7 @@ def download_resume(
     try:
         path = file_response_path(tailored.docx_url, suffix=".docx")
     except Exception:
-        raise HTTPException(status_code=404, detail="File not found.")
+        raise HTTPException(status_code=404, detail="File not found.") from None
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
     background_tasks.add_task(_cleanup_temp, path, tailored.docx_url)
@@ -183,7 +183,7 @@ def download_cover_letter(
     try:
         path = file_response_path(tailored.cover_letter_url, suffix=".docx")
     except Exception:
-        raise HTTPException(status_code=404, detail="File not found.")
+        raise HTTPException(status_code=404, detail="File not found.") from None
     if not path.exists():
         raise HTTPException(status_code=404, detail="File not found.")
     background_tasks.add_task(_cleanup_temp, path, tailored.cover_letter_url)

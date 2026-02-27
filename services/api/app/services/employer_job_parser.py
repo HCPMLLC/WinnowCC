@@ -100,10 +100,9 @@ def _extract_doc_text(file_path: str) -> str:
     # Fall back to LibreOffice conversion
     try:
         import shutil
+        from pathlib import Path as _Path
 
         from app.services.doc_converter import convert_doc_to_docx
-
-        from pathlib import Path as _Path
 
         docx_path = convert_doc_to_docx(_Path(file_path))
         try:
@@ -291,12 +290,16 @@ def _parse_with_claude(text: str) -> dict[str, Any]:
     except anthropic.BadRequestError as e:
         msg = str(e)
         if "credit balance" in msg or "billing" in msg.lower():
-            raise RuntimeError("AI service temporarily unavailable (billing). Please try again later.") from e
+            raise RuntimeError(
+                "AI service temporarily unavailable (billing). Please try again later."
+            ) from e
         logger.error("Claude API call failed: %s", e)
         raise RuntimeError(f"AI parsing failed: {msg}") from e
     except anthropic.APIError as e:
         logger.error("Claude API call failed: %s", e)
-        raise RuntimeError("AI service temporarily unavailable. Please try again later.") from e
+        raise RuntimeError(
+            "AI service temporarily unavailable. Please try again later."
+        ) from e
     except Exception as e:
         logger.error("Claude API call failed: %s", e)
         return {}

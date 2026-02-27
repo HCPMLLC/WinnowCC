@@ -291,7 +291,7 @@ def backfill_embeddings(
     count = session.execute(
         select(func.count(Job.id)).where(Job.embedding.is_(None))
     ).scalar()
-    get_queue().enqueue(embed_all_jobs)
+    get_queue("low").enqueue(embed_all_jobs)
     return {"status": "queued", "jobs_without_embeddings": count}
 
 

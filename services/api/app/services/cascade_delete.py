@@ -1,11 +1,9 @@
 """Cascade-delete a user and all associated data."""
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import delete, select, text, update
 from sqlalchemy.orm import Session
-
-from app.services.storage import delete_file as delete_stored_file
 
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
@@ -16,6 +14,7 @@ from app.models.resume_document import ResumeDocument
 from app.models.tailored_resume import TailoredResume
 from app.models.trust_audit_log import TrustAuditLog
 from app.models.user import User
+from app.services.storage import delete_file as delete_stored_file
 
 
 def _delete_employer_data(session: Session, user_id: int) -> None:
@@ -117,7 +116,8 @@ def _delete_recruiter_data(session: Session, user_id: int) -> None:
             {"jids": job_ids},
         )
 
-    # Outreach enrollments (FK to sequences, pipeline_candidates, and recruiter_profiles)
+    # Outreach enrollments
+    # (FK to sequences, pipeline_candidates, recruiter_profiles)
     session.execute(
         text("DELETE FROM outreach_enrollments WHERE recruiter_profile_id = :rid"),
         {"rid": rp_id},
@@ -254,7 +254,7 @@ def cascade_delete_user(session: Session, user_id: int) -> bool:
         update(ResumeDocument)
         .where(ResumeDocument.user_id == user_id)
         .where(ResumeDocument.deleted_at.is_(None))
-        .values(deleted_at=datetime.now(timezone.utc))
+        .values(deleted_at=datetime.now(UTC))
     )
 
     # 7. Candidate (onboarding data)

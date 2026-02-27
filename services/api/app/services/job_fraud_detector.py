@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import os
 import uuid
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session

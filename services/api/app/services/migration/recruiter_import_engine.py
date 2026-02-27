@@ -136,9 +136,7 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
         for i, row in enumerate(rows):
             try:
                 mapped = _map_row(row, field_mapping)
-                source_id = (
-                    mapped.get("external_id") or mapped.get("email") or str(i)
-                )
+                source_id = mapped.get("external_id") or mapped.get("email") or str(i)
 
                 if entity_type in ("companies", "contacts"):
                     result = _import_client(
@@ -181,9 +179,7 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
                     )
                 else:
                     # Unknown entity type — store in entity map for reference
-                    winnow_type = RECRUITER_WINNOW_TYPES.get(
-                        entity_type, entity_type
-                    )
+                    winnow_type = RECRUITER_WINNOW_TYPES.get(entity_type, entity_type)
                     _record_entity(
                         migration_job_id,
                         entity_type,
@@ -211,9 +207,7 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
         db.commit()
         stats["by_type"][entity_type] = type_stats
 
-        _resolve_recruiter_relationships(
-            migration_job_id, recruiter_profile_id, db
-        )
+        _resolve_recruiter_relationships(migration_job_id, recruiter_profile_id, db)
 
         job.status = "completed"
         job.completed_at = datetime.now(UTC)
@@ -258,9 +252,7 @@ def _import_client(
     db: Session,
 ) -> str:
     """Import a company/contact row → RecruiterClient."""
-    company_name = (
-        mapped.get("company_name") or mapped.get("company") or ""
-    ).strip()
+    company_name = (mapped.get("company_name") or mapped.get("company") or "").strip()
     if not company_name:
         _record_entity(
             migration_job_id,
@@ -464,10 +456,8 @@ def _import_pipeline_candidate(
     if email:
         existing = db.execute(
             select(RecruiterPipelineCandidate).where(
-                RecruiterPipelineCandidate.recruiter_profile_id
-                == recruiter_profile_id,
-                func.lower(RecruiterPipelineCandidate.external_email)
-                == email,
+                RecruiterPipelineCandidate.recruiter_profile_id == recruiter_profile_id,
+                func.lower(RecruiterPipelineCandidate.external_email) == email,
             )
         ).scalar_one_or_none()
 
@@ -521,9 +511,7 @@ def _import_pipeline_candidate(
     db.flush()
 
     # Store parent reference for job linkage
-    parent_id = mapped.get("company_source_id") or mapped.get(
-        "candidate_source_id"
-    )
+    parent_id = mapped.get("company_source_id") or mapped.get("candidate_source_id")
 
     _record_entity(
         migration_job_id,
@@ -569,20 +557,16 @@ def _import_placement(
     if email:
         pc = db.execute(
             select(RecruiterPipelineCandidate).where(
-                RecruiterPipelineCandidate.recruiter_profile_id
-                == recruiter_profile_id,
-                func.lower(RecruiterPipelineCandidate.external_email)
-                == email,
+                RecruiterPipelineCandidate.recruiter_profile_id == recruiter_profile_id,
+                func.lower(RecruiterPipelineCandidate.external_email) == email,
             )
         ).scalar_one_or_none()
 
     if not pc and name:
         pc = db.execute(
             select(RecruiterPipelineCandidate).where(
-                RecruiterPipelineCandidate.recruiter_profile_id
-                == recruiter_profile_id,
-                func.lower(RecruiterPipelineCandidate.external_name)
-                == name.lower(),
+                RecruiterPipelineCandidate.recruiter_profile_id == recruiter_profile_id,
+                func.lower(RecruiterPipelineCandidate.external_name) == name.lower(),
             )
         ).scalar_one_or_none()
 

@@ -53,9 +53,7 @@ def compute_cover_letter_score(
         cover_text, company_name, hiring_manager_name
     )
 
-    c_s = int(
-        (keyword_match * 0.5) + (length_quality * 0.3) + (personalization * 0.2)
-    )
+    c_s = int((keyword_match * 0.5) + (length_quality * 0.3) + (personalization * 0.2))
     return max(0, min(100, c_s))
 
 
@@ -68,7 +66,11 @@ def _extract_text_from_docx(path: Path) -> str:
 
 def _tokenize(text: str) -> set[str]:
     """Tokenize text into lowercase words."""
-    return {token.lower() for token in re.findall(r"[a-zA-Z0-9+.#]+", text) if len(token) >= 3}
+    return {
+        token.lower()
+        for token in re.findall(r"[a-zA-Z0-9+.#]+", text)
+        if len(token) >= 3
+    }
 
 
 def _compute_keyword_match(cover_text: str, job_description: str) -> int:

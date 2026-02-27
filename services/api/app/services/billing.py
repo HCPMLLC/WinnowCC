@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextvars
 import logging
 import os
-from datetime import date
+from datetime import UTC, date
 
 import stripe
 from fastapi import HTTPException
@@ -53,6 +53,7 @@ def is_founder_email(email: str | None = None) -> bool:
     """Check if the given (or current-request) email belongs to a founder."""
     check = email.strip().lower() if email else _request_user_email.get("")
     return bool(check and check in FOUNDER_EMAILS)
+
 
 # ---------------------------------------------------------------------------
 # Unified Plan Limits (three segments)
@@ -264,13 +265,21 @@ PLAN_LIMITS = CANDIDATE_PLAN_LIMITS
 
 PRICE_IDS: dict[tuple[str, str, str], str] = {
     # Candidates
-    ("candidate", "starter", "monthly"): os.getenv("STRIPE_PRICE_CANDIDATE_STARTER_MO", ""),
-    ("candidate", "starter", "annual"): os.getenv("STRIPE_PRICE_CANDIDATE_STARTER_YR", ""),
+    ("candidate", "starter", "monthly"): os.getenv(
+        "STRIPE_PRICE_CANDIDATE_STARTER_MO", ""
+    ),
+    ("candidate", "starter", "annual"): os.getenv(
+        "STRIPE_PRICE_CANDIDATE_STARTER_YR", ""
+    ),
     ("candidate", "pro", "monthly"): os.getenv("STRIPE_PRICE_CANDIDATE_PRO_MO", ""),
     ("candidate", "pro", "annual"): os.getenv("STRIPE_PRICE_CANDIDATE_PRO_YR", ""),
     # Employers
-    ("employer", "starter", "monthly"): os.getenv("STRIPE_PRICE_EMPLOYER_STARTER_MO", ""),
-    ("employer", "starter", "annual"): os.getenv("STRIPE_PRICE_EMPLOYER_STARTER_YR", ""),
+    ("employer", "starter", "monthly"): os.getenv(
+        "STRIPE_PRICE_EMPLOYER_STARTER_MO", ""
+    ),
+    ("employer", "starter", "annual"): os.getenv(
+        "STRIPE_PRICE_EMPLOYER_STARTER_YR", ""
+    ),
     ("employer", "pro", "monthly"): os.getenv("STRIPE_PRICE_EMPLOYER_PRO_MO", ""),
     ("employer", "pro", "annual"): os.getenv("STRIPE_PRICE_EMPLOYER_PRO_YR", ""),
     # Recruiters
@@ -278,8 +287,12 @@ PRICE_IDS: dict[tuple[str, str, str], str] = {
     ("recruiter", "solo", "annual"): os.getenv("STRIPE_PRICE_RECRUITER_SOLO_YR", ""),
     ("recruiter", "team", "monthly"): os.getenv("STRIPE_PRICE_RECRUITER_TEAM_MO", ""),
     ("recruiter", "team", "annual"): os.getenv("STRIPE_PRICE_RECRUITER_TEAM_YR", ""),
-    ("recruiter", "agency", "monthly"): os.getenv("STRIPE_PRICE_RECRUITER_AGENCY_MO", ""),
-    ("recruiter", "agency", "annual"): os.getenv("STRIPE_PRICE_RECRUITER_AGENCY_YR", ""),
+    ("recruiter", "agency", "monthly"): os.getenv(
+        "STRIPE_PRICE_RECRUITER_AGENCY_MO", ""
+    ),
+    ("recruiter", "agency", "annual"): os.getenv(
+        "STRIPE_PRICE_RECRUITER_AGENCY_YR", ""
+    ),
 }
 
 # Published prices for the public plans endpoint (no auth required)
@@ -544,9 +557,9 @@ def get_recruiter_limit(tier: str, key: str):
 
 def _maybe_reset_recruiter_counters(profile, session: Session) -> None:
     """Reset monthly counters if the current period has rolled over."""
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
 
-    now = _dt.now(_tz.utc)
+    now = _dt.now(UTC)
     reset_at = profile.usage_reset_at
     if reset_at is None or reset_at.month != now.month or reset_at.year != now.year:
         profile.candidate_briefs_used = 0
@@ -636,9 +649,9 @@ def get_employer_limit(tier: str, key: str):
 
 def _maybe_reset_employer_counters(profile, session: Session) -> None:
     """Reset monthly counters if the current period has rolled over."""
-    from datetime import datetime as _dt, timezone as _tz
+    from datetime import datetime as _dt
 
-    now = _dt.now(_tz.utc)
+    now = _dt.now(UTC)
     reset_at = profile.usage_reset_at
     if reset_at is None or reset_at.month != now.month or reset_at.year != now.year:
         profile.ai_parsing_used = 0
@@ -725,8 +738,12 @@ def create_checkout_session(
 ) -> str:
     """Create a Stripe Checkout session and return the URL (legacy candidate-only)."""
     return create_unified_checkout(
-        session, user, candidate=candidate,
-        segment="candidate", tier="pro", interval=billing_cycle,
+        session,
+        user,
+        candidate=candidate,
+        segment="candidate",
+        tier="pro",
+        interval=billing_cycle,
     )
 
 
@@ -754,7 +771,9 @@ def create_unified_checkout(
             candidate.plan_tier = tier
             session.flush()
         success_url = f"{FRONTEND_URL}/settings?billing=success"
-        logger.info("Dev mode: upgraded %s to %s/%s (no webhook)", user.email, segment, tier)
+        logger.info(
+            "Dev mode: upgraded %s to %s/%s (no webhook)", user.email, segment, tier
+        )
         return success_url
 
     price_id = get_price_id(segment, tier, interval)
@@ -771,7 +790,9 @@ def create_unified_checkout(
             select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
         ).scalar_one_or_none()
         if rp is None:
-            raise HTTPException(status_code=404, detail="Complete recruiter registration first.")
+            raise HTTPException(
+                status_code=404, detail="Complete recruiter registration first."
+            )
         if rp.stripe_customer_id:
             customer_id = rp.stripe_customer_id
         else:
@@ -790,7 +811,9 @@ def create_unified_checkout(
             select(EmployerProfile).where(EmployerProfile.user_id == user.id)
         ).scalar_one_or_none()
         if ep is None:
-            raise HTTPException(status_code=404, detail="Complete employer registration first.")
+            raise HTTPException(
+                status_code=404, detail="Complete employer registration first."
+            )
         if ep.stripe_customer_id:
             customer_id = ep.stripe_customer_id
         else:
@@ -823,8 +846,13 @@ def create_unified_checkout(
             "customer": customer_id,
             "mode": "subscription",
             "line_items": [{"price": price_id, "quantity": quantity}],
-            "success_url": f"{FRONTEND_URL}{success_paths.get(segment, '/settings?billing=success')}",
-            "cancel_url": f"{FRONTEND_URL}{cancel_paths.get(segment, '/settings?canceled=true')}",
+            "success_url": (
+                f"{FRONTEND_URL}"
+                f"{success_paths.get(segment, '/settings?billing=success')}"
+            ),
+            "cancel_url": (
+                f"{FRONTEND_URL}{cancel_paths.get(segment, '/settings?canceled=true')}"
+            ),
             "metadata": {
                 "user_id": str(user.id),
                 "segment": segment,
@@ -932,8 +960,9 @@ def _handle_checkout_completed(checkout_session: object, session: Session) -> No
             logger.warning("No recruiter for Stripe customer %s", customer_id)
             return
         if rp.billing_exempt:
-            logger.info("Skipping checkout for billing-exempt recruiter %s",
-                        rp.company_name)
+            logger.info(
+                "Skipping checkout for billing-exempt recruiter %s", rp.company_name
+            )
             return
         rp.stripe_subscription_id = subscription_id
         rp.subscription_status = "active"
@@ -971,7 +1000,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
     customer_id = getattr(subscription, "customer", None)
     status = getattr(subscription, "status", None)
     sub_id = getattr(subscription, "id", None)
-    metadata = getattr(subscription, "metadata", {}) or {}
+    getattr(subscription, "metadata", {}) or {}
     if not customer_id:
         return
 
@@ -997,8 +1026,9 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
     ).scalar_one_or_none()
     if rp is not None:
         if rp.billing_exempt:
-            logger.info("Skipping sub change for billing-exempt recruiter %s",
-                        rp.company_name)
+            logger.info(
+                "Skipping sub change for billing-exempt recruiter %s", rp.company_name
+            )
             return
         rp.stripe_subscription_id = sub_id
         rp.subscription_status = status
@@ -1011,9 +1041,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
     from app.models.employer import EmployerProfile
 
     ep = session.execute(
-        select(EmployerProfile).where(
-            EmployerProfile.stripe_customer_id == customer_id
-        )
+        select(EmployerProfile).where(EmployerProfile.stripe_customer_id == customer_id)
     ).scalar_one_or_none()
     if ep is not None:
         ep.stripe_subscription_id = sub_id
@@ -1044,8 +1072,10 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
     ).scalar_one_or_none()
     if rp is not None:
         if rp.billing_exempt:
-            logger.info("Skipping payment_failed for billing-exempt recruiter %s",
-                        rp.company_name)
+            logger.info(
+                "Skipping payment_failed for billing-exempt recruiter %s",
+                rp.company_name,
+            )
             return
         rp.subscription_status = "past_due"
         session.flush()
@@ -1054,11 +1084,8 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
     from app.models.employer import EmployerProfile
 
     ep = session.execute(
-        select(EmployerProfile).where(
-            EmployerProfile.stripe_customer_id == customer_id
-        )
+        select(EmployerProfile).where(EmployerProfile.stripe_customer_id == customer_id)
     ).scalar_one_or_none()
     if ep is not None:
         ep.subscription_status = "past_due"
         session.flush()
-

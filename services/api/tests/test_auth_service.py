@@ -118,14 +118,18 @@ def test_get_current_user_via_bearer(session) -> None:
 
 def test_get_current_user_missing_cookie(session) -> None:
     with pytest.raises(HTTPException) as exc:
-        auth_service.get_current_user(session=session, rm_session=None, authorization=None)
+        auth_service.get_current_user(
+            session=session, rm_session=None, authorization=None
+        )
     assert exc.value.status_code == 401
 
 
 def test_get_current_user_missing_user(session) -> None:
     token = auth_service.make_token(user_id=999, email="a@b.com")
     with pytest.raises(HTTPException) as exc:
-        auth_service.get_current_user(session=session, rm_session=token, authorization=None)
+        auth_service.get_current_user(
+            session=session, rm_session=token, authorization=None
+        )
     assert exc.value.status_code == 401
 
 

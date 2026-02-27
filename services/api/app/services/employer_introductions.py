@@ -1,9 +1,12 @@
-"""Employer introduction request service — consent-gated employer-to-candidate contact."""
+"""Employer introduction request service.
+
+Consent-gated employer-to-candidate contact.
+"""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -54,7 +57,9 @@ def create_employer_introduction(
     if existing is not None:
         raise HTTPException(
             status_code=409,
-            detail="You already have a pending introduction request for this candidate.",
+            detail=(
+                "You already have a pending introduction request for this candidate."
+            ),
         )
 
     # 3. Check monthly limit
@@ -77,7 +82,7 @@ def create_employer_introduction(
             raise HTTPException(status_code=404, detail="Job not found.")
 
     # 5. Create request
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     intro = EmployerIntroductionRequest(
         employer_profile_id=employer_profile.id,
         candidate_profile_id=candidate_profile_id,
@@ -126,7 +131,7 @@ def respond_to_employer_introduction(
             detail=f"Cannot respond to a request with status '{intro.status}'.",
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     if action == "accept":
         intro.status = "accepted"
@@ -146,7 +151,9 @@ def respond_to_employer_introduction(
         intro.candidate_response_message = response_message
         session.flush()
     else:
-        raise HTTPException(status_code=400, detail="Action must be 'accept' or 'decline'.")
+        raise HTTPException(
+            status_code=400, detail="Action must be 'accept' or 'decline'."
+        )
 
     return intro
 
@@ -158,13 +165,20 @@ def get_employer_introductions(
     limit: int = 50,
     offset: int = 0,
 ) -> list[dict]:
-    """List introduction requests sent by this employer, enriched with candidate info."""
+    """List introduction requests sent by this employer.
+
+    Enriched with candidate info.
+    """
     q = select(EmployerIntroductionRequest).where(
         EmployerIntroductionRequest.employer_profile_id == employer_profile_id,
     )
     if status_filter:
         q = q.where(EmployerIntroductionRequest.status == status_filter)
-    q = q.order_by(EmployerIntroductionRequest.created_at.desc()).limit(limit).offset(offset)
+    q = (
+        q.order_by(EmployerIntroductionRequest.created_at.desc())
+        .limit(limit)
+        .offset(offset)
+    )
 
     intros = session.execute(q).scalars().all()
     return [_enrich_for_employer(session, i) for i in intros]
@@ -248,7 +262,9 @@ def _enrich_for_employer(session: Session, intro: EmployerIntroductionRequest) -
 
     # Load candidate profile — resolve to latest version
     cp = session.execute(
-        select(CandidateProfile).where(CandidateProfile.id == intro.candidate_profile_id)
+        select(CandidateProfile).where(
+            CandidateProfile.id == intro.candidate_profile_id
+        )
     ).scalar_one_or_none()
     if cp and cp.user_id:
         latest = session.execute(
@@ -381,7 +397,9 @@ def _send_intro_accepted_notification(
 
     # Get candidate info
     cp = session.execute(
-        select(CandidateProfile).where(CandidateProfile.id == intro.candidate_profile_id)
+        select(CandidateProfile).where(
+            CandidateProfile.id == intro.candidate_profile_id
+        )
     ).scalar_one_or_none()
     if not cp:
         return

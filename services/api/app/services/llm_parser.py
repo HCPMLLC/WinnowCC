@@ -332,9 +332,7 @@ _DATE_PATTERN = re.compile(
     r"$"
 )
 
-_LOCATION_PATTERN = re.compile(
-    r"^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*,\s*[A-Z]{2}$"
-)
+_LOCATION_PATTERN = re.compile(r"^[A-Z][a-z]+(?:\s[A-Z][a-z]+)*,\s*[A-Z]{2}$")
 
 
 _DEGREE_RE = re.compile(
@@ -471,14 +469,10 @@ def map_llm_to_profile_json(llm: dict) -> dict:
         accomplishments_raw = job.get("accomplishments") or []
         # Normalize string → list before concatenation
         if isinstance(duties_raw, str):
-            duties_raw = (
-                [duties_raw] if duties_raw.strip() else []
-            )
+            duties_raw = [duties_raw] if duties_raw.strip() else []
         if isinstance(accomplishments_raw, str):
             accomplishments_raw = (
-                [accomplishments_raw]
-                if accomplishments_raw.strip()
-                else []
+                [accomplishments_raw] if accomplishments_raw.strip() else []
             )
         all_bullets = duties_raw + accomplishments_raw
 
@@ -521,18 +515,14 @@ def map_llm_to_profile_json(llm: dict) -> dict:
         # Normalize duties from string to list if needed
         if isinstance(exp_entry["duties"], str):
             raw_d = exp_entry["duties"]
-            exp_entry["duties"] = (
-                [raw_d] if raw_d.strip() else []
-            )
+            exp_entry["duties"] = [raw_d] if raw_d.strip() else []
 
         # Ensure skills_used and technologies_used are lists
         for key in ("skills_used", "technologies_used"):
             val = exp_entry.get(key)
             if isinstance(val, str):
                 exp_entry[key] = [
-                    s.strip()
-                    for s in re.split(r"[,;|]", val)
-                    if s.strip()
+                    s.strip() for s in re.split(r"[,;|]", val) if s.strip()
                 ]
 
         # Filter out entries with no useful content
@@ -780,7 +770,10 @@ def parse_with_llm(resume_text: str) -> dict:
     Returns canonical profile_json.
     """
     llm_output = _call_llm(resume_text)
-    logger.debug("Raw LLM output for resume parse: %s", json.dumps(llm_output, default=str)[:5000])
+    logger.debug(
+        "Raw LLM output for resume parse: %s",
+        json.dumps(llm_output, default=str)[:5000],
+    )
     profile = map_llm_to_profile_json(llm_output)
 
     # Validate and fallback: calculate total_years if LLM didn't provide a valid value

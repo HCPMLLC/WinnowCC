@@ -25,7 +25,8 @@ def upgrade() -> None:
         "mjass_application_drafts",
         sa.Column("id", sa.BigInteger(), primary_key=True, autoincrement=True),
         sa.Column("user_id", sa.Integer(), nullable=False),
-        # Optional links (keep nullable + no FK constraints to avoid coupling to unknown table names)
+        # Optional links (keep nullable + no FK constraints
+        # to avoid coupling to unknown table names)
         sa.Column("candidate_id", sa.Integer(), nullable=True),
         sa.Column("match_id", sa.BigInteger(), nullable=True),
         # Job context

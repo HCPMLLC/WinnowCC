@@ -34,7 +34,9 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             if is_gcs_path(resume.path):
                 local_path.unlink(missing_ok=True)
         if not text.strip():
-            _set_job_status(session, job_run_id, "failed", "No text could be extracted.")
+            _set_job_status(
+                session, job_run_id, "failed", "No text could be extracted."
+            )
             return
 
         # Try LLM parser first (rich extraction), fall back to regex
@@ -44,11 +46,14 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
 
             avail = is_llm_parser_available()
             if avail:
-                logger.warning("LLM_PARSE: using LLM parser for resume %s", resume_document_id)
+                logger.warning(
+                    "LLM_PARSE: using LLM parser for resume %s", resume_document_id
+                )
                 profile_json = parse_with_llm(text)
                 logger.warning("LLM_PARSE: succeeded for resume %s", resume_document_id)
             else:
                 import os
+
                 from app.services.llm_parser import PROMPT9_PATH
 
                 logger.warning(

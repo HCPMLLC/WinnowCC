@@ -37,8 +37,7 @@ if "resend.dev" in RESEND_FROM:
 
 if not TELNYX_API_KEY:
     logger.warning(
-        "SMS CONFIG: TELNYX_API_KEY not set — "
-        "SMS OTP delivery will be unavailable"
+        "SMS CONFIG: TELNYX_API_KEY not set — SMS OTP delivery will be unavailable"
     )
 
 
@@ -66,7 +65,9 @@ def _send(payload: dict, description: str) -> None:
 def send_password_reset_email(to_email: str, token: str) -> None:
     """Send password reset email. Designed to run in RQ worker."""
     if not RESEND_API_KEY:
-        logger.error("RESEND_API_KEY not set; skipping password reset email to %s", to_email)
+        logger.error(
+            "RESEND_API_KEY not set; skipping password reset email to %s", to_email
+        )
         return
 
     reset_url = f"{FRONTEND_URL}/login?mode=reset&token={token}"
@@ -94,7 +95,10 @@ def send_introduction_request_email(
 ) -> None:
     """Notify candidate that a recruiter wants to connect."""
     if not RESEND_API_KEY:
-        logger.error("RESEND_API_KEY not set; skipping introduction request email to %s", to_email)
+        logger.error(
+            "RESEND_API_KEY not set; skipping introduction request email to %s",
+            to_email,
+        )
         return
 
     dashboard_url = f"{FRONTEND_URL}/dashboard"
@@ -106,8 +110,10 @@ def send_introduction_request_email(
             "to": [to_email],
             "subject": f"{recruiter_company} wants to connect with you on Winnow",
             "html": (
-                f"<p>A recruiter from <strong>{recruiter_company}</strong> is interested "
-                f"in connecting with you{job_line}.</p>"
+                "<p>A recruiter from "
+                f"<strong>{recruiter_company}</strong> "
+                "is interested in connecting with "
+                f"you{job_line}.</p>"
                 "<p>Review their message and decide whether to share your contact "
                 "information.</p>"
                 f'<p><a href="{dashboard_url}">View Request on Winnow</a></p>'
@@ -127,7 +133,10 @@ def send_introduction_accepted_email(
 ) -> None:
     """Notify recruiter that a candidate accepted their introduction request."""
     if not RESEND_API_KEY:
-        logger.error("RESEND_API_KEY not set; skipping introduction accepted email to %s", to_email)
+        logger.error(
+            "RESEND_API_KEY not set; skipping introduction accepted email to %s",
+            to_email,
+        )
         return
 
     job_line = f" for <strong>{job_title}</strong>" if job_title else ""
@@ -142,7 +151,8 @@ def send_introduction_accepted_email(
                 f"introduction request{job_line}.</p>"
                 "<p>You can now reach them at:</p>"
                 f"<p><strong>Email:</strong> {candidate_email}</p>"
-                "<p>We recommend reaching out within 48 hours while interest is fresh.</p>"
+                "<p>We recommend reaching out within "
+                "48 hours while interest is fresh.</p>"
             ),
         },
         "introduction_accepted",
@@ -184,7 +194,9 @@ def send_migration_complete_email(
 ) -> None:
     """Notify recruiter that their bulk resume migration is complete."""
     if not RESEND_API_KEY:
-        logger.error("RESEND_API_KEY not set; skipping migration complete email to %s", to_email)
+        logger.error(
+            "RESEND_API_KEY not set; skipping migration complete email to %s", to_email
+        )
         return
 
     results_url = f"{FRONTEND_URL}/recruiter/migrate?job={job_id}"
@@ -196,7 +208,9 @@ def send_migration_complete_email(
         {
             "from": RESEND_FROM,
             "to": [to_email],
-            "subject": f"Your resume import is complete \u2014 {imported:,} candidates ready",
+            "subject": (
+                f"Your resume import is complete \u2014 {imported:,} candidates ready"
+            ),
             "html": (
                 "<p>Your bulk resume import has finished processing.</p>"
                 f"<p><strong>{total:,}</strong> files processed:<br>"
@@ -228,7 +242,10 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
         message = telnyx.Message.create(
             from_=TELNYX_FROM_NUMBER,
             to=to_phone,
-            text=f"Your Winnow verification code is {otp_code}. It expires in 10 minutes.",
+            text=(
+                f"Your Winnow verification code is "
+                f"{otp_code}. It expires in 10 minutes."
+            ),
         )
         logger.info("SMS sent: mfa_otp to=%s id=%s", to_phone, message.id)
     except Exception:
@@ -239,7 +256,9 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
 def send_verification_email(to_email: str, token: str) -> None:
     """Send email verification link. Designed to run in RQ worker."""
     if not RESEND_API_KEY:
-        logger.error("RESEND_API_KEY not set; skipping verification email to %s", to_email)
+        logger.error(
+            "RESEND_API_KEY not set; skipping verification email to %s", to_email
+        )
         return
 
     verify_url = f"{FRONTEND_URL}/login?mode=verify-email&token={token}"
@@ -253,7 +272,9 @@ def send_verification_email(to_email: str, token: str) -> None:
                 "<p>Click the link below to verify your email address. "
                 "This link expires in 30 minutes.</p>"
                 f'<p><a href="{verify_url}">Verify Email</a></p>'
-                "<p>If you didn't create a Winnow account, you can safely ignore this email.</p>"
+                "<p>If you didn't create a Winnow "
+                "account, you can safely ignore "
+                "this email.</p>"
             ),
         },
         "verification",

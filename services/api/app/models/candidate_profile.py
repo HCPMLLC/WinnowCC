@@ -28,12 +28,8 @@ class CandidateProfile(Base):
     )
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     profile_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    open_to_opportunities: Mapped[bool | None] = mapped_column(
-        Boolean, nullable=True
-    )
-    profile_visibility: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )
+    open_to_opportunities: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    profile_visibility: Mapped[str | None] = mapped_column(String(50), nullable=True)
     embedding = mapped_column(_EmbeddingType, nullable=True)
     llm_parse_status: Mapped[str | None] = mapped_column(
         String(20), nullable=True

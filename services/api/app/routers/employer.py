@@ -152,8 +152,9 @@ def update_employer_profile(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=(
-                    f"Contact email must use a company domain (e.g. you@{website_domain}), "
-                    f"not a free email provider ({email_domain})."
+                    "Contact email must use a company domain"
+                    f" (e.g. you@{website_domain}),"
+                    f" not a free email provider ({email_domain})."
                 ),
             )
         if email_domain != website_domain:
@@ -222,7 +223,11 @@ def create_job(
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail=f"A job with external ID '{ext_id}' already exists (job #{existing}). Please use a different ID.",
+                detail=(
+                    f"A job with external ID '{ext_id}' already"
+                    f" exists (job #{existing})."
+                    " Please use a different ID."
+                ),
             )
 
     job = EmployerJob(employer_id=employer.id, **job_data.model_dump())
@@ -858,7 +863,11 @@ async def upload_job_document(
             if existing:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
-                    detail=f"A job with external ID '{ext_id}' already exists (job #{existing}). Please use a different ID.",
+                    detail=(
+                        f"A job with external ID '{ext_id}' already"
+                        f" exists (job #{existing})."
+                        " Please use a different ID."
+                    ),
                 )
 
         job = EmployerJob(
@@ -1635,7 +1644,6 @@ def list_job_submissions(
     session: Session = Depends(get_session),
 ) -> list[dict]:
     """View all recruiter submissions for an employer job."""
-    from app.models.candidate_submission import CandidateSubmission
     from app.models.recruiter import RecruiterProfile
     from app.services.submission import get_submissions_for_employer_job
 
@@ -1701,8 +1709,8 @@ def list_job_submissions(
         if submission_view in ("standard", "full"):
             entry["is_first_submission"] = s.is_first_submission
             cid = s.candidate_profile_id
-            entry["is_duplicate_candidate"] = (
-                bool(include_duplicates and cid and candidate_counts.get(cid, 0) > 1)
+            entry["is_duplicate_candidate"] = bool(
+                include_duplicates and cid and candidate_counts.get(cid, 0) > 1
             )
         else:
             entry["is_first_submission"] = None

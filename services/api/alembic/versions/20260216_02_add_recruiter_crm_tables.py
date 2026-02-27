@@ -1,13 +1,16 @@
-"""Add recruiter CRM tables: clients, pipeline candidates, activities; extend recruiter_jobs.
+"""Add recruiter CRM tables.
+
+clients, pipeline candidates, activities; extend recruiter_jobs.
 
 Revision ID: 20260216_02
 Revises: 20260216_01
 Create Date: 2026-02-16
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision = "20260216_02"
 down_revision = "20260216_01"

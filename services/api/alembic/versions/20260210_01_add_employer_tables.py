@@ -5,8 +5,10 @@ Revises: 20260209_02
 Create Date: 2026-02-10
 
 """
-from alembic import op
+
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260210_01"
@@ -131,9 +133,7 @@ def upgrade():
             nullable=False,
         ),
         sa.Column("notes", sa.Text()),
-        sa.Column(
-            "saved_at", sa.DateTime(timezone=True), server_default=sa.func.now()
-        ),
+        sa.Column("saved_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.UniqueConstraint(
             "employer_id", "candidate_id", name="unique_employer_saved_candidate"
         ),

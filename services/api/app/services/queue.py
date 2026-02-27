@@ -4,7 +4,11 @@ import redis
 from rq import Queue
 
 _redis_connection = None
-_queue = None
+_queues: dict[str, Queue] = {}
+
+# Priority order (highest first). Workers check these in order so jobs on
+# higher-priority queues are always processed before lower-priority ones.
+QUEUE_NAMES = ["critical", "default", "bulk", "low"]
 
 
 def get_redis_connection() -> redis.Redis:
@@ -15,8 +19,7 @@ def get_redis_connection() -> redis.Redis:
     return _redis_connection
 
 
-def get_queue() -> Queue:
-    global _queue
-    if _queue is None:
-        _queue = Queue("default", connection=get_redis_connection())
-    return _queue
+def get_queue(name: str = "default") -> Queue:
+    if name not in _queues:
+        _queues[name] = Queue(name, connection=get_redis_connection())
+    return _queues[name]

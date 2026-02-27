@@ -5,10 +5,10 @@ Revises: 20260124_01
 Create Date: 2026-01-25 09:30:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "20260125_01"
 down_revision = "20260124_01"
@@ -23,7 +23,9 @@ def upgrade() -> None:
         sa.Column("user_id", sa.Integer(), nullable=True),
         sa.Column("resume_document_id", sa.Integer(), nullable=True),
         sa.Column("version", sa.Integer(), nullable=False),
-        sa.Column("profile_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False),
+        sa.Column(
+            "profile_json", postgresql.JSONB(astext_type=sa.Text()), nullable=False
+        ),
         sa.Column(
             "updated_at",
             sa.DateTime(timezone=True),
@@ -61,5 +63,7 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     op.drop_table("job_runs")
-    op.drop_index("ix_candidate_profiles_user_id_version", table_name="candidate_profiles")
+    op.drop_index(
+        "ix_candidate_profiles_user_id_version", table_name="candidate_profiles"
+    )
     op.drop_table("candidate_profiles")

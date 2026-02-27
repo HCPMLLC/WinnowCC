@@ -84,7 +84,9 @@ def _first_experience_title(profile: dict) -> str:
 def _basics_location(profile: dict) -> str:
     if not isinstance(profile, dict):
         return ""
-    basics = profile.get("basics", {}) if isinstance(profile.get("basics", {}), dict) else {}
+    basics = (
+        profile.get("basics", {}) if isinstance(profile.get("basics", {}), dict) else {}
+    )
     return basics.get("location") or ""
 
 
@@ -95,7 +97,9 @@ def _deduplicate_matches(
     best: dict[int, tuple] = {}
     for match, job in rows:
         existing = best.get(job.id)
-        if existing is None or (match.match_score or 0) > (existing[0].match_score or 0):
+        if existing is None or (match.match_score or 0) > (
+            existing[0].match_score or 0
+        ):
             best[job.id] = (match, job)
     return list(best.values())
 
@@ -156,7 +160,8 @@ def refresh_matches(
     profile_version = _latest_profile_version(session, user.id)
     profile = session.execute(
         select(CandidateProfile).where(
-            CandidateProfile.user_id == user.id, CandidateProfile.version == profile_version
+            CandidateProfile.user_id == user.id,
+            CandidateProfile.version == profile_version,
         )
     ).scalar_one_or_none()
     if profile is None:
@@ -166,7 +171,7 @@ def refresh_matches(
         select(Candidate).where(Candidate.user_id == user.id)
     ).scalar_one_or_none()
     ingest_query = _build_ingest_query(profile.profile_json, candidate)
-    queue = get_queue()
+    queue = get_queue("critical")
     queue.enqueue(ingest_jobs_job, ingest_query)
     job = queue.enqueue(match_jobs_job, user.id, profile_version)
     return MatchesRefreshResponse(status="queued", job_id=job.id)
@@ -196,7 +201,11 @@ def search_matches(
     ).scalar_one_or_none()
     tier = get_plan_tier(candidate)
     check_daily_limit(
-        session, user.id, tier, "semantic_searches", "semantic_searches_per_day",
+        session,
+        user.id,
+        tier,
+        "semantic_searches",
+        "semantic_searches_per_day",
         request=request,
     )
 
@@ -204,7 +213,6 @@ def search_matches(
     query_embedding = generate_embedding(q)
 
     # Try pgvector cosine distance operator first, fall back to Python
-    results: list[tuple] = []
     try:
         rows = session.execute(
             text(
@@ -222,11 +230,9 @@ def search_matches(
     except Exception:
         logger.info("pgvector <=> not available, falling back to Python cosine sim")
         # Fall back: load all job embeddings and compute in Python
-        jobs_with_emb = (
-            session.execute(
-                select(Job.id, Job.embedding).where(Job.embedding.is_not(None))
-            ).all()
-        )
+        jobs_with_emb = session.execute(
+            select(Job.id, Job.embedding).where(Job.embedding.is_not(None))
+        ).all()
         scored = []
         for job_id, job_emb in jobs_with_emb:
             emb_list = _get_embedding_list(job_emb)
@@ -244,9 +250,7 @@ def search_matches(
     job_id_list = [jid for jid, _ in job_ids_with_sim]
     sim_by_id = {jid: sim for jid, sim in job_ids_with_sim}
 
-    jobs = session.execute(
-        select(Job).where(Job.id.in_(job_id_list))
-    ).scalars().all()
+    jobs = session.execute(select(Job).where(Job.id.in_(job_id_list))).scalars().all()
     jobs_by_id = {j.id: j for j in jobs}
 
     # Build response in similarity order
@@ -287,7 +291,9 @@ def list_matches(
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
         .where(
-            Match.user_id == user.id, Job.posted_at.is_not(None), Job.posted_at >= cutoff
+            Match.user_id == user.id,
+            Job.posted_at.is_not(None),
+            Job.posted_at >= cutoff,
         )
         .order_by(Match.match_score.desc())
         .limit(5)

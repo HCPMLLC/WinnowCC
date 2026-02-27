@@ -5,18 +5,19 @@ Revises: 20260214_03
 Create Date: 2026-02-15 12:02:04.045975
 
 """
-from typing import Sequence, Union
 
-from alembic import op
+from collections.abc import Sequence
+
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = '323332b7bdf1'
-down_revision: Union[str, None] = '20260214_03'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "323332b7bdf1"
+down_revision: str | None = "20260214_03"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -81,9 +82,7 @@ def upgrade() -> None:
             nullable=False,
             server_default="trial",
         ),
-        sa.Column(
-            "subscription_status", sa.String(50), server_default="trialing"
-        ),
+        sa.Column("subscription_status", sa.String(50), server_default="trialing"),
         sa.Column("billing_interval", sa.String(20), server_default="monthly"),
         sa.Column("stripe_customer_id", sa.String(255), nullable=True),
         sa.Column("stripe_subscription_id", sa.String(255), nullable=True),

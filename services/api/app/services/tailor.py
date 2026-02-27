@@ -109,7 +109,15 @@ def _build_resume_doc(path: Path, job: Job, profile_json: dict) -> None:
 
     basics = profile_json.get("basics", {}) if isinstance(profile_json, dict) else {}
     contact = " | ".join(
-        [value for value in [basics.get("email"), basics.get("phone"), basics.get("location")] if value]
+        [
+            value
+            for value in [
+                basics.get("email"),
+                basics.get("phone"),
+                basics.get("location"),
+            ]
+            if value
+        ]
     )
     if contact:
         doc.add_paragraph(contact)
@@ -155,7 +163,7 @@ def _build_cover_letter_doc(path: Path, job: Job, profile_json: dict) -> None:
     from app.services.cover_letter_generator import generate_cover_letter_text
     from app.services.docx_builder import build_cover_letter_docx
 
-    basics = (profile_json.get("basics", {}) or {})
+    basics = profile_json.get("basics", {}) or {}
     name = basics.get("name") or "Candidate"
 
     cl_text = generate_cover_letter_text(job, profile_json)

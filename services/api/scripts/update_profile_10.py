@@ -13,7 +13,10 @@ from sqlalchemy import create_engine, text
 from app.services.profile_parser import extract_text, parse_profile_from_text
 
 path = Path(
-    r"C:\Users\ronle\Documents\resumematch\services\api\data\uploads\b2b2b7ca627548018f0814a39e485fb8_Frances W Levi Resume 2019.docx"
+    r"C:\Users\ronle\Documents\resumematch\services\api"
+    r"\data\uploads"
+    r"\b2b2b7ca627548018f0814a39e485fb8"
+    r"_Frances W Levi Resume 2019.docx"
 )
 raw = extract_text(path)
 new_profile = parse_profile_from_text(raw)
@@ -24,7 +27,10 @@ with engine.connect() as conn:
     row = (
         conn.execute(
             text(
-                "SELECT profile_json FROM candidate_profiles WHERE user_id = 10 ORDER BY id DESC LIMIT 1"
+                "SELECT profile_json "
+                "FROM candidate_profiles "
+                "WHERE user_id = 10 "
+                "ORDER BY id DESC LIMIT 1"
             )
         )
         .mappings()
@@ -43,7 +49,9 @@ with engine.connect() as conn:
                 existing["basics"][key] = val
         conn.execute(
             text(
-                "UPDATE candidate_profiles SET profile_json = CAST(:pj AS jsonb) WHERE user_id = 10"
+                "UPDATE candidate_profiles "
+                "SET profile_json = CAST(:pj AS jsonb) "
+                "WHERE user_id = 10"
             ),
             {"pj": json.dumps(existing)},
         )

@@ -51,9 +51,7 @@ class RecruiterActivity(Base):
     )
 
     # Relationships
-    recruiter_profile = relationship(
-        "RecruiterProfile", back_populates="activities"
-    )
+    recruiter_profile = relationship("RecruiterProfile", back_populates="activities")
     pipeline_candidate = relationship("RecruiterPipelineCandidate")
     job = relationship("RecruiterJob")
     client = relationship("RecruiterClient")

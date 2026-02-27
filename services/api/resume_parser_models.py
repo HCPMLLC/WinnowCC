@@ -218,7 +218,9 @@ CREATE TYPE skill_category AS ENUM ('core', 'technical', 'environmental', 'soft'
 
 CREATE TABLE parsed_resume_documents (
     id SERIAL PRIMARY KEY,
-    resume_document_id INTEGER NOT NULL UNIQUE REFERENCES resume_documents(id) ON DELETE CASCADE,
+    resume_document_id INTEGER NOT NULL UNIQUE
+        REFERENCES resume_documents(id)
+        ON DELETE CASCADE,
     user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     candidate_name VARCHAR(255),
     email VARCHAR(255),
@@ -240,7 +242,9 @@ CREATE INDEX idx_parsed_resume_doc ON parsed_resume_documents(resume_document_id
 
 CREATE TABLE job_experiences (
     id SERIAL PRIMARY KEY,
-    parsed_resume_id INTEGER NOT NULL REFERENCES parsed_resume_documents(id) ON DELETE CASCADE,
+    parsed_resume_id INTEGER NOT NULL
+        REFERENCES parsed_resume_documents(id)
+        ON DELETE CASCADE,
     company_name VARCHAR(255) NOT NULL,
     job_title VARCHAR(255) NOT NULL,
     start_date VARCHAR(50),
@@ -270,7 +274,9 @@ CREATE INDEX idx_accomplishment_category ON quantified_accomplishments(impact_ca
 
 CREATE TABLE extracted_skills (
     id SERIAL PRIMARY KEY,
-    parsed_resume_id INTEGER NOT NULL REFERENCES parsed_resume_documents(id) ON DELETE CASCADE,
+    parsed_resume_id INTEGER NOT NULL
+        REFERENCES parsed_resume_documents(id)
+        ON DELETE CASCADE,
     skill_name VARCHAR(255) NOT NULL,
     category skill_category NOT NULL,
     confidence_score FLOAT DEFAULT 0.5,
@@ -296,7 +302,9 @@ CREATE INDEX idx_job_skill_job ON job_skill_usage(job_experience_id);
 
 CREATE TABLE certifications (
     id SERIAL PRIMARY KEY,
-    parsed_resume_id INTEGER NOT NULL REFERENCES parsed_resume_documents(id) ON DELETE CASCADE,
+    parsed_resume_id INTEGER NOT NULL
+        REFERENCES parsed_resume_documents(id)
+        ON DELETE CASCADE,
     certification_name VARCHAR(255) NOT NULL,
     issuing_organization VARCHAR(255),
     issue_date VARCHAR(50),
@@ -309,7 +317,9 @@ CREATE INDEX idx_cert_resume ON certifications(parsed_resume_id);
 
 CREATE TABLE education_records (
     id SERIAL PRIMARY KEY,
-    parsed_resume_id INTEGER NOT NULL REFERENCES parsed_resume_documents(id) ON DELETE CASCADE,
+    parsed_resume_id INTEGER NOT NULL
+        REFERENCES parsed_resume_documents(id)
+        ON DELETE CASCADE,
     degree VARCHAR(255),
     field_of_study VARCHAR(255),
     institution VARCHAR(255),

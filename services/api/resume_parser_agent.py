@@ -312,7 +312,10 @@ class ResumeParserAgent:
     def _extract_summary(self, text: str) -> str | None:
         """Extract professional summary/objective"""
         # Look for Summary, Profile, or Objective section
-        summary_pattern = r"(?:Summary|Profile|Objective)[:\n]+(.*?)(?:\n\n|Skills|Experience|Education)"
+        summary_pattern = (
+            r"(?:Summary|Profile|Objective)[:\n]+"
+            r"(.*?)(?:\n\n|Skills|Experience|Education)"
+        )
         match = re.search(summary_pattern, text, re.IGNORECASE | re.DOTALL)
         if match:
             return match.group(1).strip()
@@ -422,7 +425,7 @@ class ResumeParserAgent:
 
     def _parse_job_block(self, block: str) -> JobExperience | None:
         """Parse a single job entry"""
-        lines = [l.strip() for l in block.split("\n") if l.strip()]
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
         if len(lines) < 2:
             return None
 
@@ -434,7 +437,16 @@ class ResumeParserAgent:
         company_name = company_match.group(1).strip() if company_match else first_line
 
         # Extract dates
-        date_pattern = r"(January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s*(\d{4})\s*[-–—]\s*((?:January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)?\s*\d{4}|Current|Present)"
+        _months = (
+            r"January|February|March|April|May|June|"
+            r"July|August|September|October|November|"
+            r"December|Jan|Feb|Mar|Apr|May|Jun|Jul|"
+            r"Aug|Sep|Oct|Nov|Dec"
+        )
+        date_pattern = (
+            rf"({_months})?\s*(\d{{4}})\s*[-–—]\s*"
+            rf"((?:{_months})?\s*\d{{4}}|Current|Present)"
+        )
         date_match = re.search(date_pattern, first_line, re.IGNORECASE)
 
         start_date = None
@@ -584,7 +596,8 @@ class ResumeParserAgent:
                     {
                         "skill": tool.title(),
                         "category": SkillCategory.TECHNICAL.value,
-                        "confidence": 0.9,  # High confidence for explicitly mentioned tools
+                        # High confidence for explicit mentions
+                        "confidence": 0.9,
                         "source": "explicit_mention",
                     }
                 )
@@ -856,7 +869,8 @@ def main():
         New Braunfels, TX | 512-686-6808 | rlevi@hcpm.llc
         
         Summary
-        Certified PMP with over 25 years of experience leading Waterfall, Agile and Hybrid programs.
+        Certified PMP with over 25 years of experience
+        leading Waterfall, Agile and Hybrid programs.
         
         Skills
         - Project Management

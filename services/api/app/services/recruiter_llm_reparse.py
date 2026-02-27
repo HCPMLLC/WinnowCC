@@ -58,7 +58,8 @@ def recruiter_llm_reparse_job(
                 fname = Path(stored_path).name
                 gcs_path = f"gs://{gcs_bucket}/recruiter_resumes/{fname}"
                 logger.info(
-                    "LLM reparse: local path missing, trying GCS: %s", gcs_path,
+                    "LLM reparse: local path missing, trying GCS: %s",
+                    gcs_path,
                 )
                 stored_path = gcs_path
                 # Update the DB record so future lookups use GCS directly

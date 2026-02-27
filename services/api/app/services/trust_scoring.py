@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from sqlalchemy import func, select
@@ -121,7 +121,9 @@ def _compute_score(
 
     bucket_a = 0
     basics = profile_json.get("basics", {}) if isinstance(profile_json, dict) else {}
-    experience = profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    experience = (
+        profile_json.get("experience", []) if isinstance(profile_json, dict) else []
+    )
 
     name_present = bool(basics.get("name"))
     email_present = bool(basics.get("email"))
@@ -277,7 +279,9 @@ def _compute_score(
             )
         ).scalar_one()
         if duplicate_count and duplicate_count > 1:
-            dup_score = 20 if duplicate_count == 2 else 25 if duplicate_count == 3 else 30
+            dup_score = (
+                20 if duplicate_count == 2 else 25 if duplicate_count == 3 else 30
+            )
             bucket_d += _add_reason(
                 reasons,
                 dup_score,
@@ -376,7 +380,7 @@ def _count_malformed_urls(urls: list[str]) -> int:
 
 
 def _frequent_uploads(session: Session, user_id: int | None) -> bool:
-    since = datetime.now(timezone.utc) - timedelta(hours=24)
+    since = datetime.now(UTC) - timedelta(hours=24)
     if user_id is None:
         user_filter = ResumeDocument.user_id.is_(None)
     else:

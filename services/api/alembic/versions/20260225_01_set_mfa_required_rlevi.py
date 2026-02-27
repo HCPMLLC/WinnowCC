@@ -13,14 +13,8 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.execute(
-        "UPDATE users SET mfa_required = true"
-        " WHERE email = 'rlevi@hcpm.llc'"
-    )
+    op.execute("UPDATE users SET mfa_required = true WHERE email = 'rlevi@hcpm.llc'")
 
 
 def downgrade() -> None:
-    op.execute(
-        "UPDATE users SET mfa_required = false"
-        " WHERE email = 'rlevi@hcpm.llc'"
-    )
+    op.execute("UPDATE users SET mfa_required = false WHERE email = 'rlevi@hcpm.llc'")

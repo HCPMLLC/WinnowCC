@@ -47,7 +47,10 @@ def _infer_seniority(title: str) -> str:
 
 
 def _extract_json(text: str) -> str:
-    """Extract JSON from LLM responses that may contain code fences, XML tags, or preamble."""
+    """Extract JSON from LLM responses.
+
+    Handles code fences, XML tags, or preamble.
+    """
     text = text.strip()
     # Strip XML-like thinking tags (e.g. <thinking>...</thinking>, <antThinking>...)
     text = re.sub(r"<[\w-]+>.*?</[\w-]+>", "", text, flags=re.DOTALL).strip()
@@ -60,6 +63,7 @@ def _extract_json(text: str) -> str:
     if m:
         return m.group(1).strip()
     return text
+
 
 MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-4-5-20250929")
 
@@ -115,7 +119,9 @@ def generate_candidate_brief(
                 f"Description: {(rec_job.description or '')[:1000]}\n"
                 f"Requirements: {rec_job.requirements or 'N/A'}\n"
                 f"Location: {rec_job.location or 'N/A'}\n"
-                f"Salary range: {rec_job.salary_min or 'N/A'}-{rec_job.salary_max or 'N/A'}\n"
+                f"Salary range: "
+                f"{rec_job.salary_min or 'N/A'}-"
+                f"{rec_job.salary_max or 'N/A'}\n"
                 f"Remote: {rec_job.remote_policy or 'N/A'}"
             )
         else:
@@ -141,9 +147,12 @@ def generate_candidate_brief(
                         f"Company: {rj.company or 'N/A'}\n"
                         f"Description: {(rj.description_text or '')[:1000]}\n"
                         f"Location: {rj.location or 'N/A'}\n"
-                        f"Salary range: {rj.salary_min or 'N/A'}-{rj.salary_max or 'N/A'}"
+                        f"Salary range: "
+                        f"{rj.salary_min or 'N/A'}"
+                        f"-{rj.salary_max or 'N/A'}"
                     )
-        # Look up existing match for context (Match uses user_id, not candidate_profile_id)
+        # Look up existing match for context
+        # (Match uses user_id, not candidate_profile_id)
         if profile.user_id:
             match = db.execute(
                 select(Match).where(
@@ -184,14 +193,18 @@ def generate_candidate_brief(
         '  "headline": "Senior Backend Engineer | 8 YoE | Python/Go | Fintech",\n'
         '  "strengths": ["Evidence-backed strength 1", "..."],\n'
         '  "concerns": ["Honest gap 1", "..."],\n'
-        '  "fit_rationale": "Why they fit THIS job (null for general). Use \\n\\n between paragraphs for readability.",\n'
+        '  "fit_rationale": "Why they fit THIS job '
+        "(null for general). "
+        'Use \\n\\n between paragraphs for readability.",\n'
         '  "skills_alignment": {\n'
         '    "matched": [{"skill": "Python", "evidence": "Led team building APIs"}],\n'
         '    "missing": [{"skill": "Kubernetes", "severity": "nice_to_have"}]\n'
         "  },\n"
         '  "compensation_note": "Salary alignment commentary or null",\n'
         '  "availability": "Notice period or availability info, or null",\n'
-        '  "fit_score": 0-100 integer rating overall fitness (90-100 Exceptional, 75-89 Strong, 60-74 Moderate, 40-59 Weak, 0-39 Poor),\n'
+        '  "fit_score": 0-100 integer rating overall '
+        "fitness (90-100 Exceptional, 75-89 Strong, "
+        "60-74 Moderate, 40-59 Weak, 0-39 Poor),\n"
         '  "recommended_action": "Interview immediately / Consider / Pass",\n'
         '  "full_text": "Complete formatted brief for copy/paste"'
     )
@@ -275,9 +288,7 @@ def compute_market_position(
     target_user_id = profile_row.user_id if profile_row else None
 
     scores = [m.match_score for m in matches if m.match_score is not None]
-    candidate_match = next(
-        (m for m in matches if m.user_id == target_user_id), None
-    )
+    candidate_match = next((m for m in matches if m.user_id == target_user_id), None)
 
     if not candidate_match or candidate_match.match_score is None:
         return {

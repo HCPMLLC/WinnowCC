@@ -5,10 +5,10 @@ Revises: 20260125_01
 Create Date: 2026-01-26 06:10:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
+from alembic import op
 
 revision = "20260126_01"
 down_revision = "20260125_01"
@@ -17,7 +17,9 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column("resume_documents", sa.Column("sha256", sa.String(length=64), nullable=True))
+    op.add_column(
+        "resume_documents", sa.Column("sha256", sa.String(length=64), nullable=True)
+    )
 
     op.create_table(
         "candidate_trust",
@@ -26,7 +28,9 @@ def upgrade() -> None:
         sa.Column("score", sa.Integer(), nullable=False),
         sa.Column(
             "status",
-            sa.Enum("allowed", "soft_quarantine", "hard_quarantine", name="trust_status"),
+            sa.Enum(
+                "allowed", "soft_quarantine", "hard_quarantine", name="trust_status"
+            ),
             nullable=False,
         ),
         sa.Column("reasons", postgresql.JSONB(astext_type=sa.Text()), nullable=False),

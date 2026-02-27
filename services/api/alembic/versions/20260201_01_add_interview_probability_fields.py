@@ -5,9 +5,9 @@ Revises: 0a348886fd05
 Create Date: 2026-02-01 12:00:00.000000
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 revision = "20260201_01"
 down_revision = "0a348886fd05"
@@ -17,13 +17,17 @@ depends_on = None
 
 def upgrade() -> None:
     op.add_column("matches", sa.Column("resume_score", sa.Integer(), nullable=True))
-    op.add_column("matches", sa.Column("cover_letter_score", sa.Integer(), nullable=True))
+    op.add_column(
+        "matches", sa.Column("cover_letter_score", sa.Integer(), nullable=True)
+    )
     op.add_column(
         "matches", sa.Column("application_logistics_score", sa.Integer(), nullable=True)
     )
     op.add_column(
         "matches",
-        sa.Column("referred", sa.Boolean(), nullable=False, server_default=sa.text("false")),
+        sa.Column(
+            "referred", sa.Boolean(), nullable=False, server_default=sa.text("false")
+        ),
     )
     op.add_column(
         "matches", sa.Column("interview_probability", sa.Integer(), nullable=True)

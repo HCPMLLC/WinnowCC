@@ -12,9 +12,10 @@ Revises: 20260210_03
 Create Date: 2026-02-11
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers
 revision = "20260211_01"
@@ -137,18 +138,10 @@ def upgrade() -> None:
         sa.Column("match_score", sa.Integer(), nullable=True),
         sa.Column("tags", postgresql.JSONB(), server_default="[]"),
         sa.Column("notes", sa.Text(), nullable=True),
-        sa.Column(
-            "last_contacted_at", sa.DateTime(timezone=True), nullable=True
-        ),
-        sa.Column(
-            "next_followup_at", sa.DateTime(timezone=True), nullable=True
-        ),
-        sa.Column(
-            "consent_given", sa.Boolean(), server_default="false"
-        ),
-        sa.Column(
-            "consent_date", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("last_contacted_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("next_followup_at", sa.DateTime(timezone=True), nullable=True),
+        sa.Column("consent_given", sa.Boolean(), server_default="false"),
+        sa.Column("consent_date", sa.DateTime(timezone=True), nullable=True),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -198,18 +191,14 @@ def upgrade() -> None:
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
-        sa.Column(
-            "role", sa.String(50), nullable=False, server_default="viewer"
-        ),
+        sa.Column("role", sa.String(50), nullable=False, server_default="viewer"),
         sa.Column("job_access", postgresql.JSONB(), nullable=True),
         sa.Column(
             "invited_at",
             sa.DateTime(timezone=True),
             server_default=sa.func.now(),
         ),
-        sa.Column(
-            "accepted_at", sa.DateTime(timezone=True), nullable=True
-        ),
+        sa.Column("accepted_at", sa.DateTime(timezone=True), nullable=True),
         sa.PrimaryKeyConstraint("id"),
     )
     op.create_index(

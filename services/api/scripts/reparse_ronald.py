@@ -144,7 +144,8 @@ with Session(engine) as session:
         for p in sample:
             print(
                 f"  Job {p.job_id}: quality={p.posting_quality_score}, "
-                f"fraud={p.fraud_score}, skills={p.required_skills[:5] if p.required_skills else []}"
+                f"fraud={p.fraud_score}, "
+                f"skills={p.required_skills[:5] if p.required_skills else []}"
             )
     except Exception as e:
         logger.exception(f"Job parsing step failed: {e}")

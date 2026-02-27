@@ -211,7 +211,8 @@ class TestQualityScore:
 
         class MockJob:
             description_text = """
-            We are looking for a Senior Software Engineer to join our cloud platform team.
+            We are looking for a Senior Software Engineer
+            to join our cloud platform team.
 
             Requirements:
             - 5+ years of experience in Python and Go

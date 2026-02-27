@@ -32,15 +32,11 @@ def upgrade() -> None:
         "jobs",
         sa.Column("title_company_hash", sa.String(64), nullable=True),
     )
-    op.create_index(
-        "ix_jobs_title_company_hash", "jobs", ["title_company_hash"]
-    )
+    op.create_index("ix_jobs_title_company_hash", "jobs", ["title_company_hash"])
 
     # Backfill existing rows
     conn = op.get_bind()
-    rows = conn.execute(
-        sa.text("SELECT id, title, company FROM jobs")
-    ).fetchall()
+    rows = conn.execute(sa.text("SELECT id, title, company FROM jobs")).fetchall()
     for row in rows:
         h = _fingerprint_hash(row.title, row.company)
         conn.execute(

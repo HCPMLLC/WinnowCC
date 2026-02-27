@@ -11,8 +11,6 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
-from app.models.job import Job
-from app.models.match import Match
 from app.models.user import User
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.billing import check_feature_access, get_plan_tier

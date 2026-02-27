@@ -6,9 +6,10 @@ Create Date: 2026-02-10
 
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB
+
+from alembic import op
 
 revision = "20260210_02"
 down_revision = "20260210_01"
@@ -50,9 +51,7 @@ def upgrade():
     # Archival fields
     op.add_column(
         "employer_jobs",
-        sa.Column(
-            "archived", sa.Boolean(), server_default="false", nullable=False
-        ),
+        sa.Column("archived", sa.Boolean(), server_default="false", nullable=False),
     )
     op.add_column(
         "employer_jobs",
@@ -83,15 +82,9 @@ def upgrade():
     )
 
     # Indexes for common queries
-    op.create_index(
-        "idx_employer_jobs_archived", "employer_jobs", ["archived"]
-    )
-    op.create_index(
-        "idx_employer_jobs_close_date", "employer_jobs", ["close_date"]
-    )
-    op.create_index(
-        "idx_employer_jobs_job_category", "employer_jobs", ["job_category"]
-    )
+    op.create_index("idx_employer_jobs_archived", "employer_jobs", ["archived"])
+    op.create_index("idx_employer_jobs_close_date", "employer_jobs", ["close_date"])
+    op.create_index("idx_employer_jobs_job_category", "employer_jobs", ["job_category"])
 
 
 def downgrade():

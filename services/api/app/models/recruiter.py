@@ -1,6 +1,6 @@
 """Recruiter profile and team member models."""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -117,8 +117,8 @@ class RecruiterProfile(Base):
             return False
         ends = self.trial_ends_at
         if ends.tzinfo is None:
-            ends = ends.replace(tzinfo=timezone.utc)
-        return datetime.now(timezone.utc) < ends
+            ends = ends.replace(tzinfo=UTC)
+        return datetime.now(UTC) < ends
 
     @property
     def trial_days_remaining(self) -> int:
@@ -126,12 +126,12 @@ class RecruiterProfile(Base):
             return 0
         ends = self.trial_ends_at
         if ends.tzinfo is None:
-            ends = ends.replace(tzinfo=timezone.utc)
-        delta = ends - datetime.now(timezone.utc)
+            ends = ends.replace(tzinfo=UTC)
+        delta = ends - datetime.now(UTC)
         return max(0, delta.days)
 
     def start_trial(self) -> None:
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         self.subscription_tier = "trial"
         self.subscription_status = "trialing"
         self.trial_started_at = now

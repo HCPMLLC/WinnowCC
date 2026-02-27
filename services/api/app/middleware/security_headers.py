@@ -13,11 +13,15 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception:
-            import logging, traceback
+            import logging
+            import traceback
+
             logging.getLogger("winnow.middleware").error(
-                "Unhandled in SecurityHeaders: %s", traceback.format_exc(),
+                "Unhandled in SecurityHeaders: %s",
+                traceback.format_exc(),
             )
             from starlette.responses import JSONResponse
+
             response = JSONResponse(
                 status_code=500,
                 content={"detail": "Internal server error"},

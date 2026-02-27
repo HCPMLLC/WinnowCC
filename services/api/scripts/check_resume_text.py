@@ -16,7 +16,9 @@ with engine.connect() as conn:
     # First check table structure
     cols = conn.execute(
         text(
-            "SELECT column_name FROM information_schema.columns WHERE table_name = 'resume_documents'"
+            "SELECT column_name "
+            "FROM information_schema.columns "
+            "WHERE table_name = 'resume_documents'"
         )
     ).fetchall()
     print("Columns:", [c[0] for c in cols])
@@ -24,7 +26,9 @@ with engine.connect() as conn:
     row = (
         conn.execute(
             text(
-                "SELECT * FROM resume_documents WHERE user_id = 10 ORDER BY id DESC LIMIT 1"
+                "SELECT * FROM resume_documents "
+                "WHERE user_id = 10 "
+                "ORDER BY id DESC LIMIT 1"
             )
         )
         .mappings()

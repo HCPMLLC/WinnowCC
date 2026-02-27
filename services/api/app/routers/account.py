@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.middleware.rate_limit import limiter
+from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.candidate_trust import CandidateTrust
 from app.models.match import Match
@@ -19,7 +20,6 @@ from app.schemas.account import (
     DeleteAccountResponse,
     ExportPreviewResponse,
 )
-from app.models.candidate import Candidate
 from app.services.auth import clear_auth_cookie, get_current_user
 from app.services.billing import check_feature_access, get_plan_tier
 

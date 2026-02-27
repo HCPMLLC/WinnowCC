@@ -59,12 +59,8 @@ class Candidate(Base):
     stripe_subscription_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
-    subscription_status: Mapped[str | None] = mapped_column(
-        String(50), nullable=True
-    )
-    billing_interval: Mapped[str | None] = mapped_column(
-        String(20), nullable=True
-    )
+    subscription_status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    billing_interval: Mapped[str | None] = mapped_column(String(20), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         server_default=func.now(),

@@ -41,6 +41,7 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB per resume
 # RQ entry point
 # ---------------------------------------------------------------------------
 
+
 def run_resume_migration(migration_job_id: int) -> dict:
     """RQ job entry point.  Creates its own DB session (worker runs
     in a separate process)."""
@@ -57,6 +58,7 @@ def run_resume_migration(migration_job_id: int) -> dict:
 # ---------------------------------------------------------------------------
 # Core pipeline
 # ---------------------------------------------------------------------------
+
 
 def _process_resume_migration(job_id: int, db: Session) -> dict:
     job = db.execute(
@@ -157,6 +159,7 @@ def _process_resume_migration(job_id: int, db: Session) -> dict:
 # Single-file processing
 # ---------------------------------------------------------------------------
 
+
 def _process_single_resume(
     *,
     job_id: int,
@@ -177,7 +180,7 @@ def _process_single_resume(
         return "skipped"
 
     # Fast email extraction (regex only, no full parse yet)
-    from app.services.profile_parser import _extract_email  # noqa: private but fast
+    from app.services.profile_parser import _extract_email  # noqa: E402
 
     quick_email = _extract_email(text)
     if quick_email and quick_email.strip().lower() in existing_emails:
@@ -283,6 +286,7 @@ def _process_single_resume(
 # Helpers
 # ---------------------------------------------------------------------------
 
+
 def _collect_resume_files(directory: str) -> list[Path]:
     """Walk directory tree and collect PDF/DOCX files, sorted by name."""
     resume_files: list[Path] = []
@@ -309,9 +313,7 @@ def _load_pipeline_emails(db: Session, recruiter_profile_id: int) -> set[str]:
     return {r[0].strip().lower() for r in rows if r[0]}
 
 
-def _record_entity(
-    job_id: int, source_id: str, winnow_id: int, db: Session
-) -> None:
+def _record_entity(job_id: int, source_id: str, winnow_id: int, db: Session) -> None:
     db.add(
         MigrationEntityMap(
             migration_job_id=job_id,

@@ -1,12 +1,13 @@
 """API schemas."""
+
+from app.schemas.jobs import JobResponse
+from app.schemas.matches import MatchesRefreshResponse, MatchResponse
 from app.schemas.profile import (
     CandidateProfilePayload,
     CandidateProfileResponse,
     CandidateProfileUpdateRequest,
     ParseJobResponse,
 )
-from app.schemas.jobs import JobResponse
-from app.schemas.matches import MatchResponse, MatchesRefreshResponse
 from app.schemas.resume import ResumeDocumentResponse, ResumeUploadResponse
 from app.schemas.tailor import TailorRequestResponse, TailorStatusResponse
 from app.schemas.trust import (

@@ -5,7 +5,6 @@ from app.services.llm_parser import (
     map_llm_to_profile_json,
 )
 
-
 # ---------- Skill splitting ----------
 
 

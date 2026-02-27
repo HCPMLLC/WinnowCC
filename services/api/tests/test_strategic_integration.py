@@ -27,25 +27,19 @@ class TestBiasScanner:
         return MockJob()
 
     def test_clean_posting(self):
-        job = self._make_job(
-            description="We are seeking a software engineer."
-        )
+        job = self._make_job(description="We are seeking a software engineer.")
         result = scan_job_for_bias(job)
         assert result["bias_score"] == 0
         assert len(result["flags"]) == 0
 
     def test_gendered_language(self):
-        job = self._make_job(
-            description="Looking for a rockstar ninja developer."
-        )
+        job = self._make_job(description="Looking for a rockstar ninja developer.")
         result = scan_job_for_bias(job)
         assert result["bias_score"] > 0
         assert any(f["type"] == "gendered" for f in result["flags"])
 
     def test_age_coded_language(self):
-        job = self._make_job(
-            description="We need a digital native for this role."
-        )
+        job = self._make_job(description="We need a digital native for this role.")
         result = scan_job_for_bias(job)
         assert any(f["type"] == "age_coded" for f in result["flags"])
 
@@ -78,9 +72,7 @@ class TestPostingValidator:
         return MockJob()
 
     def test_valid_posting(self):
-        job = self._make_job(
-            description="Equal opportunity employer. " + "A" * 200
-        )
+        job = self._make_job(description="Equal opportunity employer. " + "A" * 200)
         result = validate_posting(job, "indeed")
         assert result["valid"] is True
 
@@ -97,10 +89,7 @@ class TestPostingValidator:
             salary_max=None,
         )
         result = validate_posting(job)
-        sal = next(
-            c for c in result["checks"]
-            if c["name"] == "salary_transparency"
-        )
+        sal = next(c for c in result["checks"] if c["name"] == "salary_transparency")
         assert sal["status"] == "fail"
 
     def test_empty_description(self):

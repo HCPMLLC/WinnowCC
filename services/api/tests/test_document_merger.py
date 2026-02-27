@@ -1,8 +1,6 @@
 """Tests for the document merger service."""
 
-import tempfile
 from pathlib import Path
-from unittest.mock import patch
 
 from app.services.document_merger import apply_naming_convention
 
@@ -45,7 +43,7 @@ def test_naming_convention_empty():
 
 def test_merge_empty_documents():
     """Merging with no documents should create an empty-ish PDF."""
-    from app.services.document_merger import PACKETS_DIR, merge_documents_to_pdf
+    from app.services.document_merger import merge_documents_to_pdf
 
     result = merge_documents_to_pdf(
         documents=[],

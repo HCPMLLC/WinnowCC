@@ -14,7 +14,9 @@ class Match(Base):
     __tablename__ = "matches"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(Integer, ForeignKey("users.id"), nullable=False)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id"), nullable=False
+    )
     job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=False)
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
     match_score: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -28,7 +30,9 @@ class Match(Base):
     # Interview Probability fields
     resume_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     cover_letter_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    application_logistics_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    application_logistics_score: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )
     referred: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     interview_probability: Mapped[int | None] = mapped_column(Integer, nullable=True)
 

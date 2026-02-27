@@ -18,7 +18,8 @@ try:
     result = session.execute(
         text("""
         SELECT source, title, company,
-               CASE WHEN description_html IS NOT NULL THEN 'YES' ELSE 'NO' END as has_html,
+               CASE WHEN description_html IS NOT NULL
+                    THEN 'YES' ELSE 'NO' END as has_html,
                LEFT(description_html, 400) as html_preview
         FROM jobs
         WHERE source = 'jsearch'

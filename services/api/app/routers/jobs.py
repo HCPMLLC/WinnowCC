@@ -27,9 +27,7 @@ def get_similar_jobs(
     user: User = Depends(get_current_user),
 ):
     """Find jobs with the closest embedding to the given job."""
-    job = session.execute(
-        select(Job).where(Job.id == job_id)
-    ).scalar_one_or_none()
+    job = session.execute(select(Job).where(Job.id == job_id)).scalar_one_or_none()
 
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
@@ -72,9 +70,7 @@ def get_similar_jobs(
     if not similar_ids:
         return []
 
-    jobs = session.execute(
-        select(Job).where(Job.id.in_(similar_ids))
-    ).scalars().all()
+    jobs = session.execute(select(Job).where(Job.id.in_(similar_ids))).scalars().all()
     jobs_by_id = {j.id: j for j in jobs}
 
     return [

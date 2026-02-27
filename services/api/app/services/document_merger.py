@@ -52,8 +52,10 @@ def merge_documents_to_pdf(
         for doc in documents:
             raw_path = doc["path"]
             # Download from GCS if needed
-            suffix = Path(raw_path).suffix if not is_gcs_path(raw_path) else (
-                ".pdf" if doc.get("type") == "pdf" else ".docx"
+            suffix = (
+                Path(raw_path).suffix
+                if not is_gcs_path(raw_path)
+                else (".pdf" if doc.get("type") == "pdf" else ".docx")
             )
             local_path = download_to_tempfile(raw_path, suffix=suffix)
             if is_gcs_path(raw_path):

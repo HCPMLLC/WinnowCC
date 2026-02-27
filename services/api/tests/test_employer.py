@@ -126,7 +126,9 @@ class TestGetEmployerTier:
         from app.services.billing import get_employer_tier
 
         user = _create_employer_user(db_session)
-        p = _create_employer_profile(db_session, user, tier="starter", sub_status="active")
+        p = _create_employer_profile(
+            db_session, user, tier="starter", sub_status="active"
+        )
         assert get_employer_tier(p) == "starter"
 
     def test_pro_active(self, db_session):
@@ -140,14 +142,18 @@ class TestGetEmployerTier:
         from app.services.billing import get_employer_tier
 
         user = _create_employer_user(db_session)
-        p = _create_employer_profile(db_session, user, tier="enterprise", sub_status="trialing")
+        p = _create_employer_profile(
+            db_session, user, tier="enterprise", sub_status="trialing"
+        )
         assert get_employer_tier(p) == "enterprise"
 
     def test_canceled_falls_to_free(self, db_session):
         from app.services.billing import get_employer_tier
 
         user = _create_employer_user(db_session)
-        p = _create_employer_profile(db_session, user, tier="starter", sub_status="canceled")
+        p = _create_employer_profile(
+            db_session, user, tier="starter", sub_status="canceled"
+        )
         assert get_employer_tier(p) == "free"
 
     def test_none_tier_defaults_to_free(self, db_session):
@@ -251,7 +257,9 @@ class TestCheckEmployerMonthlyLimit:
         user = _create_employer_user(db_session)
         p = _create_employer_profile(db_session, user, ai_parsing_used=0)
         # Should not raise
-        check_employer_monthly_limit(p, "ai_parsing_used", "ai_job_parsing_per_month", db_session)
+        check_employer_monthly_limit(
+            p, "ai_parsing_used", "ai_job_parsing_per_month", db_session
+        )
 
     def test_at_limit_raises_429(self, db_session):
         from fastapi import HTTPException
@@ -261,7 +269,9 @@ class TestCheckEmployerMonthlyLimit:
         user = _create_employer_user(db_session)
         p = _create_employer_profile(db_session, user, tier="free", ai_parsing_used=1)
         with pytest.raises(HTTPException) as exc_info:
-            check_employer_monthly_limit(p, "ai_parsing_used", "ai_job_parsing_per_month", db_session)
+            check_employer_monthly_limit(
+                p, "ai_parsing_used", "ai_job_parsing_per_month", db_session
+            )
         assert exc_info.value.status_code == 429
 
     def test_unlimited_passes(self, db_session):
@@ -270,7 +280,9 @@ class TestCheckEmployerMonthlyLimit:
         user = _create_employer_user(db_session)
         p = _create_employer_profile(db_session, user, tier="pro", ai_parsing_used=500)
         # Pro = 999, should not raise
-        check_employer_monthly_limit(p, "ai_parsing_used", "ai_job_parsing_per_month", db_session)
+        check_employer_monthly_limit(
+            p, "ai_parsing_used", "ai_job_parsing_per_month", db_session
+        )
 
 
 class TestIncrementEmployerCounter:
@@ -573,7 +585,7 @@ class TestCandidateViewLimits:
         _auth_cookie(client, user)
 
         client.get(f"/api/employer/candidates/{cp.id}")
-        from sqlalchemy import select, func
+        from sqlalchemy import func, select
 
         count = db_session.execute(
             select(func.count(EmployerCandidateView.id)).where(
@@ -794,9 +806,7 @@ class TestBiasDetectionGating:
         db_session.commit()
         _auth_cookie(client, user)
 
-        with patch(
-            "app.services.job_bias_scanner.scan_job_for_bias", return_value={}
-        ):
+        with patch("app.services.job_bias_scanner.scan_job_for_bias", return_value={}):
             resp = client.get(f"/api/distribution/jobs/{job.id}/bias-scan")
         assert resp.status_code == 200
 
@@ -849,9 +859,7 @@ class TestTeamManagement:
         user = _create_employer_user(db_session, role="employer")
         ep = _create_employer_profile(db_session, user)
         other = _create_employer_user(db_session, role="employer")
-        member = EmployerTeamMember(
-            employer_id=ep.id, user_id=other.id, role="viewer"
-        )
+        member = EmployerTeamMember(employer_id=ep.id, user_id=other.id, role="viewer")
         db_session.add(member)
         db_session.commit()
         _auth_cookie(client, user)
@@ -866,9 +874,7 @@ class TestTeamManagement:
         user = _create_employer_user(db_session, role="employer")
         ep = _create_employer_profile(db_session, user)
         other = _create_employer_user(db_session, role="employer")
-        member = EmployerTeamMember(
-            employer_id=ep.id, user_id=other.id, role="viewer"
-        )
+        member = EmployerTeamMember(employer_id=ep.id, user_id=other.id, role="viewer")
         db_session.add(member)
         db_session.commit()
         _auth_cookie(client, user)
@@ -886,9 +892,7 @@ class TestTeamManagement:
         user = _create_employer_user(db_session, role="employer")
         ep = _create_employer_profile(db_session, user)
         other = _create_employer_user(db_session, role="employer")
-        member = EmployerTeamMember(
-            employer_id=ep.id, user_id=other.id, role="viewer"
-        )
+        member = EmployerTeamMember(employer_id=ep.id, user_id=other.id, role="viewer")
         db_session.add(member)
         db_session.commit()
         _auth_cookie(client, user)
@@ -905,9 +909,7 @@ class TestTeamManagement:
         user = _create_employer_user(db_session, role="employer")
         ep = _create_employer_profile(db_session, user)
         other = _create_employer_user(db_session, role="employer")
-        member = EmployerTeamMember(
-            employer_id=ep.id, user_id=other.id, role="viewer"
-        )
+        member = EmployerTeamMember(employer_id=ep.id, user_id=other.id, role="viewer")
         db_session.add(member)
         db_session.commit()
         _auth_cookie(client, user)
@@ -933,7 +935,7 @@ class TestTeamManagement:
 class TestJobCRUD:
     def test_create_and_list(self, client, db_session):
         user = _create_employer_user(db_session, role="employer")
-        ep = _create_employer_profile(db_session, user, tier="pro")
+        _create_employer_profile(db_session, user, tier="pro")
         db_session.commit()
         _auth_cookie(client, user)
 
@@ -943,7 +945,7 @@ class TestJobCRUD:
                 json={"title": "Dev", "description": "Build things."},
             )
         assert resp.status_code == 201
-        job_id = resp.json()["id"]
+        resp.json()["id"]
 
         resp = client.get("/api/employer/jobs")
         assert resp.status_code == 200

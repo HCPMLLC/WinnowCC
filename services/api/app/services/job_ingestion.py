@@ -5,7 +5,7 @@ import html
 import json
 import logging
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
@@ -52,7 +52,7 @@ def clear_progress(run_id: int) -> None:
 
 
 def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> int:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     new_count = 0
     sources = get_job_sources()
     total_sources = len(sources)
@@ -130,7 +130,10 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
             new_count += 1
         logger.info(
             "Source %s: %d new, %d stale, %d duplicate",
-            source.name, source_new, source_stale, source_dup,
+            source.name,
+            source_new,
+            source_stale,
+            source_dup,
         )
         completed_sources += 1
         _update_progress(run_id, completed_sources, total_sources, new_count)
@@ -180,6 +183,6 @@ def _is_recent_posting(posted_at: datetime | None, now: datetime) -> bool:
     if posted_at is None:
         return False
     if posted_at.tzinfo is None:
-        posted_at = posted_at.replace(tzinfo=timezone.utc)
+        posted_at = posted_at.replace(tzinfo=UTC)
     cutoff = now - timedelta(days=7)
     return posted_at >= cutoff

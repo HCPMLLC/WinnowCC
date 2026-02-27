@@ -6,15 +6,15 @@ from sqlalchemy.orm import Session
 from app.db.session import get_session
 from app.models.candidate_profile import CandidateProfile
 from app.models.user import User
+from app.schemas.introduction import (
+    IntroductionPreferencesUpdate,
+    IntroductionResponseAction,
+)
 from app.schemas.profile import (
     CandidateProfileResponse,
     CandidateProfileUpdateRequest,
     ProfileCompletenessResponse,
     SkillCategoriesPayload,
-)
-from app.schemas.introduction import (
-    IntroductionPreferencesUpdate,
-    IntroductionResponseAction,
 )
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.location_utils import normalize_city, normalize_state
@@ -150,7 +150,10 @@ def update_profile(
 
     # Recompute trust score with updated profile data
     try:
-        from app.services.trust_scoring import evaluate_trust_for_resume, get_latest_resume
+        from app.services.trust_scoring import (
+            evaluate_trust_for_resume,
+            get_latest_resume,
+        )
 
         resume = get_latest_resume(session, user.id)
         if resume is not None:
@@ -358,9 +361,13 @@ def update_skill_years(
 
 def _get_user_profile_ids(session: Session, user_id: int) -> list[int]:
     """Get all candidate profile IDs for a user (all versions)."""
-    rows = session.execute(
-        select(CandidateProfile.id).where(CandidateProfile.user_id == user_id)
-    ).scalars().all()
+    rows = (
+        session.execute(
+            select(CandidateProfile.id).where(CandidateProfile.user_id == user_id)
+        )
+        .scalars()
+        .all()
+    )
     return list(rows)
 
 
@@ -372,8 +379,8 @@ def list_candidate_introductions(
     session: Session = Depends(get_session),
 ):
     """List introduction requests received by this candidate (recruiter + employer)."""
-    from app.services.introductions import get_candidate_introductions
     from app.services.employer_introductions import get_candidate_employer_introductions
+    from app.services.introductions import get_candidate_introductions
 
     cp_ids = _get_user_profile_ids(session, user.id)
     if not cp_ids:
@@ -409,8 +416,8 @@ def get_candidate_introduction_count(
     session: Session = Depends(get_session),
 ):
     """Get count of pending introduction requests (recruiter + employer)."""
-    from app.services.introductions import get_candidate_pending_count
     from app.services.employer_introductions import get_candidate_employer_pending_count
+    from app.services.introductions import get_candidate_pending_count
 
     cp_ids = _get_user_profile_ids(session, user.id)
     if not cp_ids:
