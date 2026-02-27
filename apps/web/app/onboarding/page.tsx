@@ -1,10 +1,11 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
+import { ProgressRing } from "../components/ProgressRing";
 import { normalizeRedirect, withRedirectParam } from "../lib/redirects";
 
 const API_BASE =
@@ -50,6 +51,26 @@ function OnboardingPageContent() {
   const [mjassConsent, setMjassConsent] = useState(false);
   const [dataProcessingConsent, setDataProcessingConsent] = useState(false);
   const [applicationMode, setApplicationMode] = useState<"review_required" | "auto_apply_limited">("review_required");
+
+  const completionPercent = useMemo(() => {
+    let pct = 0;
+    // Step 1 fields
+    if (roles.trim()) pct += 20;
+    if (locationCity.trim()) pct += 5;
+    if (locationState.trim()) pct += 5;
+    if (locationCountry.trim()) pct += 5;
+    if (workMode) pct += 10;
+    if (salaryMin) pct += 5;
+    if (salaryMax) pct += 5;
+    if (employmentTypes.length > 0) pct += 10;
+    if (travelPercent) pct += 5;
+    // Step 2 fields
+    if (acceptTerms) pct += 10;
+    if (dataProcessingConsent) pct += 5;
+    if (mjassConsent) pct += 5;
+    if (applicationMode) pct += 10;
+    return pct;
+  }, [roles, locationCity, locationState, locationCountry, workMode, salaryMin, salaryMax, employmentTypes, travelPercent, acceptTerms, dataProcessingConsent, mjassConsent, applicationMode]);
 
   useEffect(() => {
     const checkStatus = async () => {
@@ -200,9 +221,12 @@ function OnboardingPageContent() {
   return (
     <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-6 px-6 py-16">
       <header className="flex flex-col gap-2">
-        <h1 className="text-3xl font-semibold">
-          {step === "preferences" ? "Job Preferences" : "Consent & Application Mode"}
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-semibold">
+            {step === "preferences" ? "Job Preferences" : "Consent & Application Mode"}
+          </h1>
+          <ProgressRing percent={completionPercent} />
+        </div>
         <p className="text-sm text-slate-600">
           {step === "preferences"
             ? "Tell us what you're looking for so we can find the best matches."

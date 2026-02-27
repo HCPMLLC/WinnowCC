@@ -1,7 +1,9 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+
+import { ProgressRing } from "../../components/ProgressRing";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -61,6 +63,22 @@ export default function EmployerOnboarding() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const completionPercent = useMemo(() => {
+    let pct = 0;
+    // Required fields (15% each)
+    if (formData.company_name.trim()) pct += 15;
+    if (formData.contact_first_name.trim()) pct += 15;
+    if (formData.contact_last_name.trim()) pct += 15;
+    if (formData.contact_email.trim()) pct += 15;
+    if (formData.company_size) pct += 15;
+    if (formData.company_website.trim()) pct += 15;
+    // Optional fields (~3-4% each, totaling 10%)
+    if (formData.industry) pct += 3;
+    if (formData.contact_phone.trim()) pct += 3;
+    if (formData.company_description.trim()) pct += 4;
+    return pct;
+  }, [formData]);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
@@ -90,9 +108,12 @@ export default function EmployerOnboarding() {
   return (
     <div className="mx-auto max-w-2xl">
       <div className="rounded-xl border border-slate-200 bg-white p-8 shadow-sm">
-        <h1 className="text-3xl font-bold text-slate-900">
-          Welcome to Winnow!
-        </h1>
+        <div className="flex items-center gap-4">
+          <h1 className="text-3xl font-bold text-slate-900">
+            Welcome to Winnow!
+          </h1>
+          <ProgressRing percent={completionPercent} />
+        </div>
         <p className="mt-2 text-slate-600">
           Let&apos;s set up your employer profile to get started.
         </p>
