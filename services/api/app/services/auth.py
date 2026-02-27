@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import os
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -27,6 +29,7 @@ SESSION_DAYS = int(
 )
 
 _PWD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+_OTP_HMAC_KEY = JWT_SECRET.encode("utf-8")
 
 
 # -----------------------
@@ -51,14 +54,16 @@ def verify_password(password: str, password_hash: str) -> bool:
 # OTP helpers
 # -----------------------
 def generate_otp() -> tuple[str, str]:
-    """Return (plaintext_code, bcrypt_hash)."""
+    """Return (plaintext_code, hmac_hex_digest)."""
     code = f"{secrets.randbelow(1_000_000):06d}"
-    return code, _PWD_CONTEXT.hash(code)
+    digest = hmac.new(_OTP_HMAC_KEY, code.encode("utf-8"), hashlib.sha256).hexdigest()
+    return code, digest
 
 
 def verify_otp(code: str, otp_hash: str) -> bool:
     try:
-        return _PWD_CONTEXT.verify(code, otp_hash)
+        digest = hmac.new(_OTP_HMAC_KEY, code.encode("utf-8"), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(digest, otp_hash)
     except Exception:
         return False
 
