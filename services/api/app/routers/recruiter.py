@@ -21,8 +21,6 @@ from app.models.user import User
 from app.schemas.employer import (
     BulkUploadFileResult,
     BulkUploadResponse,
-    ResumeUploadFileResult,
-    ResumeUploadResponse,
 )
 from app.schemas.introduction import (
     IntroductionRequestCreate,
@@ -56,6 +54,7 @@ from app.schemas.recruiter_job import (
     RecruiterJobResponse,
     RecruiterJobUpdate,
 )
+from app.schemas.upload_batch import UploadBatchCreatedResponse
 from app.services.auth import get_recruiter_profile, require_recruiter
 
 router = APIRouter(prefix="/api/recruiter", tags=["recruiter"])
@@ -545,30 +544,25 @@ def list_pipeline(
 
 @router.post(
     "/pipeline/upload-resumes",
-    response_model=ResumeUploadResponse,
+    response_model=UploadBatchCreatedResponse,
+    status_code=status.HTTP_202_ACCEPTED,
 )
 async def upload_pipeline_resumes(
     files: list[UploadFile] = File(...),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ):
-    """Upload resume files to parse and link to pipeline candidates.
+    """Upload resume files for async batch processing.
 
-    Each resume is parsed, the email is extracted, and matched against
-    existing pipeline contacts by email. Creates CandidateProfile and
-    ResumeDocument records and links them to the pipeline entry.
+    Files are staged, tracking rows created, and worker jobs enqueued.
+    Returns immediately with a batch_id for status polling.
     """
-    import hashlib
-
-    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
-    from app.models.resume_document import ResumeDocument
+    from app.services.batch_upload import create_upload_batch
     from app.services.billing import (
         check_recruiter_monthly_limit,
         get_recruiter_limit,
         get_recruiter_tier,
-        increment_recruiter_counter,
     )
-    from app.services.profile_parser import extract_text, parse_profile_from_text
 
     tier = get_recruiter_tier(profile)
 
@@ -605,283 +599,26 @@ async def upload_pipeline_resumes(
                 ),
             )
 
-    from app.services.storage import upload_bytes as _upload_bytes
-
-    results: list[ResumeUploadFileResult] = []
-    succeeded = 0
-    matched = 0
-    new_count = 0
-    linked_platform = 0
-
+    # Read raw bytes from each file
+    file_list: list[tuple[str, bytes]] = []
     for i, upload_file in enumerate(files):
         filename = upload_file.filename or f"file_{i}"
-        tmp_path: str | None = None
+        contents = await upload_file.read()
+        file_list.append((filename, contents))
 
-        try:
-            # Validate file type
-            if not filename.lower().endswith((".pdf", ".doc", ".docx")):
-                results.append(
-                    ResumeUploadFileResult(
-                        filename=filename,
-                        success=False,
-                        status="failed",
-                        error="Unsupported file type. Use .pdf, .doc, or .docx.",
-                    )
-                )
-                continue
-
-            # Validate file size (10 MB)
-            contents = await upload_file.read()
-            if len(contents) > 10 * 1024 * 1024:
-                results.append(
-                    ResumeUploadFileResult(
-                        filename=filename,
-                        success=False,
-                        status="failed",
-                        error="File too large. Maximum size is 10 MB.",
-                    )
-                )
-                continue
-
-            # Write to temp file and process
-            ext = Path(filename).suffix.lower()
-            with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
-                tmp.write(contents)
-                tmp_path = tmp.name
-
-            # 1. Extract text
-            text = extract_text(Path(tmp_path))
-            if not text or len(text.strip()) < 20:
-                results.append(
-                    ResumeUploadFileResult(
-                        filename=filename,
-                        success=False,
-                        status="failed",
-                        error="Could not extract meaningful text from file.",
-                    )
-                )
-                continue
-
-            # 2. Parse profile (fast regex now, LLM upgrade queued to worker)
-            profile_json = parse_profile_from_text(text)
-
-            # 3. Extract email and name from parsed profile
-            basics = profile_json.get("basics", {})
-            parsed_email = basics.get("email")
-            parsed_name = basics.get("name")
-
-            # 4. Save resume file to permanent location (GCS or local)
-            file_hash = hashlib.sha256(contents).hexdigest()
-            dest_filename = f"{file_hash[:16]}_{filename}"
-            stored_path = _upload_bytes(contents, "recruiter_resumes/", dest_filename)
-
-            # 5. Create ResumeDocument record
-            resume_doc = ResumeDocument(
-                user_id=None,
-                filename=filename,
-                path=stored_path,
-                sha256=file_hash,
-            )
-            session.add(resume_doc)
-            session.flush()
-
-            # 6. Create CandidateProfile record
-            profile_json["source"] = "recruiter_resume_upload"
-            profile_json["sourced_by_user_id"] = profile.user_id
-            new_cp = CandidateProfile(
-                user_id=None,
-                resume_document_id=resume_doc.id,
-                version=1,
-                profile_json=profile_json,
-                profile_visibility="private",
-                open_to_opportunities=False,
-                llm_parse_status="pending",
-            )
-            session.add(new_cp)
-            session.flush()
-
-            # 7. Match by email (3-way resolution)
-            result_status = "new"
-            pipeline_candidate_id = None
-
-            if parsed_email:
-                parsed_email_lower = parsed_email.strip().lower()
-
-                # Check platform users first
-                platform_user = session.execute(
-                    select(User).where(func.lower(User.email) == parsed_email_lower)
-                ).scalar_one_or_none()
-
-                if platform_user:
-                    # Link to their latest CandidateProfile
-                    existing_cp = session.execute(
-                        select(CandidateProfile)
-                        .where(CandidateProfile.user_id == platform_user.id)
-                        .order_by(CandidateProfile.id.desc())
-                    ).scalar_one_or_none()
-
-                    if existing_cp:
-                        linked_cp_id = existing_cp.id
-                    else:
-                        linked_cp_id = new_cp.id
-
-                    # Find or create pipeline entry
-                    pipeline_entry = session.execute(
-                        select(RecruiterPipelineCandidate).where(
-                            RecruiterPipelineCandidate.recruiter_profile_id
-                            == profile.id,
-                            func.lower(RecruiterPipelineCandidate.external_email)
-                            == parsed_email_lower,
-                        )
-                    ).scalar_one_or_none()
-
-                    if pipeline_entry:
-                        pipeline_entry.candidate_profile_id = linked_cp_id
-                    else:
-                        pipeline_entry = RecruiterPipelineCandidate(
-                            recruiter_profile_id=profile.id,
-                            candidate_profile_id=linked_cp_id,
-                            external_name=parsed_name,
-                            external_email=parsed_email,
-                            source="recruiter_resume_upload",
-                            stage="sourced",
-                        )
-                        session.add(pipeline_entry)
-                        session.flush()
-
-                    pipeline_candidate_id = pipeline_entry.id
-                    result_status = "linked_platform"
-                    linked_platform += 1
-                else:
-                    # Check pipeline entries by email
-                    pipeline_entry = session.execute(
-                        select(RecruiterPipelineCandidate).where(
-                            RecruiterPipelineCandidate.recruiter_profile_id
-                            == profile.id,
-                            func.lower(RecruiterPipelineCandidate.external_email)
-                            == parsed_email_lower,
-                        )
-                    ).scalar_one_or_none()
-
-                    if pipeline_entry:
-                        pipeline_entry.candidate_profile_id = new_cp.id
-                        pipeline_candidate_id = pipeline_entry.id
-                        result_status = "matched"
-                        matched += 1
-                    else:
-                        # Create new pipeline entry
-                        pipeline_entry = RecruiterPipelineCandidate(
-                            recruiter_profile_id=profile.id,
-                            candidate_profile_id=new_cp.id,
-                            external_name=parsed_name,
-                            external_email=parsed_email,
-                            source="recruiter_resume_upload",
-                            stage="sourced",
-                        )
-                        session.add(pipeline_entry)
-                        session.flush()
-                        pipeline_candidate_id = pipeline_entry.id
-                        result_status = "new"
-                        new_count += 1
-            else:
-                # No email found — create new pipeline entry with name only
-                pipeline_entry = RecruiterPipelineCandidate(
-                    recruiter_profile_id=profile.id,
-                    candidate_profile_id=new_cp.id,
-                    external_name=parsed_name or filename,
-                    source="recruiter_resume_upload",
-                    stage="sourced",
-                )
-                session.add(pipeline_entry)
-                session.flush()
-                pipeline_candidate_id = pipeline_entry.id
-                result_status = "new"
-                new_count += 1
-
-            # 8. Increment usage counter
-            increment_recruiter_counter(profile, "resume_imports_used", session)
-
-            # 9. Queue async LLM re-parse to worker (keeps upload fast)
-            try:
-                from app.services.queue import get_queue
-                from app.services.recruiter_llm_reparse import (
-                    recruiter_llm_reparse_job,
-                )
-
-                get_queue().enqueue(
-                    recruiter_llm_reparse_job,
-                    new_cp.id,
-                    resume_doc.id,
-                    job_timeout="10m",
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to enqueue LLM reparse for profile %d",
-                    new_cp.id,
-                    exc_info=True,
-                )
-
-            results.append(
-                ResumeUploadFileResult(
-                    filename=filename,
-                    success=True,
-                    status=result_status,
-                    pipeline_candidate_id=pipeline_candidate_id,
-                    candidate_profile_id=new_cp.id,
-                    matched_email=parsed_email,
-                    parsed_name=parsed_name,
-                    llm_parse_status="pending",
-                )
-            )
-            succeeded += 1
-
-        except Exception as exc:
-            logger.exception("Error processing resume upload: %s", filename)
-            session.rollback()
-            results.append(
-                ResumeUploadFileResult(
-                    filename=filename,
-                    success=False,
-                    status="failed",
-                    error=f"Processing error: {exc}",
-                )
-            )
-        finally:
-            if tmp_path and os.path.exists(tmp_path):
-                try:
-                    os.unlink(tmp_path)
-                except OSError:
-                    pass
-
-    session.commit()
-
-    # Calculate remaining quota
-    monthly_limit_val = get_recruiter_limit(tier, "resume_imports_per_month")
-    current_used_after = profile.resume_imports_used or 0
-    remaining = (
-        max(0, int(monthly_limit_val) - current_used_after)
-        if isinstance(monthly_limit_val, int) and monthly_limit_val < 999
-        else 999
+    # Stage files, create tracking rows, enqueue worker jobs
+    result = create_upload_batch(
+        user_id=profile.user_id,
+        owner_profile_id=profile.id,
+        batch_type="recruiter_resume",
+        files=file_list,
+        session=session,
     )
 
-    upgrade_recommendation = None
-    if tier in ("trial", "solo") and succeeded > 0:
-        upgrade_recommendation = (
-            f"Upgrade from {tier.capitalize()} to unlock higher batch "
-            "and monthly limits for resume imports."
-        )
-
-    total_failed = len(results) - succeeded
-    return ResumeUploadResponse(
-        results=results,
-        total_submitted=len(files),
-        total_succeeded=succeeded,
-        total_failed=total_failed,
-        total_matched=matched,
-        total_new=new_count,
-        total_linked_platform=linked_platform,
-        remaining_monthly_quota=remaining,
-        upgrade_recommendation=upgrade_recommendation,
+    return UploadBatchCreatedResponse(
+        batch_id=result["batch_id"],
+        status_url=result["status_url"],
+        total_files=len(file_list),
     )
 
 
