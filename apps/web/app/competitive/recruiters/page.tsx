@@ -116,6 +116,11 @@ const CATEGORIES = [
         tooltip: "Live status of each board posting with success/failure indicators",
         winnow: "full", recruitcrm: "partial", catsone: "none", bullhorn: "partial", zoho: "none",
       },
+      {
+        name: "Candidate-facing visibility (jobs shown to pre-scored Pro candidates)",
+        tooltip: "Active recruiter jobs automatically appear in Pro candidates' match feeds, branded as Recruiter",
+        winnow: "full", recruitcrm: "none", catsone: "none", bullhorn: "none", zoho: "none",
+      },
     ],
   },
   {

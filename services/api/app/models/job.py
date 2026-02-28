@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func, BigInteger
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text, func, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 try:
@@ -54,4 +54,18 @@ class Job(Base):
     )
     last_seen_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+
+    # Cross-marketplace proxy FKs
+    employer_job_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("employer_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    recruiter_job_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("recruiter_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
     )

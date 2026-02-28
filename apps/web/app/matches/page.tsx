@@ -13,6 +13,7 @@ import CollapsibleTip from "../components/CollapsibleTip";
 
 type Job = {
   id: number;
+  source?: string;
   company: string;
   company_logo?: string;
   url: string;
@@ -135,9 +136,17 @@ function MatchCard({
       }`}
     >
       <div className="flex items-start justify-between gap-2">
-        <h3 className={`text-sm font-semibold leading-tight ${isSelected ? "text-green-900" : "text-gray-900"}`}>
-          {job.title}
-        </h3>
+        <div className="flex items-center gap-1.5">
+          <h3 className={`text-sm font-semibold leading-tight ${isSelected ? "text-green-900" : "text-gray-900"}`}>
+            {job.title}
+          </h3>
+          {job.source === "employer" && (
+            <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">Direct Hire</span>
+          )}
+          {job.source === "recruiter" && (
+            <span className="shrink-0 rounded-full bg-purple-100 px-1.5 py-0.5 text-[10px] font-semibold text-purple-700">Recruiter</span>
+          )}
+        </div>
         <div className="flex shrink-0 items-center gap-1">
           {match.referred && (
             <span className="rounded bg-amber-500 px-1 py-0.5 text-xs font-bold text-white">8x</span>
@@ -770,9 +779,17 @@ function MatchesPageContent() {
                       </div>
 
                       <div className="min-w-0 flex-1">
-                        <h2 className="text-xl font-bold text-gray-900">
-                          {selectedMatch.job.title}
-                        </h2>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-xl font-bold text-gray-900">
+                            {selectedMatch.job.title}
+                          </h2>
+                          {selectedMatch.job.source === "employer" && (
+                            <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-semibold text-emerald-700">Direct Hire</span>
+                          )}
+                          {selectedMatch.job.source === "recruiter" && (
+                            <span className="shrink-0 rounded-full bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">Recruiter</span>
+                          )}
+                        </div>
                         <p className="text-base text-gray-700">{selectedMatch.job.company}</p>
                         <div className="mt-1 flex flex-wrap items-center gap-2 text-sm text-gray-600">
                           <span className="inline-flex items-center gap-1">

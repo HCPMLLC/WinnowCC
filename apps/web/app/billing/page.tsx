@@ -163,6 +163,7 @@ function SubscriptionStateBanner({
 }
 
 const FEATURES = [
+  { name: "Job Sources", free: "Job boards", pro: "All sources (boards + direct hire + recruiter)" },
   { name: "Match Refreshes", free: "10/month", pro: "Unlimited" },
   { name: "Tailored Documents", free: "3/month", pro: "Unlimited" },
   { name: "Cover Letter Generation", free: false, pro: true },
@@ -512,7 +513,7 @@ function BillingPageContent() {
               Upgrade to Pro
             </h2>
             <p className="mt-1 text-slate-500">
-              Unlimited match refreshes, tailored documents, and cover letter generation.
+              Unlimited match refreshes, all job sources, tailored documents, and cover letter generation.
             </p>
 
             <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">

@@ -197,11 +197,216 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
         session.close()
 
 
+def sync_employer_job_to_jobs(job_id: int) -> None:
+    """Sync an employer job into the main jobs table as a proxy row.
+
+    Creates or updates a Job with ``source='employer'`` so that
+    ``compute_matches()`` picks it up for Starter+ candidates.
+    """
+    import hashlib
+
+    from app.models.employer import EmployerJob, EmployerProfile
+
+    session = get_session_factory()()
+    try:
+        ej = session.get(EmployerJob, job_id)
+        if not ej:
+            logger.warning("sync_employer_job_to_jobs: EmployerJob %s not found", job_id)
+            return
+
+        ep = session.get(EmployerProfile, ej.employer_id)
+        company = (ep.company_name if ep else None) or "Unknown"
+
+        desc = (ej.description or "") + "\n" + (ej.requirements or "")
+        content_hash = hashlib.sha256(desc.encode()).hexdigest()
+
+        proxy = session.execute(
+            select(Job).where(Job.employer_job_id == job_id)
+        ).scalar_one_or_none()
+
+        if proxy is None:
+            proxy = Job(
+                source="employer",
+                source_job_id=f"employer_{job_id}",
+                employer_job_id=job_id,
+            )
+            session.add(proxy)
+
+        proxy.title = ej.title
+        proxy.company = company
+        proxy.location = ej.location or "Remote"
+        proxy.remote_flag = (ej.remote_policy or "").lower() == "remote"
+        proxy.salary_min = ej.salary_min
+        proxy.salary_max = ej.salary_max
+        proxy.currency = ej.salary_currency or "USD"
+        proxy.description_text = desc.strip()
+        proxy.content_hash = content_hash
+        proxy.url = ej.application_url or ""
+        proxy.posted_at = ej.posted_at or ej.created_at
+        proxy.is_active = True
+
+        # Generate embedding
+        try:
+            text = prepare_job_text(proxy)
+            proxy.embedding = generate_embedding(text)
+        except Exception:
+            logger.warning("sync_employer_job_to_jobs: embedding failed for %s", job_id)
+
+        session.commit()
+        logger.info("sync_employer_job_to_jobs: synced employer job %s", job_id)
+    except Exception:
+        session.rollback()
+        logger.exception("sync_employer_job_to_jobs: failed for %s", job_id)
+    finally:
+        session.close()
+
+
+def deactivate_employer_job_proxy(job_id: int) -> None:
+    """Mark the proxy Job row as inactive when an employer job is closed/archived."""
+    session = get_session_factory()()
+    try:
+        proxy = session.execute(
+            select(Job).where(Job.employer_job_id == job_id)
+        ).scalar_one_or_none()
+        if proxy:
+            proxy.is_active = False
+            session.commit()
+            logger.info("deactivate_employer_job_proxy: deactivated proxy for employer job %s", job_id)
+    except Exception:
+        session.rollback()
+        logger.exception("deactivate_employer_job_proxy: failed for %s", job_id)
+    finally:
+        session.close()
+
+
+def populate_job_candidates(job_id: int) -> None:
+    """Background job: compute and cache candidate matches for an employer job."""
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.employer import EmployerJob
+    from app.models.employer_job_candidate import EmployerJobCandidate
+    from app.services.matching import find_top_candidates_for_employer_job
+
+    session = get_session_factory()()
+    try:
+        job = session.get(EmployerJob, job_id)
+        if not job:
+            logger.warning("populate_job_candidates: EmployerJob %s not found", job_id)
+            return
+
+        results = find_top_candidates_for_employer_job(session, job)
+
+        session.execute(
+            sa_delete(EmployerJobCandidate).where(
+                EmployerJobCandidate.employer_job_id == job_id
+            )
+        )
+
+        inserted = 0
+        for r in results:
+            if r["match_score"] <= 50:
+                continue
+            session.add(
+                EmployerJobCandidate(
+                    employer_job_id=job_id,
+                    candidate_profile_id=r["id"],
+                    match_score=r["match_score"],
+                    matched_skills=r.get("matched_skills"),
+                )
+            )
+            inserted += 1
+
+        session.commit()
+        logger.info(
+            "populate_job_candidates: employer job %s — %s candidates cached",
+            job_id,
+            inserted,
+        )
+    except Exception:
+        session.rollback()
+        logger.exception("populate_job_candidates: failed for employer job %s", job_id)
+    finally:
+        session.close()
+
+
 def sync_recruiter_job_to_jobs(job_id: int) -> None:
-    """Sync recruiter job to the main jobs table for cross-segment visibility."""
-    pass
+    """Sync a recruiter job into the main jobs table as a proxy row.
+
+    Creates or updates a Job with ``source='recruiter'`` so that
+    ``compute_matches()`` picks it up for Pro candidates.
+    """
+    import hashlib
+
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_job import RecruiterJob
+
+    session = get_session_factory()()
+    try:
+        rj = session.get(RecruiterJob, job_id)
+        if not rj:
+            logger.warning("sync_recruiter_job_to_jobs: RecruiterJob %s not found", job_id)
+            return
+
+        rp = session.get(RecruiterProfile, rj.recruiter_profile_id)
+        company = rj.client_company_name or (rp.company_name if rp else None) or "Unknown"
+
+        desc = (rj.description or "") + "\n" + (rj.requirements or "")
+        content_hash = hashlib.sha256(desc.encode()).hexdigest()
+
+        proxy = session.execute(
+            select(Job).where(Job.recruiter_job_id == job_id)
+        ).scalar_one_or_none()
+
+        if proxy is None:
+            proxy = Job(
+                source="recruiter",
+                source_job_id=f"recruiter_{job_id}",
+                recruiter_job_id=job_id,
+            )
+            session.add(proxy)
+
+        proxy.title = rj.title
+        proxy.company = company
+        proxy.location = rj.location or "Remote"
+        proxy.remote_flag = (rj.remote_policy or "").lower() == "remote"
+        proxy.salary_min = rj.salary_min
+        proxy.salary_max = rj.salary_max
+        proxy.currency = rj.salary_currency or "USD"
+        proxy.description_text = desc.strip()
+        proxy.content_hash = content_hash
+        proxy.url = rj.application_url or ""
+        proxy.posted_at = rj.posted_at or rj.created_at
+        proxy.is_active = True
+
+        # Generate embedding
+        try:
+            text = prepare_job_text(proxy)
+            proxy.embedding = generate_embedding(text)
+        except Exception:
+            logger.warning("sync_recruiter_job_to_jobs: embedding failed for %s", job_id)
+
+        session.commit()
+        logger.info("sync_recruiter_job_to_jobs: synced recruiter job %s", job_id)
+    except Exception:
+        session.rollback()
+        logger.exception("sync_recruiter_job_to_jobs: failed for %s", job_id)
+    finally:
+        session.close()
 
 
 def deactivate_recruiter_job_proxy(job_id: int) -> None:
-    """Deactivate the proxy job entry when a recruiter job goes inactive."""
-    pass
+    """Mark the proxy Job row as inactive when a recruiter job is closed."""
+    session = get_session_factory()()
+    try:
+        proxy = session.execute(
+            select(Job).where(Job.recruiter_job_id == job_id)
+        ).scalar_one_or_none()
+        if proxy:
+            proxy.is_active = False
+            session.commit()
+            logger.info("deactivate_recruiter_job_proxy: deactivated proxy for recruiter job %s", job_id)
+    except Exception:
+        session.rollback()
+        logger.exception("deactivate_recruiter_job_proxy: failed for %s", job_id)
+    finally:
+        session.close()

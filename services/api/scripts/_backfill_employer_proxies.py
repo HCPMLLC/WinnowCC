@@ -1,4 +1,4 @@
-"""Backfill proxy Job rows for all active employer jobs, then re-match Zachary."""
+"""Backfill proxy Job rows for all active employer and recruiter jobs, then re-match Zachary."""
 
 import os
 import sys
@@ -12,7 +12,9 @@ load_dotenv()
 from sqlalchemy import text
 
 from app.db.session import get_session_factory
-from app.services.job_pipeline import sync_employer_job_to_jobs
+from app.services.job_pipeline import sync_employer_job_to_jobs, sync_recruiter_job_to_jobs
+
+# ── Employer jobs ────────────────────────────────────────────────────────
 
 session = get_session_factory()()
 try:
@@ -34,6 +36,31 @@ for r in rows:
     result = sync_employer_job_to_jobs(r[0])
     print(f"    -> {result}")
 
+# ── Recruiter jobs ───────────────────────────────────────────────────────
+
+session = get_session_factory()()
+try:
+    rj_rows = session.execute(
+        text("""
+            SELECT rj.id, rj.title, rj.client_company_name, rp.company_name
+            FROM recruiter_jobs rj
+            JOIN recruiter_profiles rp ON rp.id = rj.recruiter_profile_id
+            WHERE rj.status = 'active'
+            ORDER BY rj.id
+        """)
+    ).fetchall()
+    print(f"\nSyncing {len(rj_rows)} active recruiter jobs...\n")
+finally:
+    session.close()
+
+for r in rj_rows:
+    company = r[2] or r[3] or "Unknown"
+    print(f"  Syncing RJ #{r[0]}: {r[1]} @ {company}...")
+    result = sync_recruiter_job_to_jobs(r[0])
+    print(f"    -> {result}")
+
+# ── Re-match sample candidate ───────────────────────────────────────────
+
 print("\nNow re-matching Zachary Davis...")
 from app.services.matching import compute_matches
 
@@ -47,7 +74,11 @@ try:
             {"jid": m.job_id},
         ).fetchone()
         if job:
-            marker = " ** EMPLOYER **" if job[2] == "employer" else ""
+            marker = ""
+            if job[2] == "employer":
+                marker = " ** EMPLOYER **"
+            elif job[2] == "recruiter":
+                marker = " ** RECRUITER **"
             print(
                 f"  {i}. score={m.match_score}"
                 f" ips={m.interview_probability}"

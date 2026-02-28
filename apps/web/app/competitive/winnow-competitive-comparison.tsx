@@ -131,6 +131,12 @@ const CATEGORIES = [
         winnow: "full", linkedin: "none", indeed: "none", ziprecruiter: "none",
         monster: "none", glassdoor: "none", scalejobs: "none",
       },
+      {
+        name: "Cross-marketplace job discovery (boards + direct hire + recruiter)",
+        tooltip: "See jobs from aggregated boards, employer direct postings, and recruiter listings in one unified feed",
+        winnow: "full", linkedin: "partial", indeed: "none", ziprecruiter: "none",
+        monster: "none", glassdoor: "none", scalejobs: "none",
+      },
     ],
   },
   {

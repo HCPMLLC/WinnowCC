@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import String, cast, delete, func, select
+from sqlalchemy import String, cast, delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.candidate import Candidate
@@ -66,6 +66,8 @@ def compute_blended_match_score(deterministic: int, semantic: float | None) -> i
 def compute_matches(
     session: Session, user_id: int, profile_version: int
 ) -> list[Match]:
+    from app.services.billing import get_plan_tier, get_tier_limit
+
     profile = _get_profile(session, user_id, profile_version)
     if profile is None:
         return []
@@ -75,13 +77,34 @@ def compute_matches(
 
     profile_embedding = _get_embedding_list(profile.embedding)
 
-    cutoff = datetime.now(UTC) - timedelta(days=7)
+    # Determine allowed job sources based on candidate tier
+    tier = get_plan_tier(candidate)
+    allowed_sources = get_tier_limit(tier, "job_sources") or ["board"]
+
+    # Board jobs: 7-day cutoff; employer/recruiter: 30-day cutoff
+    board_cutoff = datetime.now(UTC) - timedelta(days=7)
+    extended_cutoff = datetime.now(UTC) - timedelta(days=30)
+
+    source_filters = []
+    if "board" in allowed_sources:
+        source_filters.append(
+            (Job.source.not_in(["employer", "recruiter"])) & (Job.posted_at >= board_cutoff)
+        )
+    if "employer" in allowed_sources:
+        source_filters.append(
+            (Job.source == "employer") & (Job.posted_at >= extended_cutoff)
+        )
+    if "recruiter" in allowed_sources:
+        source_filters.append(
+            (Job.source == "recruiter") & (Job.posted_at >= extended_cutoff)
+        )
+
     jobs = (
         session.execute(
             select(Job).where(
                 Job.posted_at.is_not(None),
-                Job.posted_at >= cutoff,
                 Job.is_active.is_not(False),
+                or_(*source_filters),
             )
         )
         .scalars()
@@ -485,6 +508,8 @@ def _evidence_refs(profile_json: dict, matched_skills: list[str]) -> list[str]:
 
 # Platform benchmark scores for application logistics
 PLATFORM_SCORES = {
+    "employer": 90,
+    "recruiter": 85,
     "greenhouse": 85,
     "lever": 82,
     "workday": 78,
