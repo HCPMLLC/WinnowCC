@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, String, Text, func
+from sqlalchemy import Boolean, DateTime, Integer, String, Text, func, BigInteger
 from sqlalchemy.orm import Mapped, mapped_column
 
 try:
@@ -45,3 +45,13 @@ class Job(Base):
     hiring_manager_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
     hiring_manager_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
     embedding = mapped_column(_EmbeddingType, nullable=True)
+
+    # Lifecycle columns (exist in DB via prior migrations)
+    is_active: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    dedup_group_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    first_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )

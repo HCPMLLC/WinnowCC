@@ -87,6 +87,7 @@ export default function SchedulerControlPage() {
   const [triggering, setTriggering] = useState(false);
   const [progress, setProgress] = useState<IngestionProgress | null>(null);
   const [jsearchUsage, setJsearchUsage] = useState<JSearchUsage | null>(null);
+  const [purgeableCount, setPurgeableCount] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -117,6 +118,9 @@ export default function SchedulerControlPage() {
         const statsData = await statsRes.json();
         if (statsData.jsearch_usage) {
           setJsearchUsage(statsData.jsearch_usage);
+        }
+        if (statsData.purgeable_estimate != null) {
+          setPurgeableCount(statsData.purgeable_estimate);
         }
       }
     } catch (e) {
@@ -253,7 +257,7 @@ export default function SchedulerControlPage() {
       )}
 
       {/* KPI Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
         <div className="rounded-2xl border border-slate-200 bg-white p-5">
           <span className="text-xs text-slate-500">Last Run</span>
           {lastRun ? (
@@ -296,6 +300,17 @@ export default function SchedulerControlPage() {
             <code>{status.ingest_cron}</code>
           </div>
         </div>
+        {purgeableCount != null && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-5">
+            <span className="text-xs text-slate-500">Purgeable Jobs</span>
+            <div className="mt-1 text-2xl font-bold text-amber-600">
+              {purgeableCount.toLocaleString()}
+            </div>
+            <div className="text-xs text-slate-400">
+              Inactive 90+ days, no saves
+            </div>
+          </div>
+        )}
       </div>
 
       {/* JSearch API Usage */}

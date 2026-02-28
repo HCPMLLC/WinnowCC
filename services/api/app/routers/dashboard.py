@@ -90,7 +90,7 @@ def get_dashboard_metrics(
     if not display_name and user.email:
         display_name = user.email.split("@")[0]
 
-    # Qualified jobs count (matches above minimum score with valid jobs)
+    # Qualified jobs count (matches above minimum score with active jobs)
     qualified_jobs_count = (
         session.execute(
             select(func.count(Match.id))
@@ -98,6 +98,7 @@ def get_dashboard_metrics(
             .where(
                 Match.user_id == user.id,
                 Match.match_score >= MIN_MATCH_SCORE,
+                Job.is_active.is_not(False),
             )
         ).scalar()
         or 0

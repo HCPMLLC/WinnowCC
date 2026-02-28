@@ -4,7 +4,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select, text
+from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -220,6 +220,7 @@ def search_matches(
                 SELECT j.id, j.embedding <=> cast(:emb as vector) AS distance
                 FROM jobs j
                 WHERE j.embedding IS NOT NULL
+                  AND j.is_active IS NOT FALSE
                 ORDER BY distance ASC
                 LIMIT :lim
                 """
@@ -231,7 +232,10 @@ def search_matches(
         logger.info("pgvector <=> not available, falling back to Python cosine sim")
         # Fall back: load all job embeddings and compute in Python
         jobs_with_emb = session.execute(
-            select(Job.id, Job.embedding).where(Job.embedding.is_not(None))
+            select(Job.id, Job.embedding).where(
+                Job.embedding.is_not(None),
+                Job.is_active.is_not(False),
+            )
         ).all()
         scored = []
         for job_id, job_emb in jobs_with_emb:
@@ -294,6 +298,7 @@ def list_matches(
             Match.user_id == user.id,
             Job.posted_at.is_not(None),
             Job.posted_at >= cutoff,
+            Job.is_active.is_not(False),
         )
         .order_by(Match.match_score.desc())
         .limit(5)
@@ -329,11 +334,21 @@ def list_all_matches(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[MatchResponse]:
-    """Return all matches for the current user (no recency cutoff)."""
+    """Return all matches for the current user (no recency cutoff).
+
+    Active jobs always show. Inactive jobs only show if the user has
+    saved/applied (application_status is set).
+    """
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
-        .where(Match.user_id == user.id)
+        .where(
+            Match.user_id == user.id,
+            or_(
+                Job.is_active.is_not(False),
+                Match.application_status.is_not(None),
+            ),
+        )
         .order_by(Match.match_score.desc())
     )
     rows = session.execute(stmt).all()
@@ -368,15 +383,16 @@ def get_match(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> MatchResponse:
-    cutoff = datetime.now(UTC) - timedelta(days=7)
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
         .where(
             Match.id == match_id,
             Match.user_id == user.id,
-            Job.posted_at.is_not(None),
-            Job.posted_at >= cutoff,
+            or_(
+                Job.is_active.is_not(False),
+                Match.application_status.is_not(None),
+            ),
         )
     )
     row = session.execute(stmt).first()
