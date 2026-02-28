@@ -26,6 +26,7 @@ from app.services.auth import get_current_user, require_onboarded_user
 from app.services.billing import (
     check_daily_limit,
     get_plan_tier,
+    get_tier_limit,
     increment_daily_counter,
 )
 from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
@@ -292,6 +293,14 @@ def list_matches(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[MatchResponse]:
+    # Determine tier-based limits
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    allowed_sources = get_tier_limit(tier, "job_sources") or ["board"]
+    matches_visible = get_tier_limit(tier, "matches_visible") or 5
+
     cutoff = datetime.now(UTC) - timedelta(days=14)
     stmt = (
         select(Match, Job)
@@ -305,7 +314,15 @@ def list_matches(
         .order_by(Match.match_score.desc())
     )
     rows = session.execute(stmt).all()
-    rows = _deduplicate_matches(rows)[:5]
+
+    # Filter to allowed sources
+    rows = [
+        (m, j) for m, j in rows
+        if j.source in allowed_sources
+        or (j.source not in ("employer", "recruiter") and "board" in allowed_sources)
+    ]
+
+    rows = _deduplicate_matches(rows)[:matches_visible]
     return [
         MatchResponse(
             id=match.id,
@@ -341,6 +358,13 @@ def list_all_matches(
     Active jobs always show. Inactive jobs only show if the user has
     saved/applied (application_status is set).
     """
+    # Determine tier-based source limits
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    allowed_sources = get_tier_limit(tier, "job_sources") or ["board"]
+
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)
@@ -354,6 +378,14 @@ def list_all_matches(
         .order_by(Match.match_score.desc())
     )
     rows = session.execute(stmt).all()
+
+    # Filter to allowed sources
+    rows = [
+        (m, j) for m, j in rows
+        if j.source in allowed_sources
+        or (j.source not in ("employer", "recruiter") and "board" in allowed_sources)
+    ]
+
     rows = _deduplicate_matches(rows)
     return [
         MatchResponse(

@@ -293,6 +293,7 @@ def load_user_context(user_id: int, session: Session) -> dict:
                 "title": job.title,
                 "company": job.company,
                 "score": match.match_score,
+                "source": job.source,
                 "matched_skills": (reasons.get("matched_skills") or [])[:3],
                 "missing_skills": (reasons.get("missing_skills") or [])[:2],
             }
@@ -441,8 +442,14 @@ def _format_top_matches(top_matches: list) -> str:
     for i, m in enumerate(top_matches, 1):
         matched = ", ".join(m.get("matched_skills", []))
         missing = ", ".join(m.get("missing_skills", []))
+        source = m.get("source", "")
+        badge = ""
+        if source == "employer":
+            badge = " [Direct Hire]"
+        elif source == "recruiter":
+            badge = " [Recruiter]"
         lines.append(
-            f"  {i}. {m['title']} at {m['company']}"
+            f"  {i}. {m['title']} at {m['company']}{badge}"
             f" \u2014 Score: {m['score']}/100"
             f"\n     Matched: {matched}"
             f"\n     Missing: {missing}"
@@ -634,6 +641,22 @@ CAPABILITIES \u2014 What you CAN help with:
 - Guiding data export (Starter+ plans) and account management
 - Advising on professional references to strengthen profiles
 - Explaining trust/verification status and how to request review
+
+CROSS-MARKETPLACE MATCHING:
+Winnow aggregates jobs from three source types:
+1. **Job Boards** (Free+): Aggregated from Remotive, TheMuse, Adzuna, and \
+other boards. Available to all candidates.
+2. **Direct Hire** (Starter+): Posted directly by employers on Winnow. \
+These jobs show a "Direct Hire" badge and typically have higher response \
+rates because the company is actively using Winnow to find candidates.
+3. **Recruiter** (Pro only): Posted by professional recruiters filling \
+roles for their clients. These show a "Recruiter" badge and mean a \
+dedicated recruiter is championing candidates for the position.
+
+If a Free user asks about Direct Hire or Recruiter jobs, explain the \
+benefit and suggest upgrading to Starter ($9/mo) or Pro ($29/mo) \
+respectively. If a Starter user asks about Recruiter jobs, suggest \
+upgrading to Pro.
 
 LIMITATIONS \u2014 What you CANNOT do:
 - You cannot apply to jobs on the user's behalf
@@ -1102,6 +1125,13 @@ CAPABILITIES \u2014 What you CAN help with:
 - Summarizing application activity and analytics
 - Explaining Winnow platform features and billing
 
+CROSS-MARKETPLACE VISIBILITY:
+When you activate a job on Winnow, it becomes visible to candidates in \
+their match feed, branded as "Direct Hire." Starter+ candidates can see \
+employer jobs; Pro candidates can see all sources. This means your active \
+jobs automatically reach qualified, pre-scored candidates without extra \
+distribution costs.
+
 LIMITATIONS \u2014 What you CANNOT do:
 - You cannot post or edit jobs directly
 - You cannot modify employer profiles
@@ -1477,7 +1507,7 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
             "seats": 1,
             "job_parsing": 0,
             "crm": "basic",
-            "price": "$29/mo",
+            "price": "$39/mo",
         },
         "team": {
             "briefs": 100,
@@ -1489,7 +1519,7 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
             "seats": 10,
             "job_parsing": 10,
             "crm": "full",
-            "price": "$69/user/mo",
+            "price": "$89/user/mo",
         },
         "agency": {
             "briefs": 500,
@@ -1501,7 +1531,7 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
             "seats": 999,
             "job_parsing": 999,
             "crm": "full",
-            "price": "$99/user/mo",
+            "price": "$129/user/mo",
         },
     }
     limits = TIER_LIMITS.get(tier, TIER_LIMITS["trial"])
@@ -1511,9 +1541,9 @@ def build_recruiter_system_prompt(ctx: dict) -> str:
 
     # Build upgrade note
     upgrade_map = {
-        "trial": "Solo ($29/mo)",
-        "solo": "Team ($69/user/mo)",
-        "team": "Agency ($99/user/mo)",
+        "trial": "Solo ($39/mo)",
+        "solo": "Team ($89/user/mo)",
+        "team": "Agency ($129/user/mo)",
     }
     upgrade_note = upgrade_map.get(tier, "")
     upgrade_line = (
@@ -1580,6 +1610,9 @@ candidate pool.
 a progress bar.
    - Matched candidates show a score % and can be added to the pipeline \
 directly.
+   - Active recruiter jobs are synced to the main candidate match feed \
+and appear to Pro candidates with a "Recruiter" badge. This means your \
+job orders automatically reach qualified, pre-scored candidates.
    - Job detail pages show full description, requirements, salary, status.
 
 3. CLIENTS (/recruiter/clients)
@@ -1721,17 +1754,17 @@ Usage this month:
 {upgrade_line}
 
 TIER COMPARISON (for upgrade recommendations):
-- Solo ($29/mo): 20 briefs, 5 salary lookups, \
+- Solo ($39/mo): 20 briefs, 5 salary lookups, \
 20 intros, 10 jobs, 100 pipeline, basic CRM, \
-no sequences
-- Team ($69/user/mo): 100 briefs, 50 salary \
+no sequences, jobs visible to Pro candidates
+- Team ($89/user/mo): 100 briefs, 50 salary \
 lookups, 75 intros, 50 jobs, 500 pipeline, \
 full CRM, 10 seats, smart job parsing, \
-outreach sequences
-- Agency ($99/user/mo): 500 briefs, unlimited \
+outreach sequences, jobs visible to Pro candidates
+- Agency ($129/user/mo): 500 briefs, unlimited \
 salary/intros/jobs/pipeline, full CRM, \
 unlimited seats, smart job parsing, \
-outreach sequences
+outreach sequences, jobs visible to Pro candidates
 
 ═══ CURRENT RECRUITER STATE ═══
 

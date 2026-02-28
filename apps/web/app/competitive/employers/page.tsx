@@ -106,6 +106,11 @@ const CATEGORIES = [
         tooltip: "Unified analytics showing application source and effectiveness across all boards",
         winnow: "full", greenhouse: "full", lever: "partial", workable: "partial", bamboohr: "none",
       },
+      {
+        name: "Candidate-facing visibility (jobs shown to pre-scored candidates)",
+        tooltip: "Active jobs automatically appear in qualified candidates' match feeds, branded as Direct Hire",
+        winnow: "full", greenhouse: "none", lever: "none", workable: "none", bamboohr: "none",
+      },
     ],
   },
   {

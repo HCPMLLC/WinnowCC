@@ -72,6 +72,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "career_intelligence": False,
         "submission_details": "basic",
         "submission_notifications": False,
+        "job_sources": ["board"],
     },
     "starter": {
         "matches_visible": 25,
@@ -85,6 +86,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "career_intelligence": False,
         "submission_details": "standard",
         "submission_notifications": True,
+        "job_sources": ["board", "employer"],
     },
     "pro": {
         "matches_visible": 9999,
@@ -98,6 +100,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "career_intelligence": True,
         "submission_details": "full",
         "submission_notifications": True,
+        "job_sources": ["board", "employer", "recruiter"],
     },
 }
 

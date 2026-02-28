@@ -86,7 +86,7 @@ const FEATURES_CONTENT: Record<
       },
       {
         title: "Smart Job Matching",
-        description: "We aggregate jobs from dozens of sources and score each one against your profile. You see only the roles worth your time.",
+        description: "We aggregate jobs from job boards, employer direct-hire postings, and recruiter listings, then score each one against your profile. You see only the roles worth your time.",
       },
       {
         title: "Representation Tracking",
@@ -234,12 +234,12 @@ const PRICING_CONTENT: Record<
       },
       {
         name: "Starter", price: "$9", interval: "/mo", annual: "or $79/year (save 27%)", desc: "For active job seekers",
-        features: ["25 job matches", "Interview Probability Score\u2122", "10 tailored resumes per month", "10 cover letters per month", "50 Sieve AI messages per day", "Full match explainability", "Recruiter submission alerts", "CSV data export"],
+        features: ["25 job matches", "Interview Probability Score\u2122", "Employer direct-hire jobs", "10 tailored resumes per month", "10 cover letters per month", "50 Sieve AI messages per day", "Full match explainability", "Recruiter submission alerts", "CSV data export"],
         cta: "Get Started", href: "/login?mode=signup", highlight: false,
       },
       {
         name: "Pro", price: "$29", interval: "/mo", annual: "or $249/year (save 28%)", desc: "For serious job seekers",
-        features: ["Unlimited job matches", "Interview Probability Score\u2122", "30 tailored resumes per month", "30 cover letters per month", "Unlimited Sieve AI", "Gap analysis & coaching", "Full representation analytics", "Full data export"],
+        features: ["Unlimited job matches", "Interview Probability Score\u2122", "All job sources (boards + direct hire + recruiter)", "30 tailored resumes per month", "30 cover letters per month", "Unlimited Sieve AI", "Gap analysis & coaching", "Full representation analytics", "Full data export"],
         cta: "Get Started", href: "/login?mode=signup", highlight: true,
       },
     ],
