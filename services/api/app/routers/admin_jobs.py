@@ -1,5 +1,7 @@
 """Admin endpoints for job quality management and reparsing."""
 
+import logging
+import os
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -14,7 +16,52 @@ from app.models.user import User
 from app.schemas.jobs import AdminJobListItem, JobQualityListItem, PaginatedJobsResponse
 from app.services.auth import require_admin_user
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/admin/jobs", tags=["admin-jobs"])
+
+
+def _get_jsearch_usage() -> dict:
+    """Read JSearch daily/monthly counters from Redis."""
+    monthly_limit = int(os.getenv("JSEARCH_MONTHLY_LIMIT", "500"))
+    today = datetime.now(UTC)
+    today_str = today.strftime("%Y-%m-%d")
+    year_month = today.strftime("%Y-%m")
+
+    result = {
+        "monthly_limit": monthly_limit,
+        "monthly_requests": 0,
+        "monthly_calls": 0,
+        "monthly_errors": 0,
+        "today_requests": 0,
+        "today_calls": 0,
+        "today_errors": 0,
+    }
+
+    try:
+        from app.services.queue import get_redis_connection
+
+        conn = get_redis_connection()
+
+        # Today's counters
+        for counter in ("requests", "calls", "errors"):
+            val = conn.get(f"jsearch:{counter}:{today_str}")
+            if val:
+                result[f"today_{counter}"] = int(val)
+
+        # Monthly totals — sum all keys matching this month
+        for counter in ("requests", "calls", "errors"):
+            pattern = f"jsearch:{counter}:{year_month}-*"
+            total = 0
+            for key in conn.scan_iter(match=pattern, count=50):
+                val = conn.get(key)
+                if val:
+                    total += int(val)
+            result[f"monthly_{counter}"] = total
+    except Exception:
+        logger.debug("Failed to read JSearch usage from Redis", exc_info=True)
+
+    return result
 
 _ADMIN_SORT_COLUMNS = {
     "title": Job.title,
@@ -234,6 +281,7 @@ def job_stats(
         "fraudulent": fraud_counts[0] or 0,
         "stale": fraud_counts[1] or 0,
         "ingested_last_7_days": ingested_7d,
+        "jsearch_usage": _get_jsearch_usage(),
     }
 
 
