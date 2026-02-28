@@ -563,6 +563,24 @@ class JSearchSource(JobSource):
     name = "jsearch"
     base_url = "https://jsearch.p.rapidapi.com/search"
 
+    @staticmethod
+    def _track(counter: str) -> None:
+        """Increment a daily Redis counter for JSearch API usage.
+
+        Keys: jsearch:{requests|calls|errors}:YYYY-MM-DD
+        TTL: 35 days (auto-cleanup, keeps full month visible).
+        """
+        try:
+            from app.services.queue import get_redis_connection
+
+            conn = get_redis_connection()
+            today = datetime.now(UTC).strftime("%Y-%m-%d")
+            key = f"jsearch:{counter}:{today}"
+            conn.incr(key)
+            conn.expire(key, 35 * 86400)  # 35 days
+        except Exception:
+            pass  # tracking is best-effort
+
     def _build_html_from_highlights(self, highlights: dict, description: str) -> str:
         """Convert job_highlights structured data to formatted HTML."""
         html_parts = []
@@ -614,7 +632,9 @@ class JSearchSource(JobSource):
             response = httpx.get(
                 self.base_url, headers=headers, params=params, timeout=30
             )
+            self._track("requests")
             if response.status_code == 200:
+                self._track("calls")
                 break
             if attempt == 0 and response.status_code in (429, 500, 502, 503, 504):
                 time.sleep(2)
@@ -622,6 +642,7 @@ class JSearchSource(JobSource):
             break
 
         if response.status_code != 200:
+            self._track("errors")
             logger.warning(
                 "JSearch API returned %d: %s",
                 response.status_code,

@@ -38,6 +38,16 @@ type IngestionProgress = {
   jobs_so_far: number;
 };
 
+type JSearchUsage = {
+  monthly_limit: number;
+  monthly_requests: number;
+  monthly_calls: number;
+  monthly_errors: number;
+  today_requests: number;
+  today_calls: number;
+  today_errors: number;
+};
+
 const API = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
 function statusColor(status: string) {
@@ -76,14 +86,18 @@ export default function SchedulerControlPage() {
   const [actionMsg, setActionMsg] = useState<string | null>(null);
   const [triggering, setTriggering] = useState(false);
   const [progress, setProgress] = useState<IngestionProgress | null>(null);
+  const [jsearchUsage, setJsearchUsage] = useState<JSearchUsage | null>(null);
 
   const load = useCallback(async () => {
     try {
-      const [statusRes, runsRes] = await Promise.all([
+      const [statusRes, runsRes, statsRes] = await Promise.all([
         fetch(`${API}/api/admin/scheduler/status`, {
           credentials: "include",
         }),
         fetch(`${API}/api/admin/scheduler/runs?limit=20`, {
+          credentials: "include",
+        }),
+        fetch(`${API}/api/admin/jobs/stats`, {
           credentials: "include",
         }),
       ]);
@@ -99,6 +113,12 @@ export default function SchedulerControlPage() {
       if (!runsRes.ok) throw new Error("Failed to load scheduler runs");
       setStatus(await statusRes.json());
       setRuns(await runsRes.json());
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        if (statsData.jsearch_usage) {
+          setJsearchUsage(statsData.jsearch_usage);
+        }
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     }
@@ -277,6 +297,91 @@ export default function SchedulerControlPage() {
           </div>
         </div>
       </div>
+
+      {/* JSearch API Usage */}
+      {jsearchUsage && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5">
+          <div className="flex items-center justify-between">
+            <h2 className="text-sm font-semibold text-slate-900">
+              JSearch API Usage
+            </h2>
+            <span className="text-xs text-slate-400">
+              {new Date().toLocaleString("default", {
+                month: "long",
+                year: "numeric",
+              })}
+            </span>
+          </div>
+          {/* Progress bar */}
+          {(() => {
+            const pct =
+              jsearchUsage.monthly_limit > 0
+                ? Math.min(
+                    Math.round(
+                      (jsearchUsage.monthly_requests /
+                        jsearchUsage.monthly_limit) *
+                        100,
+                    ),
+                    100,
+                  )
+                : 0;
+            const barColor =
+              pct >= 80
+                ? "bg-red-500"
+                : pct >= 60
+                  ? "bg-amber-500"
+                  : "bg-emerald-500";
+            const textColor =
+              pct >= 80
+                ? "text-red-600"
+                : pct >= 60
+                  ? "text-amber-600"
+                  : "text-emerald-600";
+            return (
+              <>
+                <div className="mt-3 flex items-end justify-between">
+                  <span className={`text-2xl font-bold ${textColor}`}>
+                    {jsearchUsage.monthly_requests}
+                  </span>
+                  <span className="text-xs text-slate-400">
+                    / {jsearchUsage.monthly_limit} limit
+                  </span>
+                </div>
+                <div className="mt-2 h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="mt-1 text-right text-xs text-slate-400">
+                  {pct}% used
+                </div>
+              </>
+            );
+          })()}
+          {/* Today breakdown */}
+          <div className="mt-3 grid grid-cols-3 gap-3 border-t border-slate-100 pt-3">
+            <div>
+              <span className="text-xs text-slate-400">Today Requests</span>
+              <div className="text-sm font-semibold text-slate-900">
+                {jsearchUsage.today_requests}
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-slate-400">OK</span>
+              <div className="text-sm font-semibold text-emerald-600">
+                {jsearchUsage.today_calls}
+              </div>
+            </div>
+            <div>
+              <span className="text-xs text-slate-400">Errors</span>
+              <div className="text-sm font-semibold text-red-600">
+                {jsearchUsage.today_errors}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Scheduled Tasks */}
       <div>
