@@ -1,5 +1,3 @@
-import { useEffect, useRef } from "react";
-import { Animated, Easing } from "react-native";
 import Svg, {
   Defs,
   LinearGradient,
@@ -11,43 +9,12 @@ import Svg, {
   Circle,
 } from "react-native-svg";
 
-const AnimatedG = Animated.createAnimatedComponent(G);
-
 interface SieveLogoProps {
   size?: number;
   animate?: boolean;
 }
 
-export default function SieveLogo({ size = 80, animate = false }: SieveLogoProps) {
-  const siftAnim = useRef(new Animated.Value(0)).current;
-  const particleAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!animate) return;
-
-    const sift = Animated.loop(
-      Animated.sequence([
-        Animated.timing(siftAnim, { toValue: 1, duration: 2500, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(siftAnim, { toValue: 0, duration: 0, useNativeDriver: true }),
-      ])
-    );
-
-    const particle = Animated.loop(
-      Animated.sequence([
-        Animated.timing(particleAnim, { toValue: 1, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-        Animated.timing(particleAnim, { toValue: 0, duration: 1800, easing: Easing.inOut(Easing.ease), useNativeDriver: true }),
-      ])
-    );
-
-    sift.start();
-    particle.start();
-
-    return () => {
-      sift.stop();
-      particle.stop();
-    };
-  }, [animate, siftAnim, particleAnim]);
-
+export default function SieveLogo({ size = 80 }: SieveLogoProps) {
   const height = size * 0.4875;
 
   // Row 1 holes

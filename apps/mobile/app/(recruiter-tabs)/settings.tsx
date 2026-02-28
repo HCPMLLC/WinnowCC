@@ -375,7 +375,7 @@ export default function RecruiterSettingsScreen() {
       {role === "both" && (
         <TouchableOpacity
           style={styles.switchBanner}
-          onPress={() => router.replace("/(tabs)/dashboard")}
+          onPress={() => router.push("/(tabs)/dashboard")}
         >
           <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
           <Text style={styles.switchText}>Switch to Candidate View</Text>

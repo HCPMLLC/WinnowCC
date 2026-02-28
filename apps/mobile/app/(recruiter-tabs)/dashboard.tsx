@@ -74,7 +74,13 @@ export default function RecruiterDashboardScreen() {
 
   if (loading) return <LoadingSpinner />;
 
-  const pipelineByStage = stats?.pipeline_by_stage ?? {};
+  // API may return pipeline_by_stage as {stage: count} OR [{stage, count}]
+  const rawPipeline = stats?.pipeline_by_stage ?? {};
+  const pipelineByStage: Record<string, number> = Array.isArray(rawPipeline)
+    ? Object.fromEntries(rawPipeline.map((item: any) => [item.stage, Number(item.count) || 0]))
+    : typeof rawPipeline === "object"
+      ? Object.fromEntries(Object.entries(rawPipeline).map(([k, v]) => [k, typeof v === "number" ? v : Number((v as any)?.count) || 0]))
+      : {};
   const maxStageCount = Math.max(...Object.values(pipelineByStage), 1);
 
   return (

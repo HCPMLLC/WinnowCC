@@ -105,7 +105,7 @@ export default function EmployerDashboardScreen() {
       {role === "both" && (
         <TouchableOpacity
           style={styles.switchBanner}
-          onPress={() => router.replace("/(tabs)/dashboard")}
+          onPress={() => router.push("/(tabs)/dashboard")}
         >
           <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
           <Text style={styles.switchText}>Switch to Candidate View</Text>
@@ -116,7 +116,7 @@ export default function EmployerDashboardScreen() {
       {(role === "recruiter" || role === "both") && (
         <TouchableOpacity
           style={styles.switchBanner}
-          onPress={() => router.replace("/(recruiter-tabs)/dashboard")}
+          onPress={() => router.push("/(recruiter-tabs)/dashboard")}
         >
           <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
           <Text style={styles.switchText}>Switch to Recruiter View</Text>
