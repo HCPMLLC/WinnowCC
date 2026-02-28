@@ -47,7 +47,7 @@ class User(Base):
         Boolean, nullable=False, server_default=text("false")
     )
     mfa_delivery_method: Mapped[str] = mapped_column(
-        String(10), nullable=False, server_default=text("'email'")
+        String(10), nullable=False, server_default=text("'sms'")
     )
 
     # Password reset
