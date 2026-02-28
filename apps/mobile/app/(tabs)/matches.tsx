@@ -5,12 +5,13 @@ import {
   FlatList,
   StyleSheet,
   RefreshControl,
+  TouchableOpacity,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { api } from "../../lib/api";
 import MatchCard from "../../components/MatchCard";
 import LoadingSpinner from "../../components/LoadingSpinner";
-import { colors, spacing, fontSize } from "../../lib/theme";
+import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 interface MatchJob {
   id: number;
@@ -36,17 +37,25 @@ export default function MatchesScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [needsResume, setNeedsResume] = useState(false);
 
   const loadMatches = useCallback(async () => {
     try {
       setError(null);
+      setNeedsResume(false);
       const res = await api.get("/api/matches/all");
       if (res.ok) {
         const data = await res.json();
         setMatches(Array.isArray(data) ? data : data.matches || []);
       } else if (res.status === 403) {
-        router.replace("/candidate-onboarding");
-        return;
+        const body = await res.json().catch(() => ({}));
+        const detail: string = body.detail || "";
+        if (detail.toLowerCase().includes("onboarding")) {
+          router.replace("/candidate-onboarding");
+          return;
+        }
+        setNeedsResume(true);
+        setError("Upload your resume to unlock matches.");
       } else {
         setError("Failed to load matches.");
       }
@@ -99,10 +108,20 @@ export default function MatchesScreen() {
               {error || "No matches yet"}
             </Text>
             <Text style={styles.emptyText}>
-              {error
-                ? "Pull down to retry."
-                : "Upload your resume on the web app to get started."}
+              {needsResume
+                ? "We need your resume to find the best jobs for you."
+                : error
+                  ? "Pull down to retry."
+                  : "Upload your resume to get started."}
             </Text>
+            {needsResume && (
+              <TouchableOpacity
+                style={styles.uploadBtn}
+                onPress={() => router.push("/profile/upload")}
+              >
+                <Text style={styles.uploadBtnText}>Upload Resume</Text>
+              </TouchableOpacity>
+            )}
           </View>
         }
       />
@@ -128,5 +147,17 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     color: colors.gray500,
     textAlign: "center",
+  },
+  uploadBtn: {
+    backgroundColor: colors.gold,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.xl,
+    marginTop: spacing.lg,
+  },
+  uploadBtnText: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.primary,
   },
 });
