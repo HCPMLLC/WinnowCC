@@ -20,49 +20,28 @@ from app.models.match import Match
 from app.models.tailored_resume import TailoredResume
 from app.models.user import User
 from app.schemas.sieve import SieveTrigger
+from app.services.profile_scoring import compute_profile_completeness
 
 logger = logging.getLogger(__name__)
 
-# ── Profile completeness fields (11 checkable items) ─────────────────────────
-_CANDIDATE_FIELDS = [
-    "first_name",
-    "last_name",
-    "phone",
-    "location_city",
-    "years_experience",
-    "desired_salary_min",
-    "desired_salary_max",
-    "remote_preference",
-]
-_LIST_FIELDS = ["desired_job_types", "desired_locations"]
-_TOTAL_ITEMS = len(_CANDIDATE_FIELDS) + len(_LIST_FIELDS) + 1  # +1 for CandidateProfile
-
 
 def _profile_pct(user: User, session: Session) -> int:
-    """Compute profile completeness percentage (0-100)."""
-    candidate = session.query(Candidate).filter(Candidate.user_id == user.id).first()
+    """Compute profile completeness percentage (0-100).
 
-    filled = 0
-    if candidate:
-        for field in _CANDIDATE_FIELDS:
-            val = getattr(candidate, field, None)
-            if val is not None and val != "":
-                filled += 1
-        for field in _LIST_FIELDS:
-            val = getattr(candidate, field, None)
-            if val and len(val) > 0:
-                filled += 1
-
-    has_profile = (
+    Uses the same weighted scoring as the /profile page to ensure
+    consistent completeness numbers across the app.
+    """
+    profile = (
         session.query(CandidateProfile)
         .filter(CandidateProfile.user_id == user.id)
+        .order_by(CandidateProfile.version.desc())
         .first()
-        is not None
     )
-    if has_profile:
-        filled += 1
+    if not profile or not profile.profile_json:
+        return 0
 
-    return int((filled / _TOTAL_ITEMS) * 100)
+    result = compute_profile_completeness(profile.profile_json)
+    return result.score
 
 
 # ── Trigger functions ────────────────────────────────────────────────────────
