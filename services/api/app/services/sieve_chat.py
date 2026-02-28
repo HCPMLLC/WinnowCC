@@ -263,9 +263,12 @@ def load_user_context(user_id: int, session: Session) -> dict:
     from app.services.matching import MIN_MATCH_SCORE
 
     total_match_count = session.execute(
-        select(func.count(Match.id)).where(
+        select(func.count(func.distinct(Match.job_id)))
+        .join(Job, Match.job_id == Job.id)
+        .where(
             Match.user_id == user_id,
             Match.match_score >= MIN_MATCH_SCORE,
+            Job.is_active.is_not(False),
         )
     ).scalar_one()
 

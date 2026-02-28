@@ -164,12 +164,23 @@ def test_profile_completeness_trigger_suppressed(session) -> None:
 
 
 def test_new_matches_trigger_fires(session) -> None:
-    """Matches created in last 24h → trigger fires with count."""
+    """Matches for 3 distinct jobs in last 24h → batch trigger fires."""
     user = _create_user(session)
-    job = _create_job(session)
 
     now = datetime.now(UTC)
     for i in range(3):
+        job = Job(
+            source="test",
+            source_job_id=f"trigger-{i}",
+            url=f"https://example.com/job/trigger-{i}",
+            title="Software Engineer",
+            company="TestCorp",
+            location="Remote",
+            description_text="A test job.",
+            content_hash=f"trigger-hash-{i}",
+        )
+        session.add(job)
+        session.flush()
         match = Match(
             user_id=user.id,
             job_id=job.id,
