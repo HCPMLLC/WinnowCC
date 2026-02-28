@@ -46,7 +46,9 @@ export default function MatchesScreen() {
       const res = await api.get("/api/matches/all");
       if (res.ok) {
         const data = await res.json();
-        setMatches(Array.isArray(data) ? data : data.matches || []);
+        const all: Match[] = Array.isArray(data) ? data : data.matches || [];
+        // Only show qualified matches (score >= 45), matching web app and dashboard
+        setMatches(all.filter((m) => m.match_score >= 45));
       } else if (res.status === 403) {
         const body = await res.json().catch(() => ({}));
         const detail: string = body.detail || "";
