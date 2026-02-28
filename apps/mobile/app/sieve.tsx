@@ -11,6 +11,8 @@ import {
   Platform,
   Alert,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../lib/api";
 
@@ -26,6 +28,8 @@ interface Message {
 }
 
 export default function SieveScreen() {
+  const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
@@ -38,7 +42,8 @@ export default function SieveScreen() {
       try {
         const res = await api.get("/api/sieve/history");
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => null);
+          if (!data) return;
           const raw = data.messages || data;
           const history = Array.isArray(raw) ? raw : [];
           setMessages(
@@ -86,7 +91,7 @@ export default function SieveScreen() {
         });
 
         if (res.ok) {
-          const data = await res.json();
+          const data = await res.json().catch(() => ({}));
           const responseText =
             typeof data.response === "string"
               ? data.response
@@ -177,11 +182,18 @@ export default function SieveScreen() {
     <KeyboardAvoidingView
       style={styles.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+      keyboardVerticalOffset={0}
     >
       {/* Header */}
-      <View style={styles.header}>
+      <View style={[styles.header, { paddingTop: insets.top + 8 }]}>
         <View style={styles.headerRow}>
+          <TouchableOpacity
+            style={styles.closeBtn}
+            onPress={() => router.back()}
+            hitSlop={8}
+          >
+            <Ionicons name="close" size={22} color="#E8C84A" />
+          </TouchableOpacity>
           <View style={styles.headerLeft}>
             <Text style={styles.headerTitle}>
               Sieve <Text style={styles.headerPronunciation}>/siv/</Text>
@@ -335,6 +347,15 @@ const styles = StyleSheet.create({
   headerRow: {
     flexDirection: "row",
     alignItems: "center",
+  },
+  closeBtn: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "rgba(255,255,255,0.08)",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 8,
   },
   headerLeft: { flex: 1 },
   headerTitle: {

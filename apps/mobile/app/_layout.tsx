@@ -11,6 +11,7 @@ import {
   onTokenCleared,
 } from "../lib/auth";
 import { colors } from "../lib/theme";
+import ErrorBoundary from "../components/ErrorBoundary";
 
 const API_BASE =
   Platform.OS === "web"
@@ -327,6 +328,7 @@ export default function RootLayout() {
 
   return (
     <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete, verifyOtp, resendOtp, mfaPendingEmail, mfaDeliveryMethod, mfaHasPhone, cancelMfa }}>
+      <ErrorBoundary>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -406,9 +408,8 @@ export default function RootLayout() {
           name="sieve"
           options={{
             title: "Sieve",
-            presentation: "fullScreenModal",
-            headerStyle: { backgroundColor: colors.primary },
-            headerTintColor: colors.white,
+            headerShown: false,
+            presentation: "card",
           }}
         />
         <Stack.Screen
@@ -432,6 +433,7 @@ export default function RootLayout() {
           options={{ title: "Settings", presentation: "card" }}
         />
       </Stack>
+      </ErrorBoundary>
     </AuthContext.Provider>
   );
 }

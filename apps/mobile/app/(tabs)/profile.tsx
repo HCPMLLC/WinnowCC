@@ -217,7 +217,7 @@ export default function ProfileScreen() {
       {role === "both" && (
         <TouchableOpacity
           style={styles.switchBanner}
-          onPress={() => router.replace("/(employer-tabs)/dashboard")}
+          onPress={() => router.push("/(employer-tabs)/dashboard")}
         >
           <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
           <Text style={styles.switchBannerText}>Switch to Employer View</Text>
@@ -228,7 +228,7 @@ export default function ProfileScreen() {
       {(role === "recruiter" || role === "both") && (
         <TouchableOpacity
           style={styles.switchBanner}
-          onPress={() => router.replace("/(recruiter-tabs)/dashboard")}
+          onPress={() => router.push("/(recruiter-tabs)/dashboard")}
         >
           <Ionicons name="swap-horizontal" size={16} color={colors.gold} />
           <Text style={styles.switchBannerText}>Switch to Recruiter View</Text>

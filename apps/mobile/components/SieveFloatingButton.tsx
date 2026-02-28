@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react";
-import { TouchableOpacity, Animated, StyleSheet, View, Text } from "react-native";
+import { TouchableOpacity, Image, StyleSheet, View, Text } from "react-native";
 import { useRouter } from "expo-router";
-import SieveLogo from "./SieveLogo";
 import { colors, spacing } from "../lib/theme";
+
+const SieveImage = require("../assets/golden-sieve-static.png");
 
 interface SieveFloatingButtonProps {
   badgeCount?: number;
@@ -10,73 +10,19 @@ interface SieveFloatingButtonProps {
 
 export default function SieveFloatingButton({ badgeCount = 0 }: SieveFloatingButtonProps) {
   const router = useRouter();
-  const pulseAnim = useRef(new Animated.Value(0)).current;
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-
-  // Pulse glow animation
-  useEffect(() => {
-    const pulse = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 1500,
-          useNativeDriver: false,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 0,
-          duration: 1500,
-          useNativeDriver: false,
-        }),
-      ])
-    );
-    pulse.start();
-    return () => pulse.stop();
-  }, [pulseAnim]);
-
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.92,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 3,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const shadowOpacity = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0.2, 0.5],
-  });
-
-  const shadowRadius = pulseAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [8, 18],
-  });
 
   return (
-    <Animated.View
-      style={[
-        styles.container,
-        {
-          transform: [{ scale: scaleAnim }],
-          shadowOpacity,
-          shadowRadius,
-        },
-      ]}
-    >
+    <View style={styles.container}>
       <TouchableOpacity
         style={styles.fab}
         onPress={() => router.push("/sieve")}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-        activeOpacity={1}
+        activeOpacity={0.8}
       >
-        <SieveLogo size={60} animate />
+        <Image
+          source={SieveImage}
+          style={styles.sieveImage}
+          resizeMode="contain"
+        />
 
         {/* Badge */}
         {badgeCount > 0 && (
@@ -85,7 +31,7 @@ export default function SieveFloatingButton({ badgeCount = 0 }: SieveFloatingBut
           </View>
         )}
       </TouchableOpacity>
-    </Animated.View>
+    </View>
   );
 }
 
@@ -95,7 +41,9 @@ const styles = StyleSheet.create({
     bottom: 90,
     right: spacing.md,
     zIndex: 100,
-    shadowColor: "#3B945E",
+    shadowColor: "#C49528",
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 4 },
     elevation: 8,
   },
@@ -106,10 +54,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     overflow: "hidden",
-    // Dark green gradient approximation
     backgroundColor: colors.primary,
-    borderWidth: 1,
-    borderColor: "rgba(42, 80, 56, 0.6)",
+    borderWidth: 2,
+    borderColor: "rgba(232, 200, 74, 0.3)",
+  },
+  sieveImage: {
+    width: 52,
+    height: 52,
+    tintColor: "#E8C84A",
   },
   badge: {
     position: "absolute",
