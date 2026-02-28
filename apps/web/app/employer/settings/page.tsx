@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 
 const API_BASE =
@@ -66,7 +66,7 @@ interface SubscriptionDetails {
   cancel_at_period_end: boolean;
 }
 
-export default function EmployerSettingsPage() {
+function EmployerSettingsContent() {
   const searchParams = useSearchParams();
   const [profile, setProfile] = useState<EmployerProfile | null>(null);
   const [subscription, setSubscription] =
@@ -591,5 +591,13 @@ function PricingCard({
         {current ? "Current Plan" : buttonText}
       </button>
     </div>
+  );
+}
+
+export default function EmployerSettingsPage() {
+  return (
+    <Suspense>
+      <EmployerSettingsContent />
+    </Suspense>
   );
 }
