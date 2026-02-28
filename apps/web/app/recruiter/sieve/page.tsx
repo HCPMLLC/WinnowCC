@@ -250,12 +250,12 @@ export default function RecruiterSieve() {
 
       {/* Suggestions */}
       {suggestions.length > 0 && !loading && (
-        <div className="flex flex-wrap gap-2 pb-3">
+        <div className="flex flex-wrap gap-1 pb-1">
           {suggestions.map((s, i) => (
             <button
               key={i}
               onClick={() => sendMessage(s)}
-              className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs text-slate-600 transition-colors hover:border-blue-300 hover:text-blue-600"
+              className="truncate rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[11px] leading-tight text-slate-600 transition-colors hover:border-blue-300 hover:text-blue-600"
             >
               {s}
             </button>
