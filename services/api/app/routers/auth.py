@@ -129,6 +129,16 @@ def _me_response(user: User) -> MeResponse:
     )
 
 
+def _normalize_phone_e164(phone: str) -> str:
+    """Ensure a US phone number is in E.164 format (+1XXXXXXXXXX)."""
+    digits = "".join(c for c in phone if c.isdigit())
+    if len(digits) == 10:
+        digits = "1" + digits
+    if not digits.startswith("+"):
+        digits = "+" + digits
+    return digits
+
+
 def _prepare_otp(
     user: User,
     session: Session,
@@ -149,7 +159,7 @@ def _prepare_otp(
     user.mfa_otp_expires_at = datetime.now(UTC) + timedelta(minutes=MFA_OTP_TTL_MINUTES)
     user.mfa_otp_attempts = 0
     # Capture destination + email before commit (avoids lazy-load issues)
-    dest = user.phone if method == "sms" else user.email
+    dest = _normalize_phone_e164(user.phone) if method == "sms" else user.email
     email = user.email
     session.commit()
 

@@ -12,27 +12,27 @@ const ACCEPTED_TYPES = [
 ];
 const ACCEPTED_EXTENSIONS = [".pdf", ".doc", ".docx"];
 
-interface FileResult {
+interface BatchFileResult {
   filename: string;
-  success: boolean;
-  status: string | null;
-  pipeline_candidate_id: number | null;
-  candidate_profile_id: number | null;
-  matched_email: string | null;
-  parsed_name: string | null;
+  status: string; // pending | processing | succeeded | failed | skipped
   error: string | null;
+  result: {
+    status?: string;
+    pipeline_candidate_id?: number;
+    candidate_profile_id?: number;
+    matched_email?: string;
+    parsed_name?: string;
+  } | null;
 }
 
-interface UploadResponse {
-  results: FileResult[];
-  total_submitted: number;
-  total_succeeded: number;
-  total_failed: number;
-  total_matched: number;
-  total_new: number;
-  total_linked_platform: number;
-  remaining_monthly_quota: number;
-  upgrade_recommendation: string | null;
+interface BatchStatusResponse {
+  batch_id: string;
+  status: string; // pending | processing | completed
+  total_files: number;
+  files_completed: number;
+  files_succeeded: number;
+  files_failed: number;
+  files: BatchFileResult[];
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -42,43 +42,32 @@ function isAcceptedFile(file: File): boolean {
 }
 
 const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> = {
+  succeeded: { bg: "bg-green-50", text: "text-green-700", label: "Processed" },
   matched: { bg: "bg-green-50", text: "text-green-700", label: "Matched" },
   new: { bg: "bg-blue-50", text: "text-blue-700", label: "New" },
   linked_platform: { bg: "bg-yellow-50", text: "text-yellow-700", label: "Platform User" },
   failed: { bg: "bg-red-50", text: "text-red-700", label: "Failed" },
+  pending: { bg: "bg-slate-50", text: "text-slate-500", label: "Pending" },
+  processing: { bg: "bg-amber-50", text: "text-amber-700", label: "Processing" },
 };
+
+const POLL_INTERVAL = 2000;
 
 export default function ResumeUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
-  const [progress, setProgress] = useState({ current: 0, total: 0 });
-  const [pct, setPct] = useState(0);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Simulated progress that ticks up while waiting for each file to process
-  useEffect(() => {
-    if (!uploading) {
-      if (timerRef.current) clearInterval(timerRef.current);
-      return;
-    }
-    timerRef.current = setInterval(() => {
-      setPct((prev) => {
-        // Each file owns an equal slice; tick up toward ~95% of current file's ceiling
-        const fileSlice = 100 / progress.total;
-        const ceiling = (progress.current + 1) * fileSlice - 2;
-        if (prev >= ceiling) return prev;
-        // Slow down as we approach the ceiling (ease-out feel)
-        const remaining = ceiling - prev;
-        const step = Math.max(0.3, remaining * 0.04);
-        return Math.min(prev + step, ceiling);
-      });
-    }, 300);
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [uploading, progress]);
-  const [response, setResponse] = useState<UploadResponse | null>(null);
+  const [batchStatus, setBatchStatus] = useState<BatchStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Poll for batch status
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, []);
 
   const addFiles = useCallback((newFiles: FileList | File[]) => {
     const accepted = Array.from(newFiles).filter(isAcceptedFile);
@@ -88,7 +77,7 @@ export default function ResumeUploadPage() {
       return [...prev, ...deduped];
     });
     setError(null);
-    setResponse(null);
+    setBatchStatus(null);
   }, []);
 
   function removeFile(index: number) {
@@ -103,96 +92,88 @@ export default function ResumeUploadPage() {
     }
   }
 
+  function startPolling(batchId: string) {
+    if (pollRef.current) clearInterval(pollRef.current);
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/upload-batches/${batchId}/status`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data: BatchStatusResponse = await res.json();
+        setBatchStatus(data);
+        if (data.status === "completed") {
+          if (pollRef.current) clearInterval(pollRef.current);
+          pollRef.current = null;
+          setUploading(false);
+        }
+      } catch {
+        // Keep polling on network errors
+      }
+    }, POLL_INTERVAL);
+  }
+
   async function handleUpload() {
     if (files.length === 0) return;
     setUploading(true);
     setError(null);
-    setResponse(null);
-    setProgress({ current: 0, total: files.length });
-    setPct(0);
+    setBatchStatus(null);
 
-    const allResults: FileResult[] = [];
-    let totalSucceeded = 0;
-    let totalFailed = 0;
-    let totalMatched = 0;
-    let totalNew = 0;
-    let totalLinkedPlatform = 0;
-    let remainingQuota = 0;
-    let upgradeRec: string | null = null;
+    const formData = new FormData();
+    for (const file of files) {
+      formData.append("files", file);
+    }
 
-    for (let i = 0; i < files.length; i++) {
-      setProgress({ current: i, total: files.length });
-
-      const formData = new FormData();
-      formData.append("files", files[i]);
-
-      try {
-        const res = await fetch(`${API_BASE}/api/recruiter/pipeline/upload-resumes`, {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/recruiter/pipeline/upload-resumes`,
+        {
           method: "POST",
           credentials: "include",
           body: formData,
-        });
-
-        if (!res.ok) {
-          const body = await res.json().catch(() => null);
-          allResults.push({
-            filename: files[i].name,
-            success: false,
-            status: "failed",
-            pipeline_candidate_id: null,
-            candidate_profile_id: null,
-            matched_email: null,
-            parsed_name: null,
-            error: body?.detail || `Upload failed (${res.status})`,
-          });
-          totalFailed++;
-          setPct(Math.round(((i + 1) / files.length) * 100));
-          continue;
         }
+      );
 
-        const data: UploadResponse = await res.json();
-        allResults.push(...data.results);
-        totalSucceeded += data.total_succeeded;
-        totalFailed += data.total_failed;
-        totalMatched += data.total_matched;
-        totalNew += data.total_new;
-        totalLinkedPlatform += data.total_linked_platform;
-        remainingQuota = data.remaining_monthly_quota;
-        if (data.upgrade_recommendation) upgradeRec = data.upgrade_recommendation;
-        // Snap progress to completed percentage
-        setPct(Math.round(((i + 1) / files.length) * 100));
-      } catch {
-        allResults.push({
-          filename: files[i].name,
-          success: false,
-          status: "failed",
-          pipeline_candidate_id: null,
-          candidate_profile_id: null,
-          matched_email: null,
-          parsed_name: null,
-          error: "Network error",
-        });
-        totalFailed++;
-        setPct(Math.round(((i + 1) / files.length) * 100));
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.detail || `Upload failed (${res.status})`);
+        setUploading(false);
+        return;
       }
-    }
 
-    setPct(100);
-    setProgress({ current: files.length, total: files.length });
-    setResponse({
-      results: allResults,
-      total_submitted: files.length,
-      total_succeeded: totalSucceeded,
-      total_failed: totalFailed,
-      total_matched: totalMatched,
-      total_new: totalNew,
-      total_linked_platform: totalLinkedPlatform,
-      remaining_monthly_quota: remainingQuota,
-      upgrade_recommendation: upgradeRec,
-    });
-    setFiles([]);
-    setUploading(false);
+      const data = await res.json();
+      const batchId = data.batch_id;
+
+      // Set initial status
+      setBatchStatus({
+        batch_id: batchId,
+        status: "processing",
+        total_files: data.total_files,
+        files_completed: 0,
+        files_succeeded: 0,
+        files_failed: 0,
+        files: files.map((f) => ({
+          filename: f.name,
+          status: "pending",
+          error: null,
+          result: null,
+        })),
+      });
+
+      setFiles([]);
+      startPolling(batchId);
+    } catch {
+      setError("Network error. Please try again.");
+      setUploading(false);
+    }
   }
+
+  const pct = batchStatus && batchStatus.total_files > 0
+    ? Math.round((batchStatus.files_completed / batchStatus.total_files) * 100)
+    : 0;
+
+  const isComplete = batchStatus?.status === "completed";
 
   return (
     <div className="space-y-6">
@@ -217,48 +198,50 @@ export default function ResumeUploadPage() {
       </div>
 
       {/* Drop zone */}
-      <div
-        onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
-        onDragLeave={() => setDragActive(false)}
-        onDrop={handleDrop}
-        onClick={() => inputRef.current?.click()}
-        className={`cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition-colors ${
-          dragActive
-            ? "border-slate-500 bg-slate-50"
-            : "border-slate-300 hover:border-slate-400 hover:bg-slate-50"
-        }`}
-      >
-        <svg
-          className="mx-auto h-10 w-10 text-slate-400"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
+      {!uploading && !isComplete && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+          onDragLeave={() => setDragActive(false)}
+          onDrop={handleDrop}
+          onClick={() => inputRef.current?.click()}
+          className={`cursor-pointer rounded-xl border-2 border-dashed p-12 text-center transition-colors ${
+            dragActive
+              ? "border-slate-500 bg-slate-50"
+              : "border-slate-300 hover:border-slate-400 hover:bg-slate-50"
+          }`}
         >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={1.5}
-            d="M12 16V4m0 0l-4 4m4-4l4 4M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4"
+          <svg
+            className="mx-auto h-10 w-10 text-slate-400"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d="M12 16V4m0 0l-4 4m4-4l4 4M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4"
+            />
+          </svg>
+          <p className="mt-3 text-sm font-medium text-slate-700">
+            Drop resume files here or click to browse
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            PDF, DOC, DOCX up to 10 MB each
+          </p>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept=".pdf,.doc,.docx"
+            className="hidden"
+            onChange={(e) => e.target.files && addFiles(e.target.files)}
           />
-        </svg>
-        <p className="mt-3 text-sm font-medium text-slate-700">
-          Drop resume files here or click to browse
-        </p>
-        <p className="mt-1 text-xs text-slate-500">
-          PDF, DOC, DOCX up to 10 MB each
-        </p>
-        <input
-          ref={inputRef}
-          type="file"
-          multiple
-          accept=".pdf,.doc,.docx"
-          className="hidden"
-          onChange={(e) => e.target.files && addFiles(e.target.files)}
-        />
-      </div>
+        </div>
+      )}
 
-      {/* File list */}
-      {files.length > 0 && (
+      {/* File list (before upload) */}
+      {files.length > 0 && !uploading && (
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-medium text-slate-700">
@@ -305,18 +288,26 @@ export default function ResumeUploadPage() {
             disabled={uploading}
             className="w-full rounded-lg bg-slate-900 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
           >
-            {uploading
-              ? `Processing ${progress.current + 1} of ${progress.total} — ${Math.round(pct)}%`
-              : `Upload ${files.length} Resume${files.length !== 1 ? "s" : ""}`}
+            Upload {files.length} Resume{files.length !== 1 ? "s" : ""}
           </button>
-          {uploading && (
-            <div className="w-full rounded-full bg-slate-200 h-2.5 overflow-hidden">
-              <div
-                className="h-full bg-slate-900 transition-all duration-300 ease-out"
-                style={{ width: `${Math.max(2, Math.round(pct))}%` }}
-              />
-            </div>
-          )}
+        </div>
+      )}
+
+      {/* Progress bar (during upload/processing) */}
+      {batchStatus && !isComplete && (
+        <div className="space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="font-medium text-slate-700">
+              Processing {batchStatus.files_completed} of {batchStatus.total_files} files...
+            </span>
+            <span className="text-slate-500">{pct}%</span>
+          </div>
+          <div className="w-full rounded-full bg-slate-200 h-2.5 overflow-hidden">
+            <div
+              className="h-full bg-slate-900 transition-all duration-500 ease-out"
+              style={{ width: `${Math.max(2, pct)}%` }}
+            />
+          </div>
         </div>
       )}
 
@@ -327,46 +318,22 @@ export default function ResumeUploadPage() {
         </div>
       )}
 
-      {/* Results */}
-      {response && (
+      {/* Results (after completion) */}
+      {batchStatus && isComplete && (
         <div className="space-y-4">
           {/* Summary bar */}
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="font-medium text-slate-900">
-                {response.total_succeeded}/{response.total_submitted} processed
+                {batchStatus.files_succeeded}/{batchStatus.total_files} processed
               </span>
-              {response.total_matched > 0 && (
-                <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
-                  {response.total_matched} matched
-                </span>
-              )}
-              {response.total_new > 0 && (
-                <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-blue-700">
-                  {response.total_new} new
-                </span>
-              )}
-              {response.total_linked_platform > 0 && (
-                <span className="rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-medium text-yellow-700">
-                  {response.total_linked_platform} platform users
-                </span>
-              )}
-              {response.total_failed > 0 && (
+              {batchStatus.files_failed > 0 && (
                 <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                  {response.total_failed} failed
+                  {batchStatus.files_failed} failed
                 </span>
               )}
-              <span className="ml-auto text-xs text-slate-500">
-                {response.remaining_monthly_quota} imports remaining this month
-              </span>
             </div>
           </div>
-
-          {response.upgrade_recommendation && (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              {response.upgrade_recommendation}
-            </div>
-          )}
 
           {/* Results table */}
           <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -391,18 +358,19 @@ export default function ResumeUploadPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {response.results.map((r, i) => {
-                  const badge = STATUS_BADGE[r.status || "failed"] || STATUS_BADGE.failed;
+                {batchStatus.files.map((r, i) => {
+                  const resultStatus = r.result?.status || r.status;
+                  const badge = STATUS_BADGE[resultStatus] || STATUS_BADGE.failed;
                   return (
                     <tr key={i} className="hover:bg-slate-50">
                       <td className="px-4 py-3 text-sm text-slate-700 max-w-[200px] truncate">
                         {r.filename}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-700">
-                        {r.parsed_name || "-"}
+                        {r.result?.parsed_name || "-"}
                       </td>
                       <td className="px-4 py-3 text-sm text-slate-500">
-                        {r.matched_email || "-"}
+                        {r.result?.matched_email || "-"}
                       </td>
                       <td className="px-4 py-3">
                         <span
@@ -415,9 +383,9 @@ export default function ResumeUploadPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        {r.success && r.candidate_profile_id && (
+                        {r.status === "succeeded" && r.result?.candidate_profile_id && (
                           <Link
-                            href={`/recruiter/candidates/${r.candidate_profile_id}`}
+                            href={`/recruiter/candidates/${r.result.candidate_profile_id}`}
                             className="text-xs font-medium text-slate-600 hover:text-slate-900"
                           >
                             View
@@ -430,6 +398,13 @@ export default function ResumeUploadPage() {
               </tbody>
             </table>
           </div>
+
+          <button
+            onClick={() => { setBatchStatus(null); setError(null); }}
+            className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
+          >
+            Upload More
+          </button>
         </div>
       )}
     </div>
