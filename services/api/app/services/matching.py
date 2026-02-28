@@ -111,9 +111,13 @@ def compute_matches(
     scored.sort(key=lambda item: item[1].match_score, reverse=True)
     top = scored[:50]
 
+    # Delete all previous matches for this user that the user hasn't
+    # interacted with (no application_status).  Matches the user saved,
+    # applied to, etc. are preserved so tracking state isn't lost.
     session.execute(
         delete(Match).where(
-            Match.user_id == user_id, Match.profile_version == profile_version
+            Match.user_id == user_id,
+            Match.application_status.is_(None),
         )
     )
 
