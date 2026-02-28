@@ -192,9 +192,9 @@ def _compute_score(
     )
     overlaps = _find_overlaps(experience)
     if not overlaps and has_job_entries:
-        bucket_b += _add_reason(
+        _add_reason(
             reasons,
-            5,
+            0,
             "resume_no_overlaps",
             "low",
             "No overlapping employment dates detected.",
@@ -210,9 +210,9 @@ def _compute_score(
         )
     keyword_stuffing = _keyword_stuffing_detected(profile_json)
     if not keyword_stuffing and parse_succeeded:
-        bucket_b += _add_reason(
+        _add_reason(
             reasons,
-            5,
+            0,
             "resume_no_keyword_stuffing",
             "low",
             "No extreme keyword repetition detected.",
@@ -251,9 +251,9 @@ def _compute_score(
         "GitHub or portfolio URL provided.",
     )
     if linkedin_present and other_present:
-        bucket_c += _add_reason(
+        _add_reason(
             reasons,
-            10,
+            0,
             "online_multiple_profiles_present",
             "low",
             "Multiple professional profiles provided.",
@@ -331,9 +331,14 @@ def _add_signal(
     severity: str,
     message: str,
 ) -> int:
-    if not condition:
-        return 0
-    return _add_reason(reasons, points, code, severity, message)
+    """Record a positive signal in reasons for admin visibility but do not
+    contribute to the risk score.  Only penalty signals should increase the
+    score."""
+    if condition:
+        reasons.append(
+            {"code": code, "severity": severity, "message": message, "points": 0}
+        )
+    return 0
 
 
 def _add_reason(
