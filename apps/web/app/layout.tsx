@@ -2,6 +2,7 @@ import "./globals.css";
 import type { Metadata } from "next";
 import Navbar from "./components/Navbar";
 import AuthenticatedSieve from "./components/sieve/AuthenticatedSieve";
+import CandidateDisclaimer from "./components/CandidateDisclaimer";
 
 export const metadata: Metadata = {
   title: "Winnow Career Concierge",
@@ -28,6 +29,7 @@ export default function RootLayout({
       <body>
         <Navbar />
         {children}
+        <CandidateDisclaimer />
         <AuthenticatedSieve />
       </body>
     </html>
