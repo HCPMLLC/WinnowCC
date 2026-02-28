@@ -303,9 +303,9 @@ def list_matches(
             Job.is_active.is_not(False),
         )
         .order_by(Match.match_score.desc())
-        .limit(5)
     )
     rows = session.execute(stmt).all()
+    rows = _deduplicate_matches(rows)[:5]
     return [
         MatchResponse(
             id=match.id,
@@ -354,6 +354,7 @@ def list_all_matches(
         .order_by(Match.match_score.desc())
     )
     rows = session.execute(stmt).all()
+    rows = _deduplicate_matches(rows)
     return [
         MatchResponse(
             id=match.id,
