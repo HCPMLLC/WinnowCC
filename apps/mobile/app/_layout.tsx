@@ -1,7 +1,8 @@
 import { useEffect, useState, useCallback } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator, Platform, Text } from "react-native";
+import { View, ActivityIndicator, Platform, Text, Alert } from "react-native";
+import * as Updates from "expo-updates";
 import {
   AuthContext,
   AuthState,
@@ -52,6 +53,29 @@ export default function RootLayout() {
         isLoading: false,
       });
     });
+  }, []);
+
+  // Check for OTA updates and apply immediately if available
+  useEffect(() => {
+    if (__DEV__ || Platform.OS === "web") return;
+    (async () => {
+      try {
+        const update = await Updates.checkForUpdateAsync();
+        if (update.isAvailable) {
+          await Updates.fetchUpdateAsync();
+          Alert.alert(
+            "Update Available",
+            "A new version has been downloaded. Restart now to apply it.",
+            [
+              { text: "Later", style: "cancel" },
+              { text: "Restart", onPress: () => Updates.reloadAsync() },
+            ],
+          );
+        }
+      } catch (e) {
+        console.log("[Updates] OTA check failed:", e);
+      }
+    })();
   }, []);
 
   // Check for stored token on app launch
