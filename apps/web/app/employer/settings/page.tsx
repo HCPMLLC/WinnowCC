@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -66,6 +67,7 @@ interface SubscriptionDetails {
 }
 
 export default function EmployerSettingsPage() {
+  const searchParams = useSearchParams();
   const [profile, setProfile] = useState<EmployerProfile | null>(null);
   const [subscription, setSubscription] =
     useState<SubscriptionDetails | null>(null);
@@ -82,6 +84,17 @@ export default function EmployerSettingsPage() {
     company_description: "",
     billing_email: "",
   });
+
+  const fetchSubscription = () =>
+    fetch(`${API_BASE}/api/employer/billing/subscription`, {
+      credentials: "include",
+    })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data) setSubscription(data);
+        return data as SubscriptionDetails | null;
+      })
+      .catch(() => null);
 
   useEffect(() => {
     async function fetchData() {
@@ -121,6 +134,25 @@ export default function EmployerSettingsPage() {
     }
     fetchData();
   }, []);
+
+  // Handle Stripe return params — poll until webhook has processed
+  useEffect(() => {
+    const billingParam = searchParams.get("billing");
+    if (billingParam === "success") {
+      setSuccess("Your subscription is now active!");
+      let attempts = 0;
+      const poll = setInterval(async () => {
+        attempts++;
+        const data = await fetchSubscription();
+        if ((data?.tier && data.tier !== "free") || attempts >= 5) {
+          clearInterval(poll);
+        }
+      }, 3000);
+      return () => clearInterval(poll);
+    } else if (billingParam === "canceled") {
+      setSuccess("Checkout was canceled. You can upgrade anytime.");
+    }
+  }, [searchParams]);
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -220,6 +252,12 @@ export default function EmployerSettingsPage() {
 
   return (
     <div>
+      {success && (
+        <div className="mb-6 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+          {success}
+        </div>
+      )}
+
       <div className="mb-8">
         <h1 className="text-3xl font-bold text-slate-900">Settings</h1>
         <p className="mt-1 text-slate-600">
