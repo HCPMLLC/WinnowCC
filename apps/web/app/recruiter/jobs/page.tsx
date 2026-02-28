@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 const API_BASE =
@@ -50,14 +50,17 @@ export default function RecruiterJobsPage() {
   const [showUploadForm, setShowUploadForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [uploadPct, setUploadPct] = useState(0);
-  const [uploadPhase, setUploadPhase] = useState<"upload" | "parsing">(
-    "upload",
-  );
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
-  const [uploadResults, setUploadResults] = useState<
-    { filename: string; success: boolean; title?: string; error?: string }[]
-  >([]);
+  const [uploadBatchStatus, setUploadBatchStatus] = useState<{
+    batch_id: string;
+    status: string;
+    total_files: number;
+    files_completed: number;
+    files_succeeded: number;
+    files_failed: number;
+    files: { filename: string; status: string; error: string | null; result: { title?: string; job_id?: number } | null }[];
+  } | null>(null);
+  const uploadPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -110,6 +113,11 @@ export default function RecruiterJobsPage() {
     ]).finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [statusFilter]);
+
+  // Cleanup upload polling on unmount
+  useEffect(() => {
+    return () => { if (uploadPollRef.current) clearInterval(uploadPollRef.current); };
+  }, []);
 
   const allSelected = jobs.length > 0 && jobs.every((j) => selected.has(j.id));
 
@@ -276,53 +284,67 @@ export default function RecruiterJobsPage() {
     }
   }
 
-  function handleUpload() {
+  function startUploadPolling(batchId: string) {
+    if (uploadPollRef.current) clearInterval(uploadPollRef.current);
+    uploadPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/upload-batches/${batchId}/status`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data = await res.json();
+        setUploadBatchStatus(data);
+        if (data.status === "completed") {
+          if (uploadPollRef.current) clearInterval(uploadPollRef.current);
+          uploadPollRef.current = null;
+          setUploading(false);
+          fetchJobs();
+        }
+      } catch {
+        // Keep polling
+      }
+    }, 2000);
+  }
+
+  async function handleUpload() {
     if (uploadFiles.length === 0) return;
     setUploading(true);
-    setUploadPct(0);
-    setUploadPhase("upload");
     setError("");
-    setUploadResults([]);
+    setUploadBatchStatus(null);
 
     const formData = new FormData();
     uploadFiles.forEach((f) => formData.append("files", f));
 
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", `${API_BASE}/api/recruiter/jobs/upload-documents`);
-    xhr.withCredentials = true;
-
-    xhr.upload.onprogress = (e) => {
-      if (e.lengthComputable) {
-        const pct = Math.round((e.loaded / e.total) * 100);
-        setUploadPct(pct);
-        if (pct >= 100) setUploadPhase("parsing");
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/recruiter/jobs/upload-documents`,
+        { method: "POST", credentials: "include", body: formData }
+      );
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setError(body?.detail || `Upload failed (${res.status})`);
+        setUploading(false);
+        return;
       }
-    };
-
-    xhr.onload = () => {
-      setUploadPct(100);
-      if (xhr.status >= 200 && xhr.status < 300) {
-        const data = JSON.parse(xhr.responseText);
-        setUploadResults(data.results || []);
-        setUploadFiles([]);
-        fetchJobs();
-      } else {
-        try {
-          const data = JSON.parse(xhr.responseText);
-          setError(data.detail || "Upload failed");
-        } catch {
-          setError(`Upload failed (${xhr.status})`);
-        }
-      }
-      setUploading(false);
-    };
-
-    xhr.onerror = () => {
+      const data = await res.json();
+      setUploadBatchStatus({
+        batch_id: data.batch_id,
+        status: "processing",
+        total_files: data.total_files,
+        files_completed: 0,
+        files_succeeded: 0,
+        files_failed: 0,
+        files: uploadFiles.map((f) => ({
+          filename: f.name, status: "pending", error: null, result: null,
+        })),
+      });
+      setUploadFiles([]);
+      startUploadPolling(data.batch_id);
+    } catch {
       setError("Network error during upload");
       setUploading(false);
-    };
-
-    xhr.send(formData);
+    }
   }
 
   return (
@@ -457,55 +479,50 @@ export default function RecruiterJobsPage() {
                 <div>
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="font-medium text-slate-700">
-                      {uploadPhase === "upload"
-                        ? "Uploading files..."
-                        : "AI is parsing documents..."}
+                      Processing{uploadBatchStatus ? ` ${uploadBatchStatus.files_completed} of ${uploadBatchStatus.total_files}` : ""}...
                     </span>
                     <span className="text-slate-500">
-                      {uploadPhase === "upload" ? `${uploadPct}%` : ""}
+                      {uploadBatchStatus && uploadBatchStatus.total_files > 0
+                        ? `${Math.round((uploadBatchStatus.files_completed / uploadBatchStatus.total_files) * 100)}%`
+                        : ""}
                     </span>
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
                     <div
-                      className={`h-full rounded-full transition-all duration-300 ease-out ${
-                        uploadPhase === "parsing"
-                          ? "animate-pulse bg-amber-500"
-                          : "bg-blue-600"
-                      }`}
+                      className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
                       style={{
-                        width:
-                          uploadPhase === "parsing"
-                            ? "100%"
-                            : `${uploadPct}%`,
+                        width: uploadBatchStatus && uploadBatchStatus.total_files > 0
+                          ? `${Math.max(2, Math.round((uploadBatchStatus.files_completed / uploadBatchStatus.total_files) * 100))}%`
+                          : "2%",
                       }}
                     />
                   </div>
-                  {uploadPhase === "parsing" && (
-                    <p className="mt-2 text-center text-xs text-slate-500">
-                      This may take a moment per file...
-                    </p>
-                  )}
+                  <p className="mt-2 text-center text-xs text-slate-500">
+                    AI is parsing documents in the background...
+                  </p>
                 </div>
               )}
             </div>
           )}
 
-          {uploadResults.length > 0 && (
+          {uploadBatchStatus && uploadBatchStatus.status === "completed" && (
             <div className="mt-4 space-y-2">
-              <h3 className="text-sm font-semibold text-slate-700">Results</h3>
-              {uploadResults.map((r, i) => (
+              <h3 className="text-sm font-semibold text-slate-700">
+                Results — {uploadBatchStatus.files_succeeded}/{uploadBatchStatus.total_files} succeeded
+              </h3>
+              {uploadBatchStatus.files.map((r, i) => (
                 <div
                   key={i}
                   className={`rounded-md px-3 py-2 text-sm ${
-                    r.success
+                    r.status === "succeeded"
                       ? "bg-green-50 text-green-700"
                       : "bg-red-50 text-red-700"
                   }`}
                 >
                   <span className="font-medium">{r.filename}</span>
-                  {r.success
-                    ? ` — Created: ${r.title} (draft)`
-                    : ` — ${r.error}`}
+                  {r.status === "succeeded"
+                    ? ` — Created: ${r.result?.title || "Job"} (draft)`
+                    : ` — ${r.error || "Failed"}`}
                 </div>
               ))}
             </div>

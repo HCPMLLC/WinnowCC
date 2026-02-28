@@ -62,9 +62,18 @@ def load_progress(progress_path: Path) -> dict:
 
 def save_progress(progress_path: Path, progress: dict) -> None:
     tmp = progress_path.with_suffix(".tmp")
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(progress, f, indent=2)
-    tmp.replace(progress_path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(progress, f, indent=2)
+        # On Windows, os.replace can fail if target is locked
+        try:
+            tmp.replace(progress_path)
+        except OSError:
+            # Fallback: write directly to the target file
+            import shutil
+            shutil.move(str(tmp), str(progress_path))
+    except Exception as exc:
+        print(f"  [!] Failed to save progress: {exc}", flush=True)
 
 
 def collect_files(resume_dir: Path) -> tuple[list[Path], list[Path], list[Path]]:
@@ -362,9 +371,10 @@ class BulkPipelineUploader:
                 return
 
             # Process per-file results
+            from urllib.parse import unquote
             file_results = result.get("results", [])
             for fr in file_results:
-                fname = fr.get("filename", "")
+                fname = unquote(fr.get("filename", ""))
                 if fr.get("success"):
                     self.progress[fname] = {
                         "status": "success",
@@ -455,10 +465,14 @@ class BulkPipelineUploader:
             self.already_done = already_done
 
         # Build set of already-seen SHA256 hashes from progress
+        # In retry mode, exclude hashes of failed files so they can be re-uploaded
+        # Only treat hashes from completed entries as "seen" for dedup.
+        # Failed/unknown entries should be re-uploadable.
+        done_statuses = {"success", "skipped"}
         seen_hashes: set[str] = set()
         for v in self.progress.values():
             h = v.get("sha256")
-            if h:
+            if h and v.get("status") in done_statuses:
                 seen_hashes.add(h)
 
         # Log unconverted .doc files that weren't converted

@@ -290,6 +290,12 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
         logger.error("TELNYX_FROM_NUMBER not set; skipping MFA OTP SMS to %s", to_phone)
         return
 
+    # Normalize to E.164 (+1XXXXXXXXXX) — handles numbers missing country code
+    digits = "".join(c for c in to_phone if c.isdigit())
+    if len(digits) == 10:
+        digits = "1" + digits
+    to_phone = "+" + digits
+
     try:
         import time
 
