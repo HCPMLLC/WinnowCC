@@ -109,8 +109,13 @@ export default function ProfileScreen() {
           job_type: (p.job_type as string) || "any",
         });
       } else if (res.status === 403) {
-        router.replace("/candidate-onboarding");
-        return;
+        const body = await res.json().catch(() => ({}));
+        const detail: string = body.detail || "";
+        if (detail.toLowerCase().includes("onboarding")) {
+          router.replace("/candidate-onboarding");
+          return;
+        }
+        setError("Upload your resume to access your full profile.");
       } else {
         setError("Failed to load profile.");
       }
