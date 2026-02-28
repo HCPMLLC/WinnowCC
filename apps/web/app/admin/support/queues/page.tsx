@@ -216,29 +216,27 @@ function FailedJobCard({ job }: { job: FailedJob }) {
 
 function QueueCard({
   queue,
-  onRetry,
+  isSelected,
+  onSelect,
 }: {
   queue: QueueDetail;
-  onRetry: (name: string) => void;
+  isSelected: boolean;
+  onSelect: () => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
   const hasFailed = queue.failed > 0;
 
   return (
     <div
-      className={`rounded-2xl border bg-white p-5 ${hasFailed ? "border-red-300" : "border-slate-200"}`}
+      onClick={onSelect}
+      className={`cursor-pointer rounded-2xl border bg-white p-5 transition ${
+        isSelected
+          ? "border-blue-400 ring-2 ring-blue-400"
+          : hasFailed
+            ? "border-red-300 hover:border-red-400"
+            : "border-slate-200 hover:border-slate-300"
+      }`}
     >
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">{queue.name}</h3>
-        {hasFailed && (
-          <button
-            onClick={() => onRetry(queue.name)}
-            className="rounded-lg bg-red-600 px-3 py-1 text-xs font-semibold text-white"
-          >
-            Retry All
-          </button>
-        )}
-      </div>
+      <h3 className="text-sm font-semibold text-slate-900">{queue.name}</h3>
 
       <div className="mt-3 flex gap-4 text-sm">
         <div>
@@ -266,24 +264,6 @@ function QueueCard({
           </div>
         </div>
       </div>
-
-      {hasFailed && (
-        <div className="mt-3">
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="text-xs font-medium text-slate-500 hover:text-slate-700"
-          >
-            {expanded ? "Hide" : "Show"} failed jobs ({queue.failed_jobs.length})
-          </button>
-          {expanded && (
-            <div className="mt-2 flex flex-col gap-2">
-              {queue.failed_jobs.map((fj) => (
-                <FailedJobCard key={fj.job_id} job={fj} />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -293,6 +273,7 @@ export default function QueueMonitorPage() {
   const [data, setData] = useState<QueueData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [actionMsg, setActionMsg] = useState<string | null>(null);
+  const [selectedQueue, setSelectedQueue] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -317,6 +298,20 @@ export default function QueueMonitorPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Auto-select the first queue with failures, or the first queue overall
+  useEffect(() => {
+    if (!data || data.queues.length === 0) return;
+    // Don't override if the user already selected a valid queue
+    if (selectedQueue && data.queues.some((q) => q.name === selectedQueue))
+      return;
+    const withFailures = data.queues.find((q) => q.failed > 0);
+    setSelectedQueue(withFailures ? withFailures.name : data.queues[0].name);
+  }, [data, selectedQueue]);
+
+  const selectedQueueData = data?.queues.find(
+    (q) => q.name === selectedQueue,
+  );
 
   const handleRetry = async (queueName: string) => {
     setActionMsg(null);
@@ -377,13 +372,40 @@ export default function QueueMonitorPage() {
 
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
         {data.queues.map((q) => (
-          <QueueCard key={q.name} queue={q} onRetry={handleRetry} />
+          <QueueCard
+            key={q.name}
+            queue={q}
+            isSelected={selectedQueue === q.name}
+            onSelect={() => setSelectedQueue(q.name)}
+          />
         ))}
       </div>
 
       {data.queues.length === 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-6 text-sm text-slate-600">
           No queues found.
+        </div>
+      )}
+
+      {/* Bottom section: failed jobs for the selected queue */}
+      {selectedQueueData && selectedQueueData.failed_jobs.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Failed Jobs &mdash; {selectedQueueData.name}
+            </h2>
+            <button
+              onClick={() => handleRetry(selectedQueueData.name)}
+              className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
+            >
+              Retry All
+            </button>
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {selectedQueueData.failed_jobs.map((fj) => (
+              <FailedJobCard key={fj.job_id} job={fj} />
+            ))}
+          </div>
         </div>
       )}
     </div>
