@@ -133,13 +133,13 @@ def _prepare_otp(
     user: User,
     session: Session,
     delivery_method: str | None = None,
-) -> tuple[str, str, str]:
-    """Generate an OTP, persist hash + expiry, return (code, method, dest).
+) -> tuple[str, str, str, str]:
+    """Generate an OTP, persist hash + expiry, return (code, method, dest, email).
 
     DB work happens here (must run before the response).
     The actual send is deferred to a BackgroundTask via ``_do_send_otp``.
     """
-    method = delivery_method or user.mfa_delivery_method or "email"
+    method = delivery_method or user.mfa_delivery_method or "sms"
     # Fall back to email if SMS requested but no phone on file
     if method == "sms" and not user.phone:
         method = "email"
@@ -148,15 +148,22 @@ def _prepare_otp(
     user.mfa_otp_hash = otp_hash
     user.mfa_otp_expires_at = datetime.now(UTC) + timedelta(minutes=MFA_OTP_TTL_MINUTES)
     user.mfa_otp_attempts = 0
-    # Capture destination before commit (avoids lazy-load issues)
+    # Capture destination + email before commit (avoids lazy-load issues)
     dest = user.phone if method == "sms" else user.email
+    email = user.email
     session.commit()
 
-    return code, method, dest
+    return code, method, dest, email
 
 
-def _do_send_otp(code: str, method: str, dest: str, user_id: int) -> None:
-    """Send the OTP via email or SMS.  Runs as a BackgroundTask."""
+def _do_send_otp(
+    code: str, method: str, dest: str, user_id: int, fallback_email: str | None = None
+) -> None:
+    """Send the OTP via email or SMS.  Runs as a BackgroundTask.
+
+    When *method* is ``"sms"`` and delivery fails, automatically retries
+    via email using *fallback_email* so the user isn't locked out.
+    """
     try:
         if method == "sms":
             send_mfa_otp_sms(dest, code)
@@ -169,6 +176,19 @@ def _do_send_otp(code: str, method: str, dest: str, user_id: int) -> None:
             user_id,
             exc_info=True,
         )
+        # Fall back to email when SMS fails
+        if method == "sms" and fallback_email:
+            try:
+                logger.info(
+                    "Falling back to email OTP for user %s", user_id
+                )
+                send_mfa_otp_email(fallback_email, code)
+            except Exception:
+                logger.error(
+                    "Email fallback also failed for user %s",
+                    user_id,
+                    exc_info=True,
+                )
 
 
 # ---------------------------------------------------------------------------
@@ -227,8 +247,8 @@ def login(
 
     # --- MFA gate ---
     if user.mfa_required:
-        code, method_used, dest = _prepare_otp(user, session)
-        bg.add_task(_do_send_otp, code, method_used, dest, user.id)
+        code, method_used, dest, user_email = _prepare_otp(user, session)
+        bg.add_task(_do_send_otp, code, method_used, dest, user.id, user_email)
         return LoginResponse(
             requires_mfa=True,
             mfa_delivery_method=method_used,
@@ -315,8 +335,10 @@ def resend_otp(
         user.mfa_delivery_method = requested
         session.commit()
 
-    code, method_used, dest = _prepare_otp(user, session, delivery_method=requested)
-    bg.add_task(_do_send_otp, code, method_used, dest, user.id)
+    code, method_used, dest, user_email = _prepare_otp(
+        user, session, delivery_method=requested
+    )
+    bg.add_task(_do_send_otp, code, method_used, dest, user.id, user_email)
     return {"status": "sent", "delivery_method": method_used}
 
 

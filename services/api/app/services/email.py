@@ -2,18 +2,22 @@
 
 import logging
 import os
+import uuid
 
 import resend
 
 logger = logging.getLogger(__name__)
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY", "").strip()
-RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <noreply@winnowcc.ai>").strip()
+RESEND_FROM = os.getenv("RESEND_FROM_EMAIL", "Winnow <hello@winnowcc.ai>").strip()
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
 
 # Telnyx SMS config
 TELNYX_API_KEY = os.getenv("TELNYX_API_KEY", "").strip()
-TELNYX_FROM_NUMBER = os.getenv("TELNYX_FROM_NUMBER", "").strip()
+TELNYX_FROM_NUMBER = (
+    os.getenv("TELNYX_FROM_NUMBER", "").strip()
+    or os.getenv("TELNYX_PHONE_NUMBER", "").strip()
+)
 
 # Startup diagnostics — surface misconfiguration early in Cloud Run logs
 if not RESEND_API_KEY:
@@ -42,7 +46,16 @@ if not TELNYX_API_KEY:
 
 
 def _send(payload: dict, description: str) -> None:
-    """Send an email via Resend with logging and error context."""
+    """Send an email via Resend with logging and error context.
+
+    Automatically injects headers that improve inbox placement:
+    - ``X-Entity-Ref-ID``: unique per message to prevent thread-grouping
+    - ``X-Priority``: marks transactional mail as normal priority
+    """
+    # Inject deliverability headers (don't overwrite caller-supplied ones)
+    headers = payload.get("headers", {})
+    headers.setdefault("X-Entity-Ref-ID", uuid.uuid4().hex)
+    payload["headers"] = headers
     try:
         result = resend.Emails.send(payload)
         logger.info(
@@ -77,6 +90,12 @@ def send_password_reset_email(to_email: str, token: str) -> None:
             "from": RESEND_FROM,
             "to": [to_email],
             "subject": "Reset your Winnow password",
+            "text": (
+                "Click the link below to reset your password. "
+                "This link expires in 30 minutes.\n\n"
+                f"{reset_url}\n\n"
+                "If you didn't request this, you can safely ignore this email."
+            ),
             "html": (
                 "<p>Click the link below to reset your password. "
                 "This link expires in 30 minutes.</p>"
@@ -102,18 +121,28 @@ def send_introduction_request_email(
         return
 
     dashboard_url = f"{FRONTEND_URL}/dashboard"
-    job_line = f" for the <strong>{job_title}</strong> position" if job_title else ""
+    job_line_html = f" for the <strong>{job_title}</strong> position" if job_title else ""
+    job_line_text = f" for the {job_title} position" if job_title else ""
     resend.api_key = RESEND_API_KEY
     _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
             "subject": f"{recruiter_company} wants to connect with you on Winnow",
+            "text": (
+                f"A recruiter from {recruiter_company} is interested in connecting "
+                f"with you{job_line_text}.\n\n"
+                "Review their message and decide whether to share your contact "
+                "information.\n\n"
+                f"View Request on Winnow: {dashboard_url}\n\n"
+                "You are in control — your contact details are only shared if "
+                "you accept the introduction."
+            ),
             "html": (
                 "<p>A recruiter from "
                 f"<strong>{recruiter_company}</strong> "
                 "is interested in connecting with "
-                f"you{job_line}.</p>"
+                f"you{job_line_html}.</p>"
                 "<p>Review their message and decide whether to share your contact "
                 "information.</p>"
                 f'<p><a href="{dashboard_url}">View Request on Winnow</a></p>'
@@ -139,16 +168,25 @@ def send_introduction_accepted_email(
         )
         return
 
-    job_line = f" for <strong>{job_title}</strong>" if job_title else ""
+    job_line_html = f" for <strong>{job_title}</strong>" if job_title else ""
+    job_line_text = f" for {job_title}" if job_title else ""
     resend.api_key = RESEND_API_KEY
     _send(
         {
             "from": RESEND_FROM,
             "to": [to_email],
             "subject": f"Introduction accepted — {candidate_name} on Winnow",
+            "text": (
+                f"Great news! {candidate_name} has accepted your "
+                f"introduction request{job_line_text}.\n\n"
+                f"You can now reach them at:\n"
+                f"Email: {candidate_email}\n\n"
+                "We recommend reaching out within "
+                "48 hours while interest is fresh."
+            ),
             "html": (
                 f"<p>Great news! <strong>{candidate_name}</strong> has accepted your "
-                f"introduction request{job_line}.</p>"
+                f"introduction request{job_line_html}.</p>"
                 "<p>You can now reach them at:</p>"
                 f"<p><strong>Email:</strong> {candidate_email}</p>"
                 "<p>We recommend reaching out within "
@@ -170,11 +208,17 @@ def send_mfa_otp_email(to_email: str, otp_code: str) -> None:
         {
             "from": RESEND_FROM,
             "to": [to_email],
-            "subject": f"Your Winnow verification code: {otp_code}",
+            "subject": "Your Winnow sign-in verification code",
+            "text": (
+                f"Your Winnow verification code is: {otp_code}\n\n"
+                "Enter this code to complete your sign-in.\n"
+                "This code expires in 10 minutes.\n\n"
+                "If you didn't try to sign in, you can safely ignore this email."
+            ),
             "html": (
                 "<p>Enter this code to complete your sign-in:</p>"
-                '<p style="font-size:32px;font-family:monospace;font-weight:bold;'
-                'letter-spacing:8px;text-align:center;padding:16px 0;">'
+                '<p style="font-size:28px;font-family:monospace;font-weight:bold;'
+                'letter-spacing:6px;text-align:center;padding:12px 0;">'
                 f"{otp_code}</p>"
                 "<p>This code expires in 10 minutes. If you didn't try to sign in, "
                 "you can safely ignore this email.</p>"
@@ -201,8 +245,10 @@ def send_migration_complete_email(
 
     results_url = f"{FRONTEND_URL}/recruiter/migrate?job={job_id}"
     pipeline_url = f"{FRONTEND_URL}/recruiter/candidates"
-    error_line = f"&bull; {errors:,} files failed to parse<br>" if errors else ""
-    skip_line = f"&bull; {skipped:,} duplicates skipped<br>" if skipped else ""
+    error_line_html = f"&bull; {errors:,} files failed to parse<br>" if errors else ""
+    skip_line_html = f"&bull; {skipped:,} duplicates skipped<br>" if skipped else ""
+    error_line_text = f"- {errors:,} files failed to parse\n" if errors else ""
+    skip_line_text = f"- {skipped:,} duplicates skipped\n" if skipped else ""
     resend.api_key = RESEND_API_KEY
     _send(
         {
@@ -211,12 +257,21 @@ def send_migration_complete_email(
             "subject": (
                 f"Your resume import is complete \u2014 {imported:,} candidates ready"
             ),
+            "text": (
+                "Your bulk resume import has finished processing.\n\n"
+                f"{total:,} files processed:\n"
+                f"- {imported:,} new candidates imported\n"
+                f"{skip_line_text}"
+                f"{error_line_text}"
+                f"\nView your candidates: {pipeline_url}\n"
+                f"View import details: {results_url}"
+            ),
             "html": (
                 "<p>Your bulk resume import has finished processing.</p>"
                 f"<p><strong>{total:,}</strong> files processed:<br>"
                 f"&bull; {imported:,} new candidates imported<br>"
-                f"{skip_line}"
-                f"{error_line}"
+                f"{skip_line_html}"
+                f"{error_line_html}"
                 "</p>"
                 f'<p><a href="{pipeline_url}">View your candidates</a> | '
                 f'<a href="{results_url}">View import details</a></p>'
@@ -236,10 +291,12 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
         return
 
     try:
+        import time
+
         import telnyx
 
-        telnyx.api_key = TELNYX_API_KEY
-        message = telnyx.Message.create(
+        client = telnyx.Telnyx(api_key=TELNYX_API_KEY)
+        result = client.messages.send(
             from_=TELNYX_FROM_NUMBER,
             to=to_phone,
             text=(
@@ -247,7 +304,33 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
                 f"{otp_code}. It expires in 10 minutes."
             ),
         )
-        logger.info("SMS sent: mfa_otp to=%s id=%s", to_phone, message.id)
+        msg_id = None
+        if hasattr(result, "data") and hasattr(result.data, "id"):
+            msg_id = result.data.id
+        else:
+            msg_id = getattr(result, "id", None)
+        logger.info("SMS queued: mfa_otp to=%s id=%s", to_phone, msg_id)
+
+        # Poll delivery status — carrier may silently reject (e.g. 10DLC)
+        if msg_id:
+            time.sleep(2)
+            status_result = client.messages.retrieve(str(msg_id))
+            recipients = []
+            if hasattr(status_result, "data") and hasattr(status_result.data, "to"):
+                recipients = status_result.data.to or []
+            for recipient in recipients:
+                if getattr(recipient, "status", "") in (
+                    "delivery_failed",
+                    "sending_failed",
+                ):
+                    errors = getattr(status_result.data, "errors", [])
+                    err_detail = (
+                        errors[0].detail if errors else "carrier rejected"
+                    )
+                    raise RuntimeError(
+                        f"SMS delivery failed for {to_phone}: {err_detail}"
+                    )
+        logger.info("SMS confirmed: mfa_otp to=%s id=%s", to_phone, msg_id)
     except Exception:
         logger.error("SMS FAILED: mfa_otp to=%s", to_phone, exc_info=True)
         raise
@@ -268,6 +351,13 @@ def send_verification_email(to_email: str, token: str) -> None:
             "from": RESEND_FROM,
             "to": [to_email],
             "subject": "Verify your Winnow email",
+            "text": (
+                "Click the link below to verify your email address. "
+                "This link expires in 30 minutes.\n\n"
+                f"{verify_url}\n\n"
+                "If you didn't create a Winnow account, "
+                "you can safely ignore this email."
+            ),
             "html": (
                 "<p>Click the link below to verify your email address. "
                 "This link expires in 30 minutes.</p>"
