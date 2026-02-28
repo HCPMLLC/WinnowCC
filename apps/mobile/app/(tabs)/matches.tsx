@@ -6,6 +6,7 @@ import {
   StyleSheet,
   RefreshControl,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { api } from "../../lib/api";
 import MatchCard from "../../components/MatchCard";
 import LoadingSpinner from "../../components/LoadingSpinner";
@@ -30,6 +31,7 @@ interface Match {
 }
 
 export default function MatchesScreen() {
+  const router = useRouter();
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -43,7 +45,8 @@ export default function MatchesScreen() {
         const data = await res.json();
         setMatches(Array.isArray(data) ? data : data.matches || []);
       } else if (res.status === 403) {
-        setError("Complete onboarding on the web app first.");
+        router.replace("/candidate-onboarding");
+        return;
       } else {
         setError("Failed to load matches.");
       }
