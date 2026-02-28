@@ -109,7 +109,8 @@ export default function ProfileScreen() {
           job_type: (p.job_type as string) || "any",
         });
       } else if (res.status === 403) {
-        setError("Please complete onboarding to access your profile.");
+        router.replace("/candidate-onboarding");
+        return;
       } else {
         setError("Failed to load profile.");
       }
