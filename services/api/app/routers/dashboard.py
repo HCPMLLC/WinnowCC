@@ -90,10 +90,10 @@ def get_dashboard_metrics(
     if not display_name and user.email:
         display_name = user.email.split("@")[0]
 
-    # Qualified jobs count (matches above minimum score with active jobs)
+    # Qualified jobs count (distinct jobs above minimum score, active only)
     qualified_jobs_count = (
         session.execute(
-            select(func.count(Match.id))
+            select(func.count(func.distinct(Match.job_id)))
             .join(Job, Match.job_id == Job.id)
             .where(
                 Match.user_id == user.id,

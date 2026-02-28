@@ -16,10 +16,12 @@ from sqlalchemy.orm import Session
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.career_intelligence import CareerTrajectory
+from app.models.job import Job
 from app.models.match import Match
 from app.models.tailored_resume import TailoredResume
 from app.models.user import User
 from app.schemas.sieve import SieveTrigger
+from app.services.matching import MIN_MATCH_SCORE
 from app.services.profile_scoring import compute_profile_completeness
 
 logger = logging.getLogger(__name__)
@@ -90,8 +92,14 @@ def compute_new_matches_trigger(user: User, session: Session) -> SieveTrigger | 
     cutoff = datetime.now(UTC) - timedelta(hours=24)
 
     count = (
-        session.query(sa_func.count(Match.id))
-        .filter(Match.user_id == user.id, Match.created_at >= cutoff)
+        session.query(sa_func.count(sa_func.distinct(Match.job_id)))
+        .join(Job, Match.job_id == Job.id)
+        .filter(
+            Match.user_id == user.id,
+            Match.created_at >= cutoff,
+            Match.match_score >= MIN_MATCH_SCORE,
+            Job.is_active.is_not(False),
+        )
         .scalar()
     )
 
