@@ -774,8 +774,8 @@ export default function SieveWidget({
                   style={{
                     display: "flex",
                     flexWrap: "wrap",
-                    gap: "6px",
-                    padding: "4px 0 8px",
+                    gap: "4px",
+                    padding: "2px 0 4px",
                   }}
                 >
                   {suggestedActions.map((action, i) => (
@@ -785,13 +785,18 @@ export default function SieveWidget({
                       style={{
                         background: "transparent",
                         border: "1px solid #E8C84A",
-                        borderRadius: "16px",
-                        padding: "6px 14px",
-                        fontSize: "12px",
+                        borderRadius: "12px",
+                        padding: "3px 10px",
+                        fontSize: "11px",
+                        lineHeight: "1.2",
                         color: "#3E3525",
                         cursor: "pointer",
                         transition: "all 0.2s",
                         fontFamily: "system-ui, -apple-system, sans-serif",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                        maxWidth: "100%",
                       }}
                       onMouseEnter={(e) => {
                         e.currentTarget.style.background = "#E8C84A";

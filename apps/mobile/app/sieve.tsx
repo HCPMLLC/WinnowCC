@@ -298,7 +298,7 @@ export default function SieveScreen() {
               style={styles.suggestionChip}
               onPress={() => sendMessage(action)}
             >
-              <Text style={styles.suggestionText}>{action}</Text>
+              <Text style={styles.suggestionText} numberOfLines={1}>{action}</Text>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -466,17 +466,17 @@ const styles = StyleSheet.create({
   },
 
   // Suggestions
-  suggestionsRow: { paddingHorizontal: 16, paddingBottom: 8 },
+  suggestionsRow: { paddingHorizontal: 12, paddingVertical: 4 },
   suggestionChip: {
     borderWidth: 1,
     borderColor: "#E8C84A",
-    borderRadius: 16,
-    paddingHorizontal: 14,
-    paddingVertical: 6,
+    borderRadius: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
     backgroundColor: "transparent",
-    marginRight: 6,
+    marginRight: 5,
   },
-  suggestionText: { fontSize: 12, color: "#3E3525" },
+  suggestionText: { fontSize: 11, color: "#3E3525" },
 
   // Input bar
   inputBar: {
