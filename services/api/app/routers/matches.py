@@ -172,8 +172,10 @@ def refresh_matches(
     ).scalar_one_or_none()
     ingest_query = _build_ingest_query(profile.profile_json, candidate)
     queue = get_queue("critical")
-    queue.enqueue(ingest_jobs_job, ingest_query)
-    job = queue.enqueue(match_jobs_job, user.id, profile_version)
+    ingest_job = queue.enqueue(ingest_jobs_job, ingest_query)
+    job = queue.enqueue(
+        match_jobs_job, user.id, profile_version, depends_on=ingest_job
+    )
     return MatchesRefreshResponse(status="queued", job_id=job.id)
 
 
@@ -290,7 +292,7 @@ def list_matches(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> list[MatchResponse]:
-    cutoff = datetime.now(UTC) - timedelta(days=7)
+    cutoff = datetime.now(UTC) - timedelta(days=14)
     stmt = (
         select(Match, Job)
         .join(Job, Match.job_id == Job.id)

@@ -120,10 +120,18 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             pass
 
         try:
-            from app.services.job_pipeline import match_jobs_job
+            from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
             from app.services.queue import get_queue
 
-            get_queue().enqueue(match_jobs_job, resume.user_id, next_version)
+            ingest_query = _build_ingest_query_from_profile(profile_json)
+            queue = get_queue("critical")
+            ingest_rq_job = queue.enqueue(ingest_jobs_job, ingest_query)
+            queue.enqueue(
+                match_jobs_job,
+                resume.user_id,
+                next_version,
+                depends_on=ingest_rq_job,
+            )
         except Exception:
             pass
 
@@ -133,6 +141,33 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
         _set_job_status(session, job_run_id, "failed", _safe_error_message(exc))
     finally:
         session.close()
+
+
+def _build_ingest_query_from_profile(profile_json: dict) -> dict:
+    """Build a job ingestion query from parsed profile data."""
+    preferences = (
+        profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
+    )
+    search_terms = preferences.get("target_titles") or []
+    search = search_terms[0] if search_terms else ""
+    if not search:
+        experience = (
+            profile_json.get("experience", [])
+            if isinstance(profile_json, dict)
+            else []
+        )
+        if experience and isinstance(experience[0], dict):
+            search = experience[0].get("title", "")
+
+    locations = preferences.get("locations") or []
+    location = locations[0] if locations else ""
+    if not location:
+        basics = (
+            profile_json.get("basics", {}) if isinstance(profile_json, dict) else {}
+        )
+        location = basics.get("location", "") if isinstance(basics, dict) else ""
+
+    return {"search": search, "location": location}
 
 
 def _merge_with_existing_profile(

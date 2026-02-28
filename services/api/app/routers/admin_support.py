@@ -30,6 +30,7 @@ from app.schemas.admin_support import (
     BillingIssuesResponse,
     BillingIssueUser,
     FeatureUsageResponse,
+    MatchDiagnosticsResponse,
     OverviewResponse,
     QueueMonitorResponse,
     TierOverrideRequest,
@@ -930,3 +931,134 @@ def reset_monthly_usage(
         return {"success": True, "message": f"Monthly usage reset for user {user_id}"}
 
     return {"success": True, "message": "No usage record found for current period"}
+
+
+# ---------------------------------------------------------------------------
+# Endpoint 8: GET /match-diagnostics
+# ---------------------------------------------------------------------------
+
+
+@router.get("/match-diagnostics", response_model=MatchDiagnosticsResponse)
+def match_diagnostics(
+    email: str = Query(..., min_length=1),  # noqa: B008
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+    db: Session = Depends(get_session),  # noqa: B008
+):
+    from app.models.candidate_profile import CandidateProfile
+    from app.models.job import Job
+    from app.models.match import Match
+
+    user = db.scalar(select(User).where(User.email == email))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Profile
+    profile = db.scalar(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user.id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    pj = profile.profile_json if profile else None
+    prefs = (pj.get("preferences") or {}) if isinstance(pj, dict) else {}
+    skills = (pj.get("skills") or []) if isinstance(pj, dict) else []
+    target_titles = prefs.get("target_titles") or []
+
+    # Ingest query that would be built
+    ingest_query = None
+    if pj:
+        from app.services.resume_parse_job import _build_ingest_query_from_profile
+
+        ingest_query = _build_ingest_query_from_profile(pj)
+
+    # Matches
+    total_matches = (
+        db.scalar(
+            select(func.count()).select_from(Match).where(Match.user_id == user.id)
+        )
+        or 0
+    )
+    cutoff = datetime.now(UTC) - timedelta(days=14)
+    recent_matches = (
+        db.scalar(
+            select(func.count())
+            .select_from(Match)
+            .join(Job, Match.job_id == Job.id)
+            .where(
+                Match.user_id == user.id,
+                Job.posted_at.is_not(None),
+                Job.posted_at >= cutoff,
+                Job.is_active.is_not(False),
+            )
+        )
+        or 0
+    )
+
+    # Recent jobs in DB
+    total_recent_jobs = (
+        db.scalar(
+            select(func.count())
+            .select_from(Job)
+            .where(
+                Job.posted_at.is_not(None),
+                Job.posted_at >= cutoff,
+                Job.is_active.is_not(False),
+            )
+        )
+        or 0
+    )
+
+    # Trust
+    trust_record = db.scalar(
+        select(CandidateTrust)
+        .join(ResumeDocument, CandidateTrust.resume_document_id == ResumeDocument.id)
+        .where(
+            ResumeDocument.user_id == user.id,
+            ResumeDocument.deleted_at.is_(None),
+        )
+        .order_by(CandidateTrust.id.desc())
+        .limit(1)
+    )
+
+    # Diagnosis
+    diagnosis: list[str] = []
+    if not user.onboarding_completed_at:
+        diagnosis.append("Onboarding not completed.")
+    if profile is None:
+        diagnosis.append("No candidate profile. Resume may not have been parsed.")
+    elif not skills:
+        diagnosis.append("Profile has 0 skills. Match scores will be very low.")
+    if not target_titles:
+        diagnosis.append(
+            "No target titles in preferences. Ingestion query uses fallback."
+        )
+    if trust_record is None:
+        diagnosis.append("No trust record. User hasn't uploaded a resume.")
+    elif trust_record.status != "allowed":
+        diagnosis.append(f"Trust status is '{trust_record.status}' (not allowed).")
+    if total_recent_jobs == 0:
+        diagnosis.append("0 recent jobs in database. Job ingestion may not be running.")
+    if total_matches > 0 and recent_matches == 0:
+        diagnosis.append(
+            f"{total_matches} total matches but 0 within display window. "
+            "Matches are stale — user needs to refresh."
+        )
+    if total_matches == 0 and profile is not None:
+        diagnosis.append("0 match records. User may have never refreshed matches.")
+    if not diagnosis:
+        diagnosis.append("No issues detected.")
+
+    return {
+        "user_id": user.id,
+        "email": user.email,
+        "has_profile": profile is not None,
+        "profile_version": profile.version if profile else None,
+        "skills_count": len(skills),
+        "target_titles": target_titles,
+        "ingest_query": ingest_query,
+        "total_matches": total_matches,
+        "recent_matches": recent_matches,
+        "total_recent_jobs": total_recent_jobs,
+        "trust_status": trust_record.status if trust_record else None,
+        "diagnosis": diagnosis,
+    }

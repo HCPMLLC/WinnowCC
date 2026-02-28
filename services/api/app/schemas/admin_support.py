@@ -199,3 +199,21 @@ class TierOverrideRequest(BaseModel):
 class ActionResponse(BaseModel):
     success: bool
     message: str
+
+
+# --- Match Diagnostics ---
+
+
+class MatchDiagnosticsResponse(BaseModel):
+    user_id: int
+    email: str
+    has_profile: bool
+    profile_version: int | None = None
+    skills_count: int = 0
+    target_titles: list[str] = []
+    ingest_query: dict | None = None
+    total_matches: int = 0
+    recent_matches: int = 0
+    total_recent_jobs: int = 0
+    trust_status: str | None = None
+    diagnosis: list[str] = []
