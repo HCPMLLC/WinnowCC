@@ -86,6 +86,16 @@ def get_scheduler_status(
             cron="*/15 * * * *",
             description="Process pending outreach messages every 15 minutes",
         ),
+        ScheduledTask(
+            name="Stale Job Check",
+            cron="0 2 * * *",
+            description="Mark stale/expired job postings as inactive daily at 2am UTC",
+        ),
+        ScheduledTask(
+            name="Inactive Job Purge",
+            cron="0 4 * * 0",
+            description="Purge jobs inactive 90+ days with no saved/applied matches (weekly Sunday 4am UTC)",
+        ),
     ]
     return SchedulerStatusResponse(
         **config,

@@ -17,7 +17,9 @@ class Match(Base):
     user_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("users.id"), nullable=False
     )
-    job_id: Mapped[int] = mapped_column(Integer, ForeignKey("jobs.id"), nullable=False)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False
+    )
     profile_version: Mapped[int] = mapped_column(Integer, nullable=False)
     match_score: Mapped[int] = mapped_column(Integer, nullable=False)
     interview_readiness_score: Mapped[int] = mapped_column(Integer, nullable=False)

@@ -109,6 +109,29 @@ def scheduled_freshness_check() -> dict:
         session.close()
 
 
+def scheduled_purge_inactive_jobs() -> dict:
+    """Scheduled task to purge old inactive jobs from the database.
+
+    Runs weekly. Only deletes jobs that have been inactive for 90+ days
+    and have no saved/applied matches.
+    """
+    from app.services.job_purge import purge_jobs
+
+    session = get_session_factory()()
+    try:
+        result = purge_jobs(session)
+        logger.info(
+            "Scheduled purge completed: %d jobs deleted", result.get("deleted_count", 0)
+        )
+        return {"status": "completed", **result, "error": None}
+    except Exception as e:
+        logger.exception(f"Scheduled purge failed: {e}")
+        session.rollback()
+        return {"status": "failed", "deleted_count": 0, "error": str(e)}
+    finally:
+        session.close()
+
+
 def scheduled_check_stale_jobs() -> dict:
     """Scheduled task to check for and mark stale job postings.
 

@@ -43,6 +43,7 @@ def get_similar_jobs(
                 SELECT id, embedding <=> cast(:emb as vector) AS distance
                 FROM jobs
                 WHERE id != :job_id AND embedding IS NOT NULL
+                  AND is_active IS NOT FALSE
                 ORDER BY distance ASC
                 LIMIT :lim
                 """
@@ -55,7 +56,9 @@ def get_similar_jobs(
         source_emb = _get_embedding_list(job.embedding)
         all_jobs = session.execute(
             select(Job.id, Job.embedding).where(
-                Job.id != job_id, Job.embedding.is_not(None)
+                Job.id != job_id,
+                Job.embedding.is_not(None),
+                Job.is_active.is_not(False),
             )
         ).all()
         scored = []

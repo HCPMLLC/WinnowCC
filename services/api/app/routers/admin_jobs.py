@@ -273,6 +273,11 @@ def job_stats(
         or 0
     )
 
+    # Purgeable estimate
+    from app.services.job_purge import get_purgeable_count
+
+    purgeable = get_purgeable_count(session)
+
     return {
         "total_jobs": total,
         "active_jobs": active,
@@ -281,6 +286,7 @@ def job_stats(
         "fraudulent": fraud_counts[0] or 0,
         "stale": fraud_counts[1] or 0,
         "ingested_last_7_days": ingested_7d,
+        "purgeable_estimate": purgeable,
         "jsearch_usage": _get_jsearch_usage(),
     }
 
@@ -365,3 +371,40 @@ def embedding_status(
         "profiles_embedded": profiles_embedded,
         "profiles_total": profiles_total,
     }
+
+
+@router.get("/purge/preview")
+def purge_preview(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """Dry-run showing count of purgeable jobs."""
+    from app.services.job_purge import purge_jobs
+
+    return purge_jobs(session, dry_run=True)
+
+
+@router.post("/purge/run")
+def purge_run(
+    admin: User = Depends(require_admin_user),
+):
+    """Trigger immediate purge of old inactive jobs via RQ."""
+    from app.services.queue import get_queue
+
+    queue = get_queue()
+    job = queue.enqueue(
+        "app.services.scheduled_jobs.scheduled_purge_inactive_jobs",
+    )
+    return {"status": "queued", "job_id": job.id}
+
+
+@router.post("/purge/backfill-snapshots")
+def purge_backfill_snapshots(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """One-time backfill of snapshot fields for existing tailored resumes."""
+    from app.services.job_purge import backfill_snapshots
+
+    count = backfill_snapshots(session)
+    return {"status": "completed", "rows_updated": count}

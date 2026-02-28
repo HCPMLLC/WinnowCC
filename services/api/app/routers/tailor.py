@@ -64,12 +64,15 @@ def list_documents(
             is_gcs_path(tailored.cover_letter_url)
             or Path(tailored.cover_letter_url).exists()
         )
+        # Use snapshot fields as fallback when job has been purged
+        display_title = job_title or tailored.job_title_snapshot
+        display_company = company or tailored.job_company_snapshot
         items.append(
             DocumentListItem(
                 id=tailored.id,
                 job_id=tailored.job_id,
-                job_title=job_title,
-                company=company,
+                job_title=display_title,
+                company=display_company,
                 profile_version=tailored.profile_version,
                 has_resume=has_resume,
                 has_cover_letter=has_cover,

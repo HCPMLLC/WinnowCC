@@ -78,7 +78,11 @@ def compute_matches(
     cutoff = datetime.now(UTC) - timedelta(days=7)
     jobs = (
         session.execute(
-            select(Job).where(Job.posted_at.is_not(None), Job.posted_at >= cutoff)
+            select(Job).where(
+                Job.posted_at.is_not(None),
+                Job.posted_at >= cutoff,
+                Job.is_active.is_not(False),
+            )
         )
         .scalars()
         .all()

@@ -111,6 +111,34 @@ def main():
     )
     logger.info(f"Scheduled outreach processing registered: {outreach_job.id}")
 
+    # Schedule stale job check (daily at 2am UTC)
+    for job in scheduler.get_jobs():
+        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "stale_check":
+            scheduler.cancel(job)
+            logger.info(f"Cancelled existing stale check job: {job.id}")
+
+    stale_job = scheduler.cron(
+        cron_string="0 2 * * *",
+        func="app.services.scheduled_jobs:scheduled_check_stale_jobs",
+        queue_name="default",
+        meta={"scheduled_job_type": "stale_check"},
+    )
+    logger.info(f"Scheduled stale job check registered: {stale_job.id}")
+
+    # Schedule inactive job purge (weekly on Sunday at 4am UTC)
+    for job in scheduler.get_jobs():
+        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "job_purge":
+            scheduler.cancel(job)
+            logger.info(f"Cancelled existing job purge: {job.id}")
+
+    purge_job = scheduler.cron(
+        cron_string="0 4 * * 0",
+        func="app.services.scheduled_jobs:scheduled_purge_inactive_jobs",
+        queue_name="default",
+        meta={"scheduled_job_type": "job_purge"},
+    )
+    logger.info(f"Scheduled job purge registered: {purge_job.id}")
+
     logger.info("Scheduler running. Press Ctrl+C to stop.")
 
     # Run the scheduler

@@ -76,6 +76,8 @@ def create_tailored_docs(
             "matched_skills": profile.profile_json.get("skills", []),
             "cover_letter_score": cover_letter_score,
         },
+        job_title_snapshot=job.title,
+        job_company_snapshot=job.company,
     )
     session.add(tailored)
     session.commit()
