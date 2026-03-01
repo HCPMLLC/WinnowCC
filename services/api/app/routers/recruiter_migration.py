@@ -79,9 +79,7 @@ async def upload_recruiter_migration_file(
             from app.services.storage import upload_bytes
 
             unique_name = f"{user.id}_{file_id}_{file.filename}"
-            stored_path = upload_bytes(
-                contents, "staging/migration_zips/", unique_name
-            )
+            stored_path = upload_bytes(contents, "staging/migration_zips/", unique_name)
         else:
             os.makedirs(UPLOAD_DIR, exist_ok=True)
             local_dest = os.path.join(

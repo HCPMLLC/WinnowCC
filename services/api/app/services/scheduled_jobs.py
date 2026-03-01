@@ -371,17 +371,13 @@ def scheduled_hard_delete_expired() -> dict:
                 session.delete(doc)
                 deleted += 1
             except Exception as e:
-                logger.warning(
-                    "Failed to hard-delete resume doc %s: %s", doc.id, e
-                )
+                logger.warning("Failed to hard-delete resume doc %s: %s", doc.id, e)
                 errors += 1
 
         if deleted:
             session.commit()
 
-        logger.info(
-            "Hard-delete expired: %d deleted, %d errors", deleted, errors
-        )
+        logger.info("Hard-delete expired: %d deleted, %d errors", deleted, errors)
         return {
             "status": "completed",
             "deleted": deleted,

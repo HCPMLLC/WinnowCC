@@ -202,9 +202,7 @@ def create_upload_batch_from_zip(
             file_hash = hashlib.sha256(contents).hexdigest()
 
             staged_name = f"{idx}_{file_hash[:12]}_{fpath.name}"
-            staged_path = upload_bytes(
-                contents, f"staging/{batch_id}/", staged_name
-            )
+            staged_path = upload_bytes(contents, f"staging/{batch_id}/", staged_name)
 
             bf = UploadBatchFile(
                 batch_id=batch_id,
@@ -304,9 +302,7 @@ def expand_zip_batch_job(
                 job = session.get(MigrationJob, migration_job_id)
                 if job:
                     job.status = "failed"
-                    job.error_log = [
-                        {"error": str(exc)[:500], "fatal": True}
-                    ]
+                    job.error_log = [{"error": str(exc)[:500], "fatal": True}]
                     session.commit()
             except Exception:
                 session.rollback()
