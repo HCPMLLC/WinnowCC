@@ -327,28 +327,54 @@ def list_enrollments(
 # ---------------------------------------------------------------------------
 
 
+def _build_unsubscribe_url(enrollment_id: int, token: str) -> str:
+    """Build the one-click unsubscribe URL for an outreach email."""
+    base = os.getenv("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+    return f"{base}/api/outreach/{enrollment_id}/unsubscribe/{token}"
+
+
 def send_outreach_email(
-    to: str, subject: str, body: str, recruiter_company: str
+    to: str,
+    subject: str,
+    body: str,
+    recruiter_company: str,
+    enrollment_id: int | None = None,
+    unsubscribe_token: str | None = None,
 ) -> bool:
     """Send an outreach email via Resend. Returns True on success."""
     if not RESEND_API_KEY:
         logger.warning("RESEND_API_KEY not set; skipping outreach email to %s", to)
         return False
 
+    # Build unsubscribe link if enrollment info provided
+    unsub_html = ""
+    headers: dict[str, str] = {}
+    if enrollment_id and unsubscribe_token:
+        unsub_url = _build_unsubscribe_url(enrollment_id, unsubscribe_token)
+        unsub_html = (
+            f'<p style="color:#999;font-size:11px;margin-top:16px;">'
+            f'<a href="{unsub_url}" style="color:#999;">'
+            f"Unsubscribe from this sequence</a></p>"
+        )
+        headers["List-Unsubscribe"] = f"<{unsub_url}>"
+        headers["List-Unsubscribe-Post"] = "List-Unsubscribe=One-Click"
+
     try:
         resend.api_key = RESEND_API_KEY
-        resend.Emails.send(
-            {
-                "from": RESEND_FROM,
-                "to": [to],
-                "subject": subject,
-                "html": (
-                    f"<div>{body}</div>"
-                    f'<p style="color:#999;font-size:12px;margin-top:24px;">'
-                    f"Sent via {recruiter_company} on Winnow</p>"
-                ),
-            }
-        )
+        payload: dict = {
+            "from": RESEND_FROM,
+            "to": [to],
+            "subject": subject,
+            "html": (
+                f"<div>{body}</div>"
+                f'<p style="color:#999;font-size:12px;margin-top:24px;">'
+                f"Sent via {recruiter_company} on Winnow</p>"
+                f"{unsub_html}"
+            ),
+        }
+        if headers:
+            payload["headers"] = headers
+        resend.Emails.send(payload)
         return True
     except Exception as e:
         logger.error("Failed to send outreach email to %s: %s", to, e)
@@ -456,6 +482,8 @@ def process_due_outreach() -> dict:
                     subject=subject,
                     body=body,
                     recruiter_company=profile.company_name or "A recruiter",
+                    enrollment_id=enrollment.id,
+                    unsubscribe_token=enrollment.unsubscribe_token,
                 )
 
                 if success:

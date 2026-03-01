@@ -10,6 +10,7 @@ const sections = [
   'Acceptable Use',
   'Content Ownership',
   'Subscription & Billing',
+  'Refunds & Cancellation',
   'AI-Generated Content',
   'Disclaimer of Warranties',
   'Limitation of Liability',
@@ -123,6 +124,26 @@ export default function TermsPage() {
                 You may cancel at any time through the Stripe Customer Portal — cancellations take effect at the
                 end of the current billing period. Refunds are handled per Stripe&apos;s standard refund policies. We
                 reserve the right to change pricing with 30 days&apos; notice.
+              </p>
+            </Section>
+
+            <Section id="refunds-&-cancellation" title="Refunds & Cancellation">
+              <p>
+                You may cancel your subscription at any time through the Stripe Customer Portal
+                accessible from your Settings page. Cancellations take effect at the end of the
+                current billing period — you will retain access to paid features until then.
+              </p>
+              <p>
+                <strong>Refund policy:</strong> If you are unsatisfied with your subscription, you may
+                request a prorated refund within 14 days of your most recent billing charge by contacting{' '}
+                <a href="mailto:hello@winnowcc.ai" style={{ color: '#6366f1' }}>hello@winnowcc.ai</a>.
+                Refunds are not available for partial months after the 14-day window. Free-tier accounts
+                are not eligible for refunds.
+              </p>
+              <p>
+                Upon cancellation, you will receive a confirmation email. Your data will be retained for
+                30 days after the end of your billing period, after which it will be deleted per our
+                Privacy Policy.
               </p>
             </Section>
 

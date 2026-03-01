@@ -79,11 +79,11 @@ const FEATURES_CONTENT: Record<
     items: [
       {
         title: "Interview Probability Score\u2122",
-        description: "Every job match comes with an IPS\u2122 \u2014 a single number combining resume fit, timing, referral potential, and more.",
+        description: "Every job match comes with an IPS\u2122 \u2014 a heuristic estimate combining resume fit, timing, referral potential, and more. IPS helps prioritize your effort, not predict outcomes.",
       },
       {
         title: "Tailored Resumes",
-        description: "For every job you pursue, Winnow generates a custom resume variant optimized for that specific role.",
+        description: "For every job you pursue, Winnow generates an AI-tailored resume variant optimized for that specific role. Always review before submitting.",
       },
       {
         title: "Smart Job Matching",
@@ -95,7 +95,7 @@ const FEATURES_CONTENT: Record<
       },
       {
         title: "Cover Letter Generator",
-        description: "For every application, Winnow generates a personalized cover letter that complements your tailored resume.",
+        description: "For every application, Winnow generates an AI-personalized cover letter that complements your tailored resume. Always review before submitting.",
       },
       {
         title: "Sieve AI Concierge",
@@ -109,7 +109,7 @@ const FEATURES_CONTENT: Record<
     items: [
       {
         title: "AI Candidate Scoring",
-        description: "Every applicant is scored against your job requirements. See who really fits before you spend time on interviews.",
+        description: "Every applicant is scored against your job requirements as a screening aid. Final hiring decisions must be made by qualified humans in compliance with applicable employment law.",
       },
       {
         title: "Multi-Board Distribution",
@@ -658,6 +658,7 @@ function Footer() {
         <div className="flex items-center gap-6 text-sm text-slate-500">
           <Link href="/privacy" className="transition-colors hover:text-slate-700">Privacy</Link>
           <Link href="/terms" className="transition-colors hover:text-slate-700">Terms</Link>
+          <Link href="/privacy#california-privacy-rights-(ccpa)" className="transition-colors hover:text-slate-700">Do Not Sell My Info</Link>
           <a href="mailto:support@winnow.careers" className="transition-colors hover:text-slate-700">Support</a>
         </div>
         <p className="text-sm text-slate-400">

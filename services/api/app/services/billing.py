@@ -1038,6 +1038,31 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
     if not customer_id:
         return
 
+    from app.models.user import User
+    from app.services.email import send_subscription_canceled_email
+
+    # Compute end date from Stripe subscription period end
+    period_end = getattr(subscription, "current_period_end", None)
+    end_date_str = "the end of your billing period"
+    if period_end:
+        from datetime import UTC, datetime
+
+        end_date_str = datetime.fromtimestamp(period_end, tz=UTC).strftime(
+            "%B %d, %Y"
+        )
+
+    def _send_cancel_email(user_id: int | None) -> None:
+        if not user_id or status != "canceled":
+            return
+        user = session.get(User, user_id)
+        if user and user.email:
+            try:
+                send_subscription_canceled_email(user.email, end_date_str)
+            except Exception:
+                logger.error(
+                    "Failed to send cancellation email to user %s", user_id
+                )
+
     # Try candidate first (most common)
     candidate = _find_candidate_by_stripe_customer(session, customer_id)
     if candidate is not None:
@@ -1048,6 +1073,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
         elif status in ("active", "trialing"):
             candidate.plan_tier = candidate.plan_tier or "pro"
         session.flush()
+        _send_cancel_email(candidate.user_id)
         return
 
     # Try recruiter
@@ -1069,6 +1095,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
         if status in ("canceled", "unpaid"):
             rp.subscription_tier = "trial"
         session.flush()
+        _send_cancel_email(rp.user_id)
         return
 
     # Try employer
@@ -1083,6 +1110,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
         if status in ("canceled", "unpaid"):
             ep.subscription_tier = "free"
         session.flush()
+        _send_cancel_email(ep.user_id)
 
 
 def _handle_payment_failed(invoice: object, session: Session) -> None:
@@ -1090,11 +1118,25 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
     if not customer_id:
         return
 
+    from app.models.user import User
+    from app.services.email import send_payment_failed_email
+
+    def _notify_user(user_id: int | None) -> None:
+        if not user_id:
+            return
+        user = session.get(User, user_id)
+        if user and user.email:
+            try:
+                send_payment_failed_email(user.email)
+            except Exception:
+                logger.error("Failed to send payment_failed email to user %s", user_id)
+
     # Try all segments
     candidate = _find_candidate_by_stripe_customer(session, customer_id)
     if candidate is not None:
         candidate.subscription_status = "past_due"
         session.flush()
+        _notify_user(candidate.user_id)
         return
 
     from app.models.recruiter import RecruiterProfile
@@ -1113,6 +1155,7 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
             return
         rp.subscription_status = "past_due"
         session.flush()
+        _notify_user(rp.user_id)
         return
 
     from app.models.employer import EmployerProfile
@@ -1123,3 +1166,4 @@ def _handle_payment_failed(invoice: object, session: Session) -> None:
     if ep is not None:
         ep.subscription_status = "past_due"
         session.flush()
+        _notify_user(ep.user_id)

@@ -831,11 +831,14 @@ export default function EmployerComparisonPage() {
           }}
         >
           <strong style={{ color: "#64748b" }}>Methodology:</strong> Scores reflect publicly
-          documented features as of February 2026. Full = built-in and production-ready.
+          documented features as of February 2026 (last verified: February 28, 2026).
+          Full = built-in and production-ready in at least one paid tier.
           Partial = limited, requires add-ons, or needs third-party tools. None = not
           available. Winnow scores include features in active development. Competitive
           data sourced from vendor docs, user reviews, and independent analysis.
           Scores: full = 1, partial = 0.5, none = 0.
+          <strong> Feature availability may have changed since our last review.
+          Verify directly with each vendor before making purchasing decisions.</strong>
         </div>
       </div>
     </div>

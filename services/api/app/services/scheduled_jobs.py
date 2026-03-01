@@ -335,6 +335,67 @@ def scheduled_process_outreach() -> dict:
         return {"status": "failed", "error": str(e)}
 
 
+def scheduled_hard_delete_expired() -> dict:
+    """Hard-delete files soft-deleted more than 30 days ago.
+
+    Enforces the privacy policy promise of deletion within 30 days.
+    Runs daily.
+    """
+    from datetime import timedelta
+
+    from sqlalchemy import select as sa_select
+
+    from app.models.resume_document import ResumeDocument
+    from app.services.storage import delete_file
+
+    session = get_session_factory()()
+    try:
+        cutoff = datetime.now(UTC) - timedelta(days=30)
+        expired = list(
+            session.execute(
+                sa_select(ResumeDocument).where(
+                    ResumeDocument.deleted_at.isnot(None),
+                    ResumeDocument.deleted_at < cutoff,
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        deleted = 0
+        errors = 0
+        for doc in expired:
+            try:
+                if doc.path:
+                    delete_file(doc.path)
+                session.delete(doc)
+                deleted += 1
+            except Exception as e:
+                logger.warning(
+                    "Failed to hard-delete resume doc %s: %s", doc.id, e
+                )
+                errors += 1
+
+        if deleted:
+            session.commit()
+
+        logger.info(
+            "Hard-delete expired: %d deleted, %d errors", deleted, errors
+        )
+        return {
+            "status": "completed",
+            "deleted": deleted,
+            "errors": errors,
+        }
+
+    except Exception as e:
+        logger.exception("Hard-delete expired failed: %s", e)
+        session.rollback()
+        return {"status": "failed", "deleted": 0, "error": str(e)}
+    finally:
+        session.close()
+
+
 def scheduled_sync_distribution_metrics() -> dict:
     """Sync metrics for all live job distributions across all employers.
 

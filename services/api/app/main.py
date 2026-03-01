@@ -85,6 +85,7 @@ from app.routers.observability import router as observability_router  # noqa: E4
 from app.routers.onboarding import router as onboarding_router  # noqa: E402
 from app.routers.onboarding_v1 import router as onboarding_v1_router  # noqa: E402
 from app.routers.outreach import router as outreach_router  # noqa: E402
+from app.routers.outreach import unsubscribe_router  # noqa: E402
 from app.routers.profile import router as profile_router  # noqa: E402
 from app.routers.ready import router as ready_router  # noqa: E402
 from app.routers.recruiter import router as recruiter_router  # noqa: E402
@@ -219,6 +220,7 @@ app.include_router(recruiter_router)
 app.include_router(recruiter_actions_router)
 app.include_router(recruiter_migration_router)
 app.include_router(outreach_router)
+app.include_router(unsubscribe_router)
 app.include_router(hiring_workspace_router)
 app.include_router(market_intelligence_router)
 app.include_router(career_intelligence_router)
