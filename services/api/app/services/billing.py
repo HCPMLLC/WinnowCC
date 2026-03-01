@@ -1047,9 +1047,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
     if period_end:
         from datetime import UTC, datetime
 
-        end_date_str = datetime.fromtimestamp(period_end, tz=UTC).strftime(
-            "%B %d, %Y"
-        )
+        end_date_str = datetime.fromtimestamp(period_end, tz=UTC).strftime("%B %d, %Y")
 
     def _send_cancel_email(user_id: int | None) -> None:
         if not user_id or status != "canceled":
@@ -1059,9 +1057,7 @@ def _handle_subscription_change(subscription: object, session: Session) -> None:
             try:
                 send_subscription_canceled_email(user.email, end_date_str)
             except Exception:
-                logger.error(
-                    "Failed to send cancellation email to user %s", user_id
-                )
+                logger.error("Failed to send cancellation email to user %s", user_id)
 
     # Try candidate first (most common)
     candidate = _find_candidate_by_stripe_customer(session, customer_id)

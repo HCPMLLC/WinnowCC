@@ -141,10 +141,7 @@ def main():
 
     # Schedule hard-delete of expired soft-deleted files (daily at 5am UTC)
     for job in scheduler.get_jobs():
-        if (
-            hasattr(job, "meta")
-            and job.meta.get("scheduled_job_type") == "hard_delete"
-        ):
+        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "hard_delete":
             scheduler.cancel(job)
             logger.info(f"Cancelled existing hard-delete job: {job.id}")
 

@@ -513,11 +513,11 @@ def send_payment_failed_email(to_email: str) -> None:
                 "subscription payment. Your account has been marked as "
                 "past due.</p>"
                 "<p>To avoid any interruption in service, please "
-                "<a href=\"" + settings_url + "\">update your payment "
+                '<a href="' + settings_url + '">update your payment '
                 "method in Settings</a>.</p>"
                 "<p>If you believe this is an error, reply to this email "
                 "or contact "
-                "<a href=\"mailto:hello@winnowcc.ai\">hello@winnowcc.ai"
+                '<a href="mailto:hello@winnowcc.ai">hello@winnowcc.ai'
                 "</a>.</p>"
                 "<p>Thank you,<br>The Winnow Team</p>"
             ),
@@ -565,7 +565,7 @@ def send_subscription_canceled_email(to_email: str, end_date: str) -> None:
                 "any time from Settings.</p>"
                 "<p>If you did not request this cancellation, please "
                 "contact "
-                "<a href=\"mailto:hello@winnowcc.ai\">hello@winnowcc.ai"
+                '<a href="mailto:hello@winnowcc.ai">hello@winnowcc.ai'
                 "</a> immediately.</p>"
                 "<p>Thank you for being a Winnow user,<br>"
                 "The Winnow Team</p>"
