@@ -23,6 +23,7 @@ if not JWT_SECRET:
     raise RuntimeError("AUTH_SECRET environment variable must be set")
 COOKIE_NAME = os.getenv("AUTH_COOKIE_NAME", "rm_session").strip()
 COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "false").lower() == "true"
+COOKIE_DOMAIN = os.getenv("COOKIE_DOMAIN", None)  # e.g., ".winnowcc.ai" in production
 SESSION_DAYS = int(
     os.getenv("AUTH_SESSION_DAYS") or os.getenv("AUTH_TOKEN_EXPIRES_DAYS") or "7"
 )
@@ -90,15 +91,16 @@ def set_auth_cookie(response: Response, *, user_id: int, email: str) -> None:
         key=COOKIE_NAME,
         value=token,
         httponly=True,
-        samesite="none" if COOKIE_SECURE else "lax",
+        samesite="lax" if COOKIE_DOMAIN else ("none" if COOKIE_SECURE else "lax"),
         secure=COOKIE_SECURE,
+        domain=COOKIE_DOMAIN,
         path="/",
         max_age=60 * 60 * 24 * SESSION_DAYS,
     )
 
 
 def clear_auth_cookie(response: Response) -> None:
-    response.delete_cookie(key=COOKIE_NAME, path="/")
+    response.delete_cookie(key=COOKIE_NAME, path="/", domain=COOKIE_DOMAIN)
 
 
 def decode_token(token: str) -> dict:
