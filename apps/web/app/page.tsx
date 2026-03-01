@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import CompetitiveComparison from "./competitive/winnow-competitive-comparison";
 import EmployerComparisonPage from "./competitive/employers/page";
 import RecruiterComparisonPage from "./competitive/recruiters/page";
+import { TrustSafetySection } from "./trust-safety/TrustSafetySection";
 
 type Audience = "seeker" | "employer" | "recruiter";
 
@@ -682,6 +683,7 @@ export default function HomePage() {
       <HowItWorksSection audience={audience} />
       <CompareSection audience={audience} />
       <PricingSection audience={audience} />
+      <TrustSafetySection audience={audience} />
       <CtaBanner audience={audience} />
       <Footer />
     </main>
