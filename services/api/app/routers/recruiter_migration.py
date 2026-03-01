@@ -2,7 +2,7 @@
 
 import logging
 import os
-import shutil
+import tempfile
 import uuid
 from datetime import UTC, datetime
 
@@ -55,22 +55,53 @@ async def upload_recruiter_migration_file(
             detail=f"Supported file types: {', '.join(allowed_extensions)}",
         )
 
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    # Read file bytes and write to temp for platform detection
+    contents = await file.read()
     file_id = uuid.uuid4().hex[:12]
-    dest = os.path.join(UPLOAD_DIR, f"{user.id}_{file_id}_{file.filename}")
+    tmp = tempfile.NamedTemporaryFile(
+        delete=False,
+        suffix=os.path.splitext(file.filename)[1],
+        prefix=f"{user.id}_{file_id}_",
+    )
+    try:
+        tmp.write(contents)
+        tmp.close()
 
-    with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        detection = detect_platform(tmp.name)
+        platform = (
+            source_platform if source_platform != "auto" else detection["platform"]
+        )
 
-    detection = detect_platform(dest)
-    platform = source_platform if source_platform != "auto" else detection["platform"]
+        # For resume archives, stage to cloud storage so async workers
+        # can access the file even after this container restarts.
+        # CRM imports (Bullhorn, etc.) run synchronously and use a local path.
+        if platform == "resume_archive" or detection["platform"] == "resume_archive":
+            from app.services.storage import upload_bytes
+
+            unique_name = f"{user.id}_{file_id}_{file.filename}"
+            stored_path = upload_bytes(
+                contents, "staging/migration_zips/", unique_name
+            )
+        else:
+            os.makedirs(UPLOAD_DIR, exist_ok=True)
+            local_dest = os.path.join(
+                UPLOAD_DIR, f"{user.id}_{file_id}_{file.filename}"
+            )
+            with open(local_dest, "wb") as f:
+                f.write(contents)
+            stored_path = local_dest
+    finally:
+        try:
+            os.unlink(tmp.name)
+        except OSError:
+            pass
 
     job = MigrationJob(
         user_id=user.id,
         source_platform=platform,
         source_platform_detected=detection["platform"],
         status="pending",
-        source_file_path=dest,
+        source_file_path=stored_path,
         config_json={
             "original_filename": file.filename,
             "detection": detection,
@@ -171,9 +202,7 @@ def start_recruiter_migration(
                 "Upgrade at /recruiter/pricing to unlock this feature.",
             )
 
-        from app.services.migration.resume_migration_engine import (
-            run_resume_migration,
-        )
+        from app.services.batch_upload import expand_zip_batch_job
         from app.services.queue import get_queue
 
         job.status = "importing"
@@ -182,7 +211,14 @@ def start_recruiter_migration(
 
         try:
             queue = get_queue("low")
-            queue.enqueue(run_resume_migration, job_id, job_timeout="4h")
+            queue.enqueue(
+                expand_zip_batch_job,
+                user_id=user.id,
+                owner_profile_id=profile.id,
+                zip_stored_path=job.source_file_path,
+                migration_job_id=job.id,
+                job_timeout="30m",
+            )
         except Exception:
             logger.exception("Failed to enqueue resume migration job %d", job_id)
             job.status = "failed"

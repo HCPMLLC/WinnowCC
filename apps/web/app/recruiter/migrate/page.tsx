@@ -15,6 +15,17 @@ interface MigrationState {
   status: string;
   stats: Record<string, unknown> | null;
   errors: unknown[] | null;
+  batchId: string | null;
+  batchStatus: BatchStatus | null;
+}
+
+interface BatchStatus {
+  batch_id: string;
+  status: string;
+  total_files: number;
+  files_completed: number;
+  files_succeeded: number;
+  files_failed: number;
 }
 
 export default function RecruiterMigrationWizard() {
@@ -34,6 +45,8 @@ export default function RecruiterMigrationWizard() {
     status: "",
     stats: null,
     errors: null,
+    batchId: null,
+    batchStatus: null,
   });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -145,19 +158,54 @@ export default function RecruiterMigrationWizard() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
-        const data = await apiFetch(
-          `/api/recruiter/migration/${migration.jobId}`,
-        );
-        setMigration((prev) => ({
-          ...prev,
-          status: data.status,
-          stats: data.stats,
-          errors: data.errors,
-        }));
-        if (data.status === "completed" || data.status === "failed") {
-          if (pollRef.current) clearInterval(pollRef.current);
-          setStep("summary");
-        }
+        setMigration((prev) => {
+          // Use batch polling for resume archives once we have a batch_id
+          if (prev.batchId) {
+            (async () => {
+              try {
+                const batch = await apiFetch(
+                  `/api/upload-batches/${prev.batchId}/status`,
+                );
+                setMigration((p) => ({
+                  ...p,
+                  batchStatus: batch,
+                  status: batch.status === "completed" ? "completed" : p.status,
+                }));
+                if (batch.status === "completed") {
+                  if (pollRef.current) clearInterval(pollRef.current);
+                  setStep("summary");
+                }
+              } catch {
+                // Ignore transient errors
+              }
+            })();
+            return prev;
+          }
+
+          // Poll migration endpoint to discover batch_id
+          (async () => {
+            try {
+              const data = await apiFetch(
+                `/api/recruiter/migration/${prev.jobId}`,
+              );
+              setMigration((p) => ({
+                ...p,
+                status: data.status,
+                stats: data.stats,
+                errors: data.errors,
+                batchId:
+                  p.batchId || (data.stats?.batch_id as string) || null,
+              }));
+              if (data.status === "completed" || data.status === "failed") {
+                if (pollRef.current) clearInterval(pollRef.current);
+                setStep("summary");
+              }
+            } catch {
+              // Ignore transient errors
+            }
+          })();
+          return prev;
+        });
       } catch {
         // Ignore transient polling errors
       }
@@ -391,15 +439,22 @@ export default function RecruiterMigrationWizard() {
       {/* Step 3: Progress */}
       {step === "progress" && (() => {
         const stats = migration.stats as Record<string, number> | null;
+        const batch = migration.batchStatus;
         const isResume = migration.platform === "resume_archive";
-        const processed = isResume
-          ? (stats?.processed_files ?? 0)
-          : stats
-            ? (stats.imported ?? 0) + (stats.merged ?? 0) + (stats.skipped ?? 0) + (stats.errors ?? 0)
-            : 0;
-        const total = isResume
-          ? (stats?.total_files ?? migration.rowCount || 1)
-          : (migration.rowCount || 1);
+
+        // For resume archives with batch tracking, use granular per-file data
+        const processed = batch
+          ? batch.files_completed
+          : isResume
+            ? (stats?.processed_files ?? 0)
+            : stats
+              ? (stats.imported ?? 0) + (stats.merged ?? 0) + (stats.skipped ?? 0) + (stats.errors ?? 0)
+              : 0;
+        const total = batch
+          ? batch.total_files
+          : isResume
+            ? (stats?.total_files ?? migration.rowCount || 1)
+            : (migration.rowCount || 1);
         const pct = Math.min(100, Math.round((processed / total) * 100));
         const unit = isResume ? "files" : "rows";
 
@@ -433,11 +488,26 @@ export default function RecruiterMigrationWizard() {
             <div className="flex items-center gap-3">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
               <span className="text-sm text-slate-600">
-                Processing... Status: {migration.status}
+                Processing... Status: {batch?.status || migration.status}
               </span>
             </div>
 
-            {stats && (
+            {batch ? (
+              <div className="mt-4 grid grid-cols-3 gap-3">
+                <div className="rounded-lg bg-green-50 p-3 text-center">
+                  <div className="text-lg font-bold text-green-700">{batch.files_succeeded}</div>
+                  <div className="text-xs text-green-600">Succeeded</div>
+                </div>
+                <div className="rounded-lg bg-red-50 p-3 text-center">
+                  <div className="text-lg font-bold text-red-700">{batch.files_failed}</div>
+                  <div className="text-xs text-red-600">Failed</div>
+                </div>
+                <div className="rounded-lg bg-slate-50 p-3 text-center">
+                  <div className="text-lg font-bold text-slate-700">{batch.total_files - batch.files_completed}</div>
+                  <div className="text-xs text-slate-600">Remaining</div>
+                </div>
+              </div>
+            ) : stats ? (
               <div className="mt-4 grid grid-cols-4 gap-3">
                 <div className="rounded-lg bg-green-50 p-3 text-center">
                   <div className="text-lg font-bold text-green-700">{stats.imported ?? 0}</div>
@@ -456,7 +526,7 @@ export default function RecruiterMigrationWizard() {
                   <div className="text-xs text-red-600">Errors</div>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         );
       })()}
@@ -473,7 +543,13 @@ export default function RecruiterMigrationWizard() {
               <div className="text-lg font-bold text-green-700">
                 Successfully imported
               </div>
-              {migration.stats && (
+              {migration.batchStatus ? (
+                <div className="mt-2 space-y-1 text-sm text-green-600">
+                  <div>Succeeded: {migration.batchStatus.files_succeeded} files</div>
+                  <div>Failed: {migration.batchStatus.files_failed} files</div>
+                  <div>Total: {migration.batchStatus.total_files} files</div>
+                </div>
+              ) : migration.stats ? (
                 <div className="mt-2 space-y-1 text-sm text-green-600">
                   <div>
                     Imported:{" "}
@@ -501,7 +577,7 @@ export default function RecruiterMigrationWizard() {
                     )}
                   </div>
                 </div>
-              )}
+              ) : null}
             </div>
           ) : (
             <div className="mb-6 rounded-lg bg-red-50 p-4">
@@ -538,6 +614,8 @@ export default function RecruiterMigrationWizard() {
                   status: "",
                   stats: null,
                   errors: null,
+                  batchId: null,
+                  batchStatus: null,
                 });
               }}
               className="flex-1 rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
