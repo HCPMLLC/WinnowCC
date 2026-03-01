@@ -662,6 +662,105 @@ def recalculate_interview_probability(match: Match) -> int:
     )
 
 
+def generate_ips_coaching(
+    resume_score: int | None,
+    cover_letter_score: int | None,
+    application_logistics_score: int | None,
+    matched_skills: list[str] | None = None,
+    missing_skills: list[str] | None = None,
+    job_posted_days_ago: int | None = None,
+) -> dict:
+    """Generate actionable coaching tips for each IPS component.
+
+    Rule-based (no LLM) — fast and cheap.  Returns structured tips dict.
+    """
+    tips: dict[str, list[str]] = {
+        "resume": [],
+        "cover_letter": [],
+        "logistics": [],
+        "overall": [],
+    }
+    r_s = resume_score or 50
+    c_s = cover_letter_score or 50
+    a_s = application_logistics_score or 70
+    matched = matched_skills or []
+    missing = missing_skills or []
+
+    # --- Resume tips ---
+    if missing:
+        kw = ", ".join(missing[:5])
+        tips["resume"].append(f"Add these keywords to your resume: {kw}")
+    if r_s < 50:
+        tips["resume"].append(
+            "Your resume has significant gaps for this role. "
+            "Highlight transferable skills from past experience."
+        )
+    elif r_s < 70:
+        tips["resume"].append(
+            "Strengthen evidence for your matched skills by adding "
+            "quantified achievements (numbers, percentages, outcomes)."
+        )
+    if len(matched) < 3:
+        tips["resume"].append(
+            "You match few required skills. Consider whether this "
+            "role aligns with your experience."
+        )
+
+    # --- Cover letter tips ---
+    if c_s < 40:
+        tips["cover_letter"].append(
+            "A strong cover letter could significantly boost your "
+            "score. Address the hiring manager by name if possible."
+        )
+        tips["cover_letter"].append(
+            "Reference specific company values or recent news to show genuine interest."
+        )
+    elif c_s < 60:
+        tips["cover_letter"].append(
+            "Tailor your cover letter to mention the specific skills this job requires."
+        )
+    elif c_s < 80:
+        tips["cover_letter"].append(
+            "Your cover letter is solid. Include a brief example of "
+            "a relevant accomplishment to push it further."
+        )
+
+    # --- Logistics tips ---
+    if job_posted_days_ago is not None:
+        if job_posted_days_ago > 20:
+            tips["logistics"].append(
+                f"This job was posted {job_posted_days_ago} days ago. "
+                "Apply soon — older postings may be closing."
+            )
+        elif job_posted_days_ago <= 5:
+            tips["logistics"].append(
+                "Great timing! This job was just posted. Early "
+                "applicants often get more attention."
+            )
+    if a_s < 60:
+        tips["logistics"].append(
+            "Apply directly on the company website for a potential "
+            "boost to your application logistics score."
+        )
+
+    # --- Overall tips ---
+    overall = (r_s * 0.70) + (c_s * 0.20) + (a_s * 0.10)
+    if overall >= 75:
+        tips["overall"].append("You're a strong candidate! Focus on interview prep.")
+    elif overall >= 50:
+        tips["overall"].append(
+            "You have a reasonable shot. Addressing the tips above "
+            "could meaningfully improve your chances."
+        )
+    else:
+        tips["overall"].append(
+            "This is a stretch role. Consider building skills in "
+            "the missing areas or look for closer matches."
+        )
+
+    return tips
+
+
 # ---------------------------------------------------------------------------
 # Recruiter & Employer job → candidate matching
 # ---------------------------------------------------------------------------

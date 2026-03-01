@@ -130,6 +130,13 @@ def add_to_pipeline(
         recruiter_job_id=pc.recruiter_job_id,
         subject=f"Added {name} to pipeline",
     )
+    # Auto-evaluate stage rules
+    try:
+        from app.services.stage_rules import evaluate_rules
+
+        evaluate_rules(session, pc)
+    except Exception:
+        logger.warning("Stage rule evaluation failed for pc %s", pc.id)
     session.commit()
     session.refresh(pc)
     return pc
@@ -141,6 +148,7 @@ def list_pipeline(
     stage: str | None = None,
     job_id: int | None = None,
     search: str | None = None,
+    tags: list[str] | None = None,
     limit: int = 50,
     offset: int = 0,
 ) -> list[RecruiterPipelineCandidate]:
@@ -159,9 +167,78 @@ def list_pipeline(
                 RecruiterPipelineCandidate.external_email.ilike(pattern),
             )
         )
+    if tags:
+        for tag in tags:
+            stmt = stmt.where(RecruiterPipelineCandidate.tags.contains([tag]))
     stmt = stmt.order_by(RecruiterPipelineCandidate.created_at.desc())
     stmt = stmt.offset(offset).limit(limit)
     return list(session.execute(stmt).scalars().all())
+
+
+def add_tags(
+    session: Session,
+    profile: RecruiterProfile,
+    candidate_id: int,
+    tags: list[str],
+) -> RecruiterPipelineCandidate | None:
+    """Add tags to a pipeline candidate (deduplicates)."""
+    pc = session.execute(
+        select(RecruiterPipelineCandidate).where(
+            RecruiterPipelineCandidate.id == candidate_id,
+            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if pc is None:
+        return None
+    existing = pc.tags or []
+    merged = list(dict.fromkeys(existing + tags))
+    pc.tags = merged
+    session.flush()
+    return pc
+
+
+def remove_tags(
+    session: Session,
+    profile: RecruiterProfile,
+    candidate_id: int,
+    tags: list[str],
+) -> RecruiterPipelineCandidate | None:
+    """Remove tags from a pipeline candidate."""
+    pc = session.execute(
+        select(RecruiterPipelineCandidate).where(
+            RecruiterPipelineCandidate.id == candidate_id,
+            RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if pc is None:
+        return None
+    existing = pc.tags or []
+    remove_set = set(tags)
+    pc.tags = [t for t in existing if t not in remove_set]
+    session.flush()
+    return pc
+
+
+def list_unique_tags(
+    session: Session,
+    profile: RecruiterProfile,
+) -> list[str]:
+    """Get all unique tags used by this recruiter (for autocomplete)."""
+    rows = (
+        session.execute(
+            select(RecruiterPipelineCandidate.tags).where(
+                RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+                RecruiterPipelineCandidate.tags.is_not(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+    all_tags: set[str] = set()
+    for tag_list in rows:
+        if isinstance(tag_list, list):
+            all_tags.update(tag_list)
+    return sorted(all_tags)
 
 
 def update_pipeline_candidate(
@@ -519,3 +596,117 @@ def _log_activity(
         activity_metadata=activity_metadata,
     )
     session.add(activity)
+
+
+# ---------------------------------------------------------------------------
+# Notifications & @mentions
+# ---------------------------------------------------------------------------
+
+import re
+
+_MENTION_RE = re.compile(r"@(\w+)")
+
+
+def create_note_with_mentions(
+    session: Session,
+    profile: RecruiterProfile,
+    sender_user_id: int,
+    pipeline_candidate_id: int,
+    body: str,
+) -> RecruiterActivity:
+    """Create a note on a pipeline candidate, parsing @mentions.
+
+    Mentioned team members receive notifications.
+    """
+    from app.models.recruiter_notification import RecruiterNotification
+
+    activity = RecruiterActivity(
+        recruiter_profile_id=profile.id,
+        user_id=sender_user_id,
+        pipeline_candidate_id=pipeline_candidate_id,
+        activity_type="note",
+        body=body,
+        subject="Note added",
+    )
+    session.add(activity)
+    session.flush()
+
+    # Parse @mentions
+    mentions = _MENTION_RE.findall(body)
+    if mentions:
+        # Resolve team member user IDs by email prefix or name
+        team = (
+            session.execute(
+                select(RecruiterTeamMember).where(
+                    RecruiterTeamMember.recruiter_profile_id == profile.id
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        team_user_ids: set[int] = set()
+        for tm in team:
+            if tm.user_id:
+                user = session.get(User, tm.user_id)
+                if user:
+                    email_prefix = user.email.split("@")[0].lower()
+                    name_lower = (user.name or "").lower().replace(" ", "")
+                    for m in mentions:
+                        if m.lower() in (email_prefix, name_lower):
+                            team_user_ids.add(tm.user_id)
+
+        for uid in team_user_ids:
+            if uid == sender_user_id:
+                continue
+            notif = RecruiterNotification(
+                recipient_user_id=uid,
+                sender_user_id=sender_user_id,
+                activity_id=activity.id,
+                notification_type="mention",
+                message=body[:500],
+            )
+            session.add(notif)
+
+    return activity
+
+
+def get_notifications(
+    session: Session,
+    user_id: int,
+    unread_only: bool = False,
+    limit: int = 50,
+) -> list:
+    """Get notifications for a user."""
+    from app.models.recruiter_notification import RecruiterNotification
+
+    stmt = (
+        select(RecruiterNotification)
+        .where(RecruiterNotification.recipient_user_id == user_id)
+        .order_by(RecruiterNotification.created_at.desc())
+        .limit(limit)
+    )
+    if unread_only:
+        stmt = stmt.where(RecruiterNotification.is_read.is_(False))
+    return list(session.execute(stmt).scalars().all())
+
+
+def mark_notification_read(
+    session: Session,
+    user_id: int,
+    notification_id: int,
+) -> bool:
+    """Mark a notification as read. Returns True if found."""
+    from app.models.recruiter_notification import RecruiterNotification
+
+    notif = session.execute(
+        select(RecruiterNotification).where(
+            RecruiterNotification.id == notification_id,
+            RecruiterNotification.recipient_user_id == user_id,
+        )
+    ).scalar_one_or_none()
+    if notif is None:
+        return False
+    notif.is_read = True
+    session.flush()
+    return True

@@ -121,6 +121,58 @@ def check_own_submissions(
     )
 
 
+def check_duplicate_submission(
+    session: Session,
+    candidate_profile_id: int,
+    recruiter_job_id: int,
+) -> dict:
+    """Pre-submission duplicate check with details.
+
+    Returns whether this candidate has already been submitted to the
+    same employer job by *any* recruiter, plus submission details.
+    """
+    rj = session.get(RecruiterJob, recruiter_job_id)
+    if not rj:
+        return {"is_duplicate": False, "existing_submissions": []}
+
+    employer_job_id = rj.employer_job_id
+    if not employer_job_id:
+        return {"is_duplicate": False, "existing_submissions": []}
+
+    existing = list(
+        session.execute(
+            select(CandidateSubmission)
+            .where(
+                CandidateSubmission.employer_job_id == employer_job_id,
+                CandidateSubmission.candidate_profile_id == candidate_profile_id,
+            )
+            .order_by(CandidateSubmission.submitted_at)
+        )
+        .scalars()
+        .all()
+    )
+
+    submissions = []
+    for sub in existing:
+        rp = sub.recruiter_profile
+        submissions.append(
+            {
+                "recruiter_company": (
+                    getattr(rp, "company_name", None) if rp else None
+                ),
+                "submitted_at": (
+                    sub.submitted_at.isoformat() if sub.submitted_at else None
+                ),
+                "status": sub.status,
+            }
+        )
+
+    return {
+        "is_duplicate": len(existing) > 0,
+        "existing_submissions": submissions,
+    }
+
+
 def get_submissions_for_employer_job(
     session: Session,
     employer_job_id: int,

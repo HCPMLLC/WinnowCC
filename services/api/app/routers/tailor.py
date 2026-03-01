@@ -130,10 +130,15 @@ def get_tailor_status(
     if tailored is None:
         return TailorStatusResponse(status="finished")
 
+    kw_align = None
+    if tailored.change_log and "keyword_alignment" in tailored.change_log:
+        kw_align = tailored.change_log["keyword_alignment"]
+
     return TailorStatusResponse(
         status="finished",
         resume_url=f"/api/tailor/files/{tailored.id}/resume",
         cover_letter_url=f"/api/tailor/files/{tailored.id}/cover-letter",
+        keyword_alignment=kw_align,
     )
 
 

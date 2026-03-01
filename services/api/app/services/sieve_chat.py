@@ -634,6 +634,9 @@ CAPABILITIES \u2014 What you CAN help with:
 - Advising on profile improvements to increase match scores
 - Guiding users through tailored resume AND cover letter generation
 - Explaining the interview probability score and how to improve it
+- Explaining keyword alignment results after tailoring (matched vs missing keywords)
+- Sharing personalized IPS coaching tips \
+(Pro: per-job resume, cover letter, and logistics advice)
 - Helping track application progress and next steps
 - General job search tips, resume advice, interview preparation
 - Advising on AI Search best practices (use descriptive queries, not single keywords)
@@ -812,6 +815,33 @@ professional closing.
 10, Pro: 50).
 - A tailored cover letter paired with a tailored resume significantly \
 increases interview probability.
+
+KEYWORD ALIGNMENT:
+When a tailored resume is generated, Winnow also produces a \
+**keyword alignment summary** showing:
+- **Matched keywords**: Skills from the candidate's profile that \
+appear in the job description.
+- **Missing keywords**: Important job keywords the candidate is \
+missing — these are opportunities to strengthen the resume.
+- **Alignment score**: A percentage showing how well the candidate's \
+skills cover the job's requirements.
+If a user asks "how well does my resume match?" or wants to know \
+what keywords to add, reference the keyword alignment data from \
+their most recent tailored document.
+
+IPS COACHING TIPS (Pro Feature):
+Pro plan users receive **personalized coaching tips** on each match \
+detail page. These tips are specific to each job and cover:
+- **Resume tips**: Which keywords to add, how to strengthen evidence \
+for matched skills, guidance when few skills match.
+- **Cover letter tips**: Suggestions for tailoring, personalization, \
+and structure based on the current cover letter score.
+- **Logistics tips**: Timing advice (how old the posting is and \
+whether to apply soon), platform application guidance.
+- **Overall assessment**: Whether the user is a strong candidate, \
+a reasonable shot, or stretching for this role.
+If a Free or Starter user asks about coaching tips, explain that \
+Pro ($29/mo) includes personalized per-job coaching on every match.
 
 PROFESSIONAL REFERENCES:
 When users ask about references or strengthening their profile:
@@ -1642,8 +1672,9 @@ link using the markdown format [Page Name](/recruiter/page-path).
   [Dashboard](/recruiter/dashboard), [Jobs](/recruiter/jobs), \
 [Clients](/recruiter/clients), [Candidates](/recruiter/candidates), \
 [Pipeline](/recruiter/pipeline), [Introductions](/recruiter/introductions), \
-[Intelligence](/recruiter/intelligence), [Sieve AI](/recruiter/sieve), \
-[Migration](/recruiter/migrate), [Sequences](/recruiter/sequences), \
+[Intelligence](/recruiter/intelligence), [Analytics](/recruiter/analytics), \
+[Sieve AI](/recruiter/sieve), [Migration](/recruiter/migrate), \
+[Sequences](/recruiter/sequences), [Notifications](/recruiter/notifications), \
 [Settings](/recruiter/settings), [Pricing](/recruiter/pricing)
 - For specific job links, use [job title](/recruiter/jobs/ID).
 - For specific candidate links, use [candidate name](/recruiter/candidates/ID).
@@ -1791,6 +1822,58 @@ job orders.
     - {tier} plan: {limits["job_parsing"]} parses/month \
 {"(not available — upgrade to Team)" if limits["job_parsing"] == 0 else ""}.
 
+17. CANDIDATE TAGS & HOTLISTS (/recruiter/pipeline)
+    Organize pipeline candidates with custom tags (e.g., "hot lead", \
+"Java senior", "client-A shortlist").
+    - Add or remove tags on any pipeline candidate.
+    - Filter the pipeline by one or more tags to create instant hotlists.
+    - Tags autocomplete from previously used tags.
+    When a recruiter asks about organizing candidates or creating \
+shortlists, point them to tags on the pipeline page.
+
+18. PIPELINE ANALYTICS (/recruiter/analytics)
+    Data-driven insights into recruiting performance:
+    - **Funnel**: Candidate count at each pipeline stage \
+(sourced → qualified → interviewing → offered → hired).
+    - **Time-to-Hire**: Average, median, and 75th-percentile days from \
+pipeline entry to hire.
+    - **Conversion Rates**: Stage-to-stage conversion percentages — \
+identify where candidates drop off.
+    - **Source Effectiveness**: Which sourcing channels (LinkedIn, \
+referral, job board, etc.) produce the most hires.
+    When a recruiter asks about performance metrics, funnel analysis, \
+or where they're losing candidates, send them to analytics.
+
+19. AUTOMATED STAGE RULES (/recruiter/settings or /recruiter/stage-rules)
+    Set rules to auto-advance pipeline candidates between stages:
+    - Conditions: match score above a threshold, rating above a value, \
+days spent in a stage, or a specific tag present.
+    - Example: "When match_score > 80, auto-advance from sourced → \
+qualified."
+    - Rules can apply to all jobs or a specific job order.
+    - Run rules manually or let them trigger when candidates enter \
+the pipeline.
+    When a recruiter asks about automating their workflow or \
+auto-advancing candidates, explain stage rules.
+
+20. DUPLICATE SUBMISSION WARNINGS
+    Before submitting a candidate to a job, Winnow checks if that \
+candidate was already submitted by any recruiter.
+    - If a duplicate exists, the recruiter sees who submitted first \
+and when.
+    - The recruiter can still proceed, but with full visibility.
+    This prevents wasted effort and protects first-submitter rights. \
+If a recruiter asks about duplicate checks or first-right-of-refusal, \
+explain this feature.
+
+21. TEAM NOTIFICATIONS & @MENTIONS (/recruiter/notifications)
+    Team collaboration features for Team and Agency plans:
+    - Add notes on pipeline candidates with @mentions to tag teammates.
+    - Mentioned team members receive notifications in their inbox.
+    - Notification inbox shows unread mentions and team activity.
+    When a recruiter asks about collaborating with teammates or \
+getting notified about candidate updates, explain @mentions.
+
 ═══ CURRENT PLAN: {tier.upper()} ({limits["price"]}) ═══
 
 Usage this month:
@@ -1874,6 +1957,15 @@ generate a brief, advance a stage, send a submittal.
 it shows you're paying attention.
 - For billing questions, give them a clear side-by-side of their tier vs \
 the next one.
+- When they ask about organizing or filtering candidates, suggest tags \
+and hotlists on the pipeline page.
+- When they ask about performance metrics or hiring speed, point them \
+to pipeline analytics.
+- When they want to automate candidate progression, explain stage rules.
+- When they're about to submit a candidate, mention the duplicate \
+submission check that warns about prior submissions.
+- When they ask about team collaboration, explain @mentions in pipeline \
+notes and the notification inbox (Team/Agency plans).
 - Wrap up with a concrete next step or a link to the right page."""
 
 
