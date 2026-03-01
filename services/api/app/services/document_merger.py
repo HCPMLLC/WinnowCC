@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from pypdf import PdfMerger
+from pypdf import PdfWriter
 
 from app.services.storage import download_to_tempfile, is_gcs_path, upload_file
 
@@ -45,7 +45,7 @@ def merge_documents_to_pdf(
     if not output_filename.endswith(".pdf"):
         output_filename += ".pdf"
 
-    merger = PdfMerger()
+    writer = PdfWriter()
     temp_files: list[Path] = []  # Track all temp files for cleanup
 
     try:
@@ -66,11 +66,11 @@ def merge_documents_to_pdf(
                 continue
 
             if local_path.suffix.lower() == ".pdf":
-                merger.append(str(local_path))
+                writer.append(str(local_path))
             elif local_path.suffix.lower() == ".docx":
                 pdf_path = convert_docx_to_pdf(str(local_path))
                 if pdf_path:
-                    merger.append(pdf_path)
+                    writer.append(pdf_path)
                     temp_files.append(Path(pdf_path))
                 else:
                     logger.warning("DOCX conversion failed, skipping: %s", raw_path)
@@ -80,9 +80,9 @@ def merge_documents_to_pdf(
         # Write merged PDF to a temp file, then upload to storage
         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_out:
             tmp_out_path = Path(tmp_out.name)
-        merger.write(str(tmp_out_path))
+        with open(tmp_out_path, "wb") as f:
+            writer.write(f)
     finally:
-        merger.close()
         for tmp in temp_files:
             try:
                 tmp.unlink(missing_ok=True)
