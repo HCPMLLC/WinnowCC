@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
@@ -11,6 +12,8 @@ from app.models.candidate_trust import CandidateTrust
 from app.models.resume_document import ResumeDocument
 from app.models.trust_audit_log import TrustAuditLog
 from app.services.profile_parser import default_profile_json
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,27 @@ def evaluate_trust_for_resume(
     session.add(audit)
     session.commit()
     session.refresh(trust)
+
+    # Notify user only when status newly transitions INTO quarantine
+    _QUARANTINE = {TRUST_SOFT, TRUST_HARD}
+    if (
+        trust.status in _QUARANTINE
+        and trust.status != prev_status
+        and resume.user_id is not None
+    ):
+        try:
+            from app.models.user import User as _User
+            from app.services.email import send_trust_quarantine_email as _notify
+
+            _user = session.execute(
+                select(_User).where(_User.id == resume.user_id)
+            ).scalar_one_or_none()
+            if _user and _user.email:
+                flagged = [r for r in trust.reasons if r.get("points", 0) > 0]
+                _notify(_user.email, trust.status, flagged)
+        except Exception:
+            logger.warning("Failed to send trust quarantine email", exc_info=True)
+
     return trust
 
 

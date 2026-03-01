@@ -375,3 +375,108 @@ def send_verification_email(to_email: str, token: str) -> None:
         },
         "verification",
     )
+
+
+def send_trust_quarantine_email(
+    to_email: str,
+    status: str,
+    reasons: list[dict],
+) -> None:
+    """Notify a candidate that their profile has entered soft or hard quarantine."""
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping trust quarantine email to %s", to_email
+        )
+        return
+
+    _REASON_LABELS: dict[str, str] = {
+        "identity_missing_core_fields": (
+            "Your profile appears to be missing a name or work history."
+        ),
+        "resume_overlapping_dates": (
+            "Your resume shows overlapping employment dates."
+        ),
+        "resume_keyword_stuffing": (
+            "Your resume contains unusually repetitive content."
+        ),
+        "online_malformed_urls": (
+            "One or more profile URLs appear to be incorrectly formatted."
+        ),
+        "abuse_duplicate_resume_hash": (
+            "Your resume file matches one already on file in our system."
+        ),
+        "abuse_frequent_uploads": (
+            "We detected an unusually high number of resume uploads from your account."
+        ),
+    }
+
+    settings_url = f"{FRONTEND_URL}/settings"
+    reason_bullets_text = "\n".join(
+        f"- {_REASON_LABELS.get(r['code'], r.get('message', r['code']))}"
+        for r in reasons
+    )
+    reason_bullets_html = "".join(
+        f"<li>{_REASON_LABELS.get(r['code'], r.get('message', r['code']))}</li>"
+        for r in reasons
+    )
+
+    if status == "soft_quarantine":
+        subject = "Action needed: Your Winnow profile needs a quick review"
+        text_body = (
+            "We noticed a few things on your Winnow profile that need a quick look "
+            "before we can continue matching you with jobs.\n\n"
+            "Here's what we noticed:\n"
+            f"{reason_bullets_text}\n\n"
+            "Matching has been paused temporarily while we sort this out. "
+            "This is usually resolved quickly — just visit your settings to "
+            "request a review and we'll take it from there.\n\n"
+            f"Go to Settings: {settings_url}\n\n"
+            "Thanks for your patience."
+        )
+        html_body = (
+            "<p>We noticed a few things on your Winnow profile that need a quick look "
+            "before we can continue matching you with jobs.</p>"
+            "<p><strong>Here's what we noticed:</strong></p>"
+            f"<ul>{reason_bullets_html}</ul>"
+            "<p>Matching has been paused temporarily while we sort this out. "
+            "This is usually resolved quickly — just visit your settings to "
+            "request a review and we'll take it from there.</p>"
+            f'<p><a href="{settings_url}">Go to Settings</a></p>'
+            "<p>Thanks for your patience.</p>"
+        )
+    else:  # hard_quarantine
+        subject = "Your Winnow account is under review"
+        text_body = (
+            "Your Winnow account access has been temporarily restricted while our "
+            "team reviews some concerns with your profile.\n\n"
+            "Here's what triggered the review:\n"
+            f"{reason_bullets_text}\n\n"
+            "Our team will review your account within 2–3 business days. "
+            "In the meantime, you can visit your settings to see your current status "
+            "or submit additional information.\n\n"
+            f"Go to Settings: {settings_url}\n\n"
+            "We appreciate your patience."
+        )
+        html_body = (
+            "<p>Your Winnow account access has been temporarily restricted while our "
+            "team reviews some concerns with your profile.</p>"
+            "<p><strong>Here's what triggered the review:</strong></p>"
+            f"<ul>{reason_bullets_html}</ul>"
+            "<p>Our team will review your account within 2–3 business days. "
+            "In the meantime, you can visit your settings to see your current status "
+            "or submit additional information.</p>"
+            f'<p><a href="{settings_url}">Go to Settings</a></p>'
+            "<p>We appreciate your patience.</p>"
+        )
+
+    resend.api_key = RESEND_API_KEY
+    _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "text": text_body,
+            "html": html_body,
+        },
+        "trust_quarantine",
+    )
