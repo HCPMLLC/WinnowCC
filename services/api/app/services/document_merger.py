@@ -1,6 +1,6 @@
 """Document Merger — combines documents into a single PDF.
 
-Uses PyPDF2 for PDF merging. DOCX-to-PDF conversion uses LibreOffice
+Uses pypdf for PDF merging. DOCX-to-PDF conversion uses LibreOffice
 headless (Linux/production) or docx2pdf (Windows/dev).
 """
 
@@ -11,7 +11,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PyPDF2 import PdfMerger
+from pypdf import PdfMerger
 
 from app.services.storage import download_to_tempfile, is_gcs_path, upload_file
 
