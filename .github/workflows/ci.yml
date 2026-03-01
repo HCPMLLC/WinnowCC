@@ -79,7 +79,7 @@ jobs:
       - name: Run Alembic migrations
         run: |
           cd services/api
-          alembic upgrade head
+          PYTHONPATH=. alembic upgrade head
       - name: Run tests with coverage
         run: |
           cd services/api
@@ -212,7 +212,7 @@ jobs:
       - name: Run migrations
         run: |
           cd services/api
-          alembic upgrade head
+          PYTHONPATH=. alembic upgrade head
       - name: Start API
         run: |
           cd services/api
