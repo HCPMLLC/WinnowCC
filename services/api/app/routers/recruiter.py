@@ -487,9 +487,7 @@ def list_pipeline(
                             company = exp[0].get("company") or ""
                             raw = f"{title} at {company}"
                             headline = (
-                                raw.rstrip()
-                                .removesuffix(" at")
-                                .strip()
+                                raw.rstrip().removesuffix(" at").strip()
                                 if title
                                 else company
                             )
@@ -1938,8 +1936,7 @@ def refresh_recruiter_job_candidates(
             rj = db.execute(select(RJ).where(RJ.id == the_job_id)).scalar_one_or_none()
             if not rj:
                 msg = _json.dumps(
-                    {'percent': 100, 'phase': 'error',
-                     'message': 'Job not found'}
+                    {"percent": 100, "phase": "error", "message": "Job not found"}
                 )
                 yield f"data: {msg}\n\n"
                 return
@@ -1962,8 +1959,11 @@ def refresh_recruiter_job_candidates(
                     logger.debug("Failed to generate embedding for job %s", the_job_id)
 
             msg = _json.dumps(
-                {'percent': 5, 'phase': 'loading',
-                 'message': 'Loading candidate profiles...'}
+                {
+                    "percent": 5,
+                    "phase": "loading",
+                    "message": "Loading candidate profiles...",
+                }
             )
             yield f"data: {msg}\n\n"
 
@@ -2015,8 +2015,11 @@ def refresh_recruiter_job_candidates(
             total_profiles = platform_count + sourced_count
 
             msg = _json.dumps(
-                {'percent': 10, 'phase': 'scoring',
-                 'message': f'Scoring {total_profiles} candidates...'}
+                {
+                    "percent": 10,
+                    "phase": "scoring",
+                    "message": f"Scoring {total_profiles} candidates...",
+                }
             )
             yield f"data: {msg}\n\n"
 
@@ -2026,8 +2029,11 @@ def refresh_recruiter_job_candidates(
             )
 
             msg = _json.dumps(
-                {'percent': 80, 'phase': 'saving',
-                 'message': f'Found {len(results)} matches, saving...'}
+                {
+                    "percent": 80,
+                    "phase": "saving",
+                    "message": f"Found {len(results)} matches, saving...",
+                }
             )
             yield f"data: {msg}\n\n"
 
@@ -2053,8 +2059,7 @@ def refresh_recruiter_job_candidates(
             db.commit()
 
             msg = _json.dumps(
-                {'percent': 90, 'phase': 'pipeline',
-                 'message': 'Updating pipeline...'}
+                {"percent": 90, "phase": "pipeline", "message": "Updating pipeline..."}
             )
             yield f"data: {msg}\n\n"
 
@@ -2105,19 +2110,19 @@ def refresh_recruiter_job_candidates(
                 logger.warning("Auto-populate pipeline failed for job %s", the_job_id)
 
             msg = _json.dumps(
-                {'percent': 100, 'phase': 'done',
-                 'message': f'{inserted} candidates matched',
-                 'inserted': inserted,
-                 'pipeline_added': pipeline_added}
+                {
+                    "percent": 100,
+                    "phase": "done",
+                    "message": f"{inserted} candidates matched",
+                    "inserted": inserted,
+                    "pipeline_added": pipeline_added,
+                }
             )
             yield f"data: {msg}\n\n"
 
         except Exception as exc:
             logger.exception("Refresh streaming failed for job %s", the_job_id)
-            msg = _json.dumps(
-                {'percent': 100, 'phase': 'error',
-                 'message': str(exc)}
-            )
+            msg = _json.dumps({"percent": 100, "phase": "error", "message": str(exc)})
             yield f"data: {msg}\n\n"
         finally:
             db.close()
@@ -2181,14 +2186,10 @@ def generate_brief(
     except HTTPException:
         raise
     except ValueError as exc:
-        raise HTTPException(
-            status_code=404, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     except Exception as exc:
         logger.exception("Brief generation failed")
-        raise HTTPException(
-            status_code=500, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
     increment_recruiter_counter(profile, "candidate_briefs_used", session)
     return result
 

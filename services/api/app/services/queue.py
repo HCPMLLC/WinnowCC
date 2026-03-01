@@ -27,9 +27,7 @@ class RetryQueue(Queue):
 
     def enqueue(self, *args, **kwargs):
         if "retry" not in kwargs:
-            max_retries, intervals = _RETRY_POLICIES.get(
-                self.name, (3, [10, 30, 60])
-            )
+            max_retries, intervals = _RETRY_POLICIES.get(self.name, (3, [10, 30, 60]))
             kwargs["retry"] = Retry(max=max_retries, interval=intervals)
         if "failure_ttl" not in kwargs:
             kwargs["failure_ttl"] = _FAILURE_TTL

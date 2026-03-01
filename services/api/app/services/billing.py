@@ -893,9 +893,7 @@ def create_portal_session(
     if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
         return f"{FRONTEND_URL}/settings"
     if candidate is None:
-        raise HTTPException(
-            status_code=404, detail="Complete onboarding first."
-        )
+        raise HTTPException(status_code=404, detail="Complete onboarding first.")
     customer_id = get_or_create_stripe_customer(session, user, candidate)
     client = _stripe_client()
     try:

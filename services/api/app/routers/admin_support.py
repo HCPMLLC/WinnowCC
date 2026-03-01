@@ -1156,10 +1156,7 @@ def kpi_dashboard(
     tailor_total = db.scalar(select(func.count()).select_from(TailoredResume)) or 0
 
     sieve_users = (
-        db.scalar(
-            select(func.count(func.distinct(SieveConversation.user_id)))
-        )
-        or 0
+        db.scalar(select(func.count(func.distinct(SieveConversation.user_id)))) or 0
     )
     sieve_rate = sieve_users / total_cands
 

@@ -332,9 +332,7 @@ def send_mfa_otp_sms(to_phone: str, otp_code: str) -> None:
                     "sending_failed",
                 ):
                     errors = getattr(status_result.data, "errors", [])
-                    err_detail = (
-                        errors[0].detail if errors else "carrier rejected"
-                    )
+                    err_detail = errors[0].detail if errors else "carrier rejected"
                     raise RuntimeError(
                         f"SMS delivery failed for {to_phone}: {err_detail}"
                     )
@@ -395,9 +393,7 @@ def send_trust_quarantine_email(
         "identity_missing_core_fields": (
             "Your profile appears to be missing a name or work history."
         ),
-        "resume_overlapping_dates": (
-            "Your resume shows overlapping employment dates."
-        ),
+        "resume_overlapping_dates": ("Your resume shows overlapping employment dates."),
         "resume_keyword_stuffing": (
             "Your resume contains unusually repetitive content."
         ),

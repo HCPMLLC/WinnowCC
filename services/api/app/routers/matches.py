@@ -174,9 +174,7 @@ def refresh_matches(
     ingest_query = _build_ingest_query(profile.profile_json, candidate)
     queue = get_queue("critical")
     ingest_job = queue.enqueue(ingest_jobs_job, ingest_query)
-    job = queue.enqueue(
-        match_jobs_job, user.id, profile_version, depends_on=ingest_job
-    )
+    job = queue.enqueue(match_jobs_job, user.id, profile_version, depends_on=ingest_job)
     return MatchesRefreshResponse(status="queued", job_id=job.id)
 
 
@@ -317,7 +315,8 @@ def list_matches(
 
     # Filter to allowed sources
     rows = [
-        (m, j) for m, j in rows
+        (m, j)
+        for m, j in rows
         if j.source in allowed_sources
         or (j.source not in ("employer", "recruiter") and "board" in allowed_sources)
     ]
@@ -381,7 +380,8 @@ def list_all_matches(
 
     # Filter to allowed sources
     rows = [
-        (m, j) for m, j in rows
+        (m, j)
+        for m, j in rows
         if j.source in allowed_sources
         or (j.source not in ("employer", "recruiter") and "board" in allowed_sources)
     ]
