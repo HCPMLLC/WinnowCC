@@ -195,7 +195,7 @@ jobs:
         run: |
           cd apps/web
           docker build --no-cache \
-            --build-arg NEXT_PUBLIC_API_BASE_URL=https://winnow-api-cdn2d6pc5q-uc.a.run.app \
+            --build-arg NEXT_PUBLIC_API_BASE_URL=https://api.winnowcc.ai \
             --build-arg NEXT_PUBLIC_APP_URL=https://winnowcc.ai \
             --build-arg NEXT_PUBLIC_AUTH0_DOMAIN=$(gcloud secrets versions access latest --secret=auth0-domain) \
             --build-arg NEXT_PUBLIC_AUTH0_CLIENT_ID=$(gcloud secrets versions access latest --secret=auth0-client-id) \

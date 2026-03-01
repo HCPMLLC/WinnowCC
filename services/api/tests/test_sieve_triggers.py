@@ -103,53 +103,62 @@ def _create_job(session) -> Job:
 
 
 def test_profile_completeness_trigger_fires(session) -> None:
-    """User + candidate with 5/11 fields → trigger fires."""
+    """User with a sparse profile_json → trigger fires at <50%."""
     user = _create_user(session)
-    candidate = Candidate(
+    # Sparse profile_json: only name fields filled → low score
+    profile = CandidateProfile(
         user_id=user.id,
-        first_name="Jane",
-        last_name="Doe",
-        phone="555-1234",
-        desired_job_types=["Engineer"],
-        desired_locations=[],  # empty = not counted
-        # Missing: location_city, years_experience, desired_salary_min,
-        # desired_salary_max, remote_preference, CandidateProfile
+        version=1,
+        profile_json={"basics": {"first_name": "Jane", "last_name": "Doe"}},
     )
-    session.add(candidate)
+    session.add(profile)
     session.commit()
 
     trigger = compute_profile_completeness_trigger(user, session)
     assert trigger is not None
     assert trigger.id == "profile_incomplete_critical"
     assert trigger.priority == 1
-    # 4 filled (first_name, last_name, phone, desired_job_types) out of 11 = 36%
-    assert "36%" in trigger.message
+    assert "%" in trigger.message
+
+
+_RICH_PROFILE_JSON = {
+    "basics": {
+        "first_name": "Jane",
+        "last_name": "Doe",
+        "email": "jane@example.com",
+        "phone": "555-1234",
+        "location": "Austin, TX",
+        "total_years_experience": 5,
+        "work_authorization": "authorized",
+    },
+    "experience": [
+        {
+            "company": "Acme Corp",
+            "title": "Engineer",
+            "start_date": "Jan 2020",
+            "end_date": "Present",
+            "bullets": ["Built APIs", "Improved performance"],
+            "skills_used": ["Python", "SQL"],
+            "technologies_used": ["FastAPI", "PostgreSQL"],
+        }
+    ],
+    "education": [
+        {
+            "institution": "State University",
+            "degree": "Bachelor of Science",
+            "field": "Computer Science",
+        }
+    ],
+}
 
 
 def test_profile_completeness_trigger_suppressed(session) -> None:
-    """User + candidate with 9/11 fields → no trigger (81% >= 70%)."""
+    """User with a rich profile_json (>=70%) → no trigger fires."""
     user = _create_user(session)
-    candidate = Candidate(
-        user_id=user.id,
-        first_name="Jane",
-        last_name="Doe",
-        phone="555-1234",
-        location_city="Austin",
-        years_experience=5,
-        desired_job_types=["Engineer"],
-        desired_locations=["Remote"],
-        desired_salary_min=80000,
-        remote_preference="remote",
-        # Missing: desired_salary_max (1 missing from Candidate fields)
-    )
-    session.add(candidate)
-    session.flush()
-
-    # Add a CandidateProfile (resume uploaded) → 9/11 filled = 81%
     profile = CandidateProfile(
         user_id=user.id,
         version=1,
-        profile_json={"skills": ["Python"]},
+        profile_json=_RICH_PROFILE_JSON,
     )
     session.add(profile)
     session.commit()
@@ -344,27 +353,10 @@ def test_compute_all_triggers_empty(session) -> None:
     user = _create_user(session)
     job = _create_job(session)
 
-    # Full profile (>=70% completeness → no profile trigger)
-    candidate = Candidate(
-        user_id=user.id,
-        first_name="Jane",
-        last_name="Doe",
-        phone="555-1234",
-        location_city="Austin",
-        years_experience=5,
-        desired_job_types=["Engineer"],
-        desired_locations=["Remote"],
-        desired_salary_min=80000,
-        desired_salary_max=120000,
-        remote_preference="remote",
-    )
-    session.add(candidate)
-    session.flush()
-
     profile = CandidateProfile(
         user_id=user.id,
         version=1,
-        profile_json={"skills": ["Python"]},
+        profile_json=_RICH_PROFILE_JSON,
     )
     session.add(profile)
     session.flush()

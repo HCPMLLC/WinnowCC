@@ -48,7 +48,7 @@ export async function GET(request: NextRequest) {
       },
       body: JSON.stringify({
         code,
-        redirect_uri: `${request.nextUrl.origin}/api/auth/callback`,
+        redirect_uri: `${process.env.NEXT_PUBLIC_APP_URL || request.nextUrl.origin}/api/auth/callback`,
       }),
     });
 

@@ -11,13 +11,13 @@
     "preview": {
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://winnow-api-cdn2d6pc5q-uc.a.run.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.winnowcc.ai"
       }
     },
     "production": {
       "autoIncrement": true,
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://winnow-api-cdn2d6pc5q-uc.a.run.app"
+        "EXPO_PUBLIC_API_BASE_URL": "https://api.winnowcc.ai"
       }
     }
   },
