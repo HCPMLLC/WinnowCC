@@ -13,6 +13,10 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import os
+import shutil
+import tempfile
+import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
@@ -27,6 +31,8 @@ logger = logging.getLogger(__name__)
 MAX_ACTIVE_BATCHES = 3
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_RETRIES = 2
+MAX_ZIP_FILES = 1000
+RESUME_EXTENSIONS = {".pdf", ".docx"}
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +138,181 @@ def create_upload_batch(
         "batch_id": batch_id,
         "status_url": f"/api/upload-batches/{batch_id}/status",
     }
+
+
+# ---------------------------------------------------------------------------
+# 1b. create_upload_batch_from_zip — expand a ZIP into per-file worker jobs
+# ---------------------------------------------------------------------------
+
+
+def create_upload_batch_from_zip(
+    *,
+    user_id: int,
+    owner_profile_id: int,
+    zip_stored_path: str,
+    session,
+) -> dict:
+    """Extract a ZIP from storage, stage individual files, create batch
+    tracking rows, and enqueue the same ``process_batch_resume_file``
+    worker jobs used by the HTTP batch upload path.
+
+    Returns dict with ``batch_id`` and ``status_url``.
+    """
+    from app.services.queue import get_queue
+    from app.services.storage import (
+        delete_file,
+        download_to_tempfile,
+        upload_bytes,
+    )
+
+    # Download ZIP to a local temp file
+    zip_local = download_to_tempfile(zip_stored_path, suffix=".zip")
+    extract_dir = tempfile.mkdtemp(prefix="winnow_zip_expand_")
+
+    try:
+        with zipfile.ZipFile(str(zip_local)) as zf:
+            zf.extractall(extract_dir)
+
+        resume_paths = _collect_resume_files(extract_dir)
+        if not resume_paths:
+            raise ValueError("ZIP contains no PDF or DOCX resume files.")
+        if len(resume_paths) > MAX_ZIP_FILES:
+            raise ValueError(
+                f"ZIP contains {len(resume_paths)} resume files, "
+                f"exceeding the limit of {MAX_ZIP_FILES}."
+            )
+
+        batch_id = str(uuid4())
+        batch = UploadBatch(
+            batch_id=batch_id,
+            user_id=user_id,
+            batch_type="recruiter_resume_zip",
+            owner_profile_id=owner_profile_id,
+            status="pending",
+            total_files=len(resume_paths),
+        )
+        session.add(batch)
+        session.flush()
+
+        bulk_queue = get_queue("bulk")
+        batch_files = []
+
+        for idx, fpath in enumerate(resume_paths):
+            contents = fpath.read_bytes()
+            file_hash = hashlib.sha256(contents).hexdigest()
+
+            staged_name = f"{idx}_{file_hash[:12]}_{fpath.name}"
+            staged_path = upload_bytes(
+                contents, f"staging/{batch_id}/", staged_name
+            )
+
+            bf = UploadBatchFile(
+                batch_id=batch_id,
+                file_index=idx,
+                original_filename=fpath.name,
+                staged_path=staged_path,
+                file_size_bytes=len(contents),
+                sha256=file_hash,
+                status="pending",
+            )
+            session.add(bf)
+            session.flush()
+            batch_files.append(bf)
+
+        session.commit()
+
+        # Enqueue per-file worker jobs (same as HTTP batch path)
+        for bf in batch_files:
+            bulk_queue.enqueue(
+                process_batch_resume_file,
+                bf.id,
+                batch_id,
+                owner_profile_id,
+                job_timeout="10m",
+            )
+
+        batch.status = "processing"
+        session.commit()
+
+        logger.info(
+            "ZIP batch %s: staged %d files, enqueued worker jobs",
+            batch_id,
+            len(batch_files),
+        )
+
+        return {
+            "batch_id": batch_id,
+            "status_url": f"/api/upload-batches/{batch_id}/status",
+        }
+
+    finally:
+        # Clean up temp files
+        shutil.rmtree(extract_dir, ignore_errors=True)
+        from app.services.storage import is_gcs_path
+
+        if is_gcs_path(zip_stored_path) and zip_local.exists():
+            try:
+                zip_local.unlink()
+            except OSError:
+                pass
+        # Remove the original ZIP from staging
+        try:
+            delete_file(zip_stored_path)
+        except Exception:
+            pass
+
+
+def expand_zip_batch_job(
+    user_id: int,
+    owner_profile_id: int,
+    zip_stored_path: str,
+    migration_job_id: int | None = None,
+) -> None:
+    """RQ job: expand a ZIP into individual batch file jobs.
+
+    Called from the migration router when source_platform == 'resume_archive'.
+    Optionally links back to a MigrationJob for frontend status polling.
+    """
+    session = get_session_factory()()
+    try:
+        result = create_upload_batch_from_zip(
+            user_id=user_id,
+            owner_profile_id=owner_profile_id,
+            zip_stored_path=zip_stored_path,
+            session=session,
+        )
+
+        if migration_job_id:
+            from app.models.migration import MigrationJob
+
+            job = session.get(MigrationJob, migration_job_id)
+            if job:
+                job.stats_json = {
+                    "batch_id": result["batch_id"],
+                    "status": "processing",
+                }
+                session.commit()
+
+    except Exception as exc:
+        session.rollback()
+        logger.exception("Failed to expand ZIP batch")
+        # Mark migration job as failed if linked
+        if migration_job_id:
+            try:
+                from app.models.migration import MigrationJob
+
+                job = session.get(MigrationJob, migration_job_id)
+                if job:
+                    job.status = "failed"
+                    job.error_log = [
+                        {"error": str(exc)[:500], "fatal": True}
+                    ]
+                    session.commit()
+            except Exception:
+                session.rollback()
+        raise
+    finally:
+        session.close()
 
 
 # ---------------------------------------------------------------------------
@@ -628,6 +809,10 @@ def _finalize_batch(session, batch_id: str) -> None:
 
     session.commit()
 
+    # Send completion email for large ZIP-originated batches
+    if batch.status == "completed" and batch.batch_type == "recruiter_resume_zip":
+        _send_zip_batch_email(session, batch, counts)
+
 
 # ---------------------------------------------------------------------------
 # 5. cleanup_stale_staging — scheduled maintenance
@@ -684,6 +869,27 @@ def cleanup_stale_staging() -> None:
 # ---------------------------------------------------------------------------
 
 
+def _send_zip_batch_email(session, batch: UploadBatch, counts) -> None:
+    """Best-effort completion email for ZIP resume imports."""
+    try:
+        from app.models.user import User
+        from app.services.email import send_migration_complete_email
+
+        user = session.get(User, batch.user_id)
+        if not user or not user.email:
+            return
+        send_migration_complete_email(
+            to_email=user.email,
+            imported=counts.succeeded,
+            skipped=0,
+            errors=counts.failed,
+            total=batch.total_files,
+            job_id=0,
+        )
+    except Exception:
+        logger.warning("Failed to send ZIP batch completion email", exc_info=True)
+
+
 def _fail_file(session, bf: UploadBatchFile, error: str) -> None:
     """Mark a batch file as failed."""
     bf.status = "failed"
@@ -705,3 +911,21 @@ def _is_transient(exc: Exception) -> bool:
     return any(
         kw in msg for kw in ("timeout", "connection", "temporarily", "503", "429")
     )
+
+
+def _collect_resume_files(directory: str) -> list[Path]:
+    """Walk directory tree and collect PDF/DOCX files, sorted by name.
+
+    Skips hidden files, macOS resource forks, and files over MAX_FILE_SIZE.
+    """
+    resume_files: list[Path] = []
+    for root, _dirs, files in os.walk(directory):
+        for fname in files:
+            if fname.startswith(".") or "__MACOSX" in root:
+                continue
+            if Path(fname).suffix.lower() in RESUME_EXTENSIONS:
+                full = Path(root) / fname
+                if full.stat().st_size <= MAX_FILE_SIZE:
+                    resume_files.append(full)
+    resume_files.sort(key=lambda p: p.name.lower())
+    return resume_files
