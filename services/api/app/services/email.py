@@ -121,7 +121,9 @@ def send_introduction_request_email(
         return
 
     dashboard_url = f"{FRONTEND_URL}/dashboard"
-    job_line_html = f" for the <strong>{job_title}</strong> position" if job_title else ""
+    job_line_html = (
+        f" for the <strong>{job_title}</strong> position" if job_title else ""
+    )
     job_line_text = f" for the {job_title} position" if job_title else ""
     resend.api_key = RESEND_API_KEY
     _send(

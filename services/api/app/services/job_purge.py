@@ -16,7 +16,7 @@ import logging
 import os
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import delete, exists, func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
@@ -69,8 +69,18 @@ def snapshot_tailored_resumes(session: Session, job_ids: list[int]) -> int:
             TailoredResume.job_title_snapshot.is_(None),
         )
         .values(
-            job_title_snapshot=select(Job.title).where(Job.id == TailoredResume.job_id).correlate(TailoredResume).scalar_subquery(),
-            job_company_snapshot=select(Job.company).where(Job.id == TailoredResume.job_id).correlate(TailoredResume).scalar_subquery(),
+            job_title_snapshot=(
+                select(Job.title)
+                .where(Job.id == TailoredResume.job_id)
+                .correlate(TailoredResume)
+                .scalar_subquery()
+            ),
+            job_company_snapshot=(
+                select(Job.company)
+                .where(Job.id == TailoredResume.job_id)
+                .correlate(TailoredResume)
+                .scalar_subquery()
+            ),
         )
     )
     result = session.execute(stmt)
@@ -151,8 +161,18 @@ def backfill_snapshots(session: Session) -> int:
             TailoredResume.job_title_snapshot.is_(None),
         )
         .values(
-            job_title_snapshot=select(Job.title).where(Job.id == TailoredResume.job_id).correlate(TailoredResume).scalar_subquery(),
-            job_company_snapshot=select(Job.company).where(Job.id == TailoredResume.job_id).correlate(TailoredResume).scalar_subquery(),
+            job_title_snapshot=(
+                select(Job.title)
+                .where(Job.id == TailoredResume.job_id)
+                .correlate(TailoredResume)
+                .scalar_subquery()
+            ),
+            job_company_snapshot=(
+                select(Job.company)
+                .where(Job.id == TailoredResume.job_id)
+                .correlate(TailoredResume)
+                .scalar_subquery()
+            ),
         )
     )
     result = session.execute(stmt)

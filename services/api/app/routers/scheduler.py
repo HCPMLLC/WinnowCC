@@ -94,7 +94,10 @@ def get_scheduler_status(
         ScheduledTask(
             name="Inactive Job Purge",
             cron="0 4 * * 0",
-            description="Purge jobs inactive 90+ days with no saved/applied matches (weekly Sunday 4am UTC)",
+            description=(
+                "Purge jobs inactive 90+ days with no saved/applied matches"
+                " (weekly Sunday 4am UTC)"
+            ),
         ),
     ]
     return SchedulerStatusResponse(
