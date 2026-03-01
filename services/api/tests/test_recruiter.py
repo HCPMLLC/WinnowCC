@@ -532,8 +532,10 @@ class TestRecruiterProfileCreate:
         with patch.object(
             RecruiterProfile,
             "start_trial",
-            lambda self: setattr(self, "subscription_tier", "trial")
-            or setattr(self, "subscription_status", "trialing"),
+            lambda self: (
+                setattr(self, "subscription_tier", "trial")
+                or setattr(self, "subscription_status", "trialing")
+            ),
         ):
             resp = client.post(
                 "/api/recruiter/profile",
