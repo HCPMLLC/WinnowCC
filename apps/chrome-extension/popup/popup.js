@@ -12,7 +12,7 @@ const $ = (id) => document.getElementById(id);
 // --- Configuration ---
 // These are read from the Winnow web app's public Auth0 settings.
 // They are public client-side values (not secrets).
-const DEFAULT_API_URL = "http://127.0.0.1:8000";
+const DEFAULT_API_URL = "https://api.winnowcc.ai";
 const AUTH0_DOMAIN = "dev-f21kwdkb0x1u0oqk.us.auth0.com";
 const AUTH0_CLIENT_ID = "wr752tl9vqPflOZ2bmmNRKThozGLMovP";
 
