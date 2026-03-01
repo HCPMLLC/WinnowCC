@@ -5,23 +5,28 @@ Revises: b2c3d4e5f6a7
 Create Date: 2026-02-28 13:13:31.014006
 
 """
-from typing import Sequence, Union
+from collections.abc import Sequence
+
+import sqlalchemy as sa
 
 from alembic import op
-import sqlalchemy as sa
 
 # revision identifiers, used by Alembic.
 revision: str = '0a016921caa1'
-down_revision: Union[str, None] = 'b2c3d4e5f6a7'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = 'b2c3d4e5f6a7'
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
     op.add_column('jobs', sa.Column('employer_job_id', sa.Integer(), nullable=True))
     op.add_column('jobs', sa.Column('recruiter_job_id', sa.Integer(), nullable=True))
-    op.create_index(op.f('ix_jobs_employer_job_id'), 'jobs', ['employer_job_id'], unique=False)
-    op.create_index(op.f('ix_jobs_recruiter_job_id'), 'jobs', ['recruiter_job_id'], unique=False)
+    op.create_index(
+        op.f('ix_jobs_employer_job_id'), 'jobs', ['employer_job_id'], unique=False
+    )
+    op.create_index(
+        op.f('ix_jobs_recruiter_job_id'), 'jobs', ['recruiter_job_id'], unique=False
+    )
     op.create_foreign_key(
         'fk_jobs_employer_job_id', 'jobs', 'employer_jobs',
         ['employer_job_id'], ['id'], ondelete='SET NULL',
