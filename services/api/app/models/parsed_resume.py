@@ -15,7 +15,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 
 
-class SkillCategoryEnum(str, enum.Enum):
+class SkillCategoryEnum(enum.StrEnum):
     """Skill categorization"""
 
     CORE = "core"
