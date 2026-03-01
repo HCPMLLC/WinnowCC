@@ -1,7 +1,7 @@
 """add unsubscribe_token to outreach_enrollment
 
 Revision ID: g1a2b3c4d5e6
-Revises: f6ead5847f50
+Revises: 0a016921caa1
 Create Date: 2026-03-01 12:00:00.000000
 
 """
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision: str = "g1a2b3c4d5e6"
-down_revision: str | None = "f6ead5847f50"
+down_revision: str | None = "0a016921caa1"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
