@@ -10,6 +10,7 @@ const sections = [
   'Third-Party Services',
   'Data Retention & Deletion',
   'Your Rights',
+  'California Privacy Rights (CCPA)',
   "Children's Privacy",
   'Changes to This Policy',
   'Contact Us',
@@ -83,6 +84,11 @@ export default function PrivacyPage() {
                 and in transit (TLS 1.2+). Resume files are stored in Google Cloud Storage with restricted
                 access controls. We never log raw resume text in application logs.
               </p>
+              <p>
+                Winnow does not store credit card numbers or payment credentials. All payment
+                processing is handled by <strong>Stripe</strong>, a PCI DSS Level 1 certified
+                processor. Card data never touches Winnow&apos;s servers.
+              </p>
             </Section>
 
             <Section id="third-party-services" title="Third-Party Services">
@@ -91,20 +97,24 @@ export default function PrivacyPage() {
                   <tr style={{ background: '#f8f9fc' }}>
                     <th style={{ padding: '10px 16px', textAlign: 'left', border: '1px solid #e2e8f0', color: '#475569' }}>Service</th>
                     <th style={{ padding: '10px 16px', textAlign: 'left', border: '1px solid #e2e8f0', color: '#475569' }}>Purpose</th>
+                    <th style={{ padding: '10px 16px', textAlign: 'left', border: '1px solid #e2e8f0', color: '#475569' }}>Privacy / DPA</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {[
-                    ['Anthropic (Claude AI)', 'Resume parsing, job matching, and resume generation'],
-                    ['Stripe', 'Payment processing — we never store card details'],
-                    ['Auth0', 'Secure authentication and OAuth login'],
-                    ['Google Cloud Platform', 'Infrastructure, storage, and compute'],
-                    ['Sentry', 'Error tracking — personal data is scrubbed'],
-                    ['PostHog', 'Anonymous product analytics'],
-                  ].map(([name, purpose]) => (
+                  {([
+                    ['Anthropic (Claude AI)', 'Resume parsing, job matching, and resume generation', 'https://www.anthropic.com/privacy'],
+                    ['Stripe', 'Payment processing — we never store card details', 'https://stripe.com/privacy'],
+                    ['Auth0', 'Secure authentication and OAuth login', 'https://www.okta.com/privacy-policy/'],
+                    ['Google Cloud Platform', 'Infrastructure, storage, and compute', 'https://cloud.google.com/terms/data-processing-addendum'],
+                    ['Sentry', 'Error tracking — personal data is scrubbed', 'https://sentry.io/privacy/'],
+                    ['PostHog', 'Anonymous product analytics', 'https://posthog.com/privacy'],
+                  ] as [string, string, string][]).map(([name, purpose, dpaUrl]) => (
                     <tr key={name}>
                       <td style={{ padding: '10px 16px', border: '1px solid #e2e8f0', fontWeight: 600 }}>{name}</td>
                       <td style={{ padding: '10px 16px', border: '1px solid #e2e8f0', color: '#475569' }}>{purpose}</td>
+                      <td style={{ padding: '10px 16px', border: '1px solid #e2e8f0' }}>
+                        <a href={dpaUrl} target="_blank" rel="noopener noreferrer" style={{ color: '#6366f1', fontSize: 13 }}>View</a>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -125,6 +135,30 @@ export default function PrivacyPage() {
                 (via profile editing), <strong>delete</strong> it (via account deletion), and <strong>opt out</strong> of
                 analytics tracking. California residents may have additional rights under CCPA. EU residents may have
                 rights under GDPR. Contact us to exercise any of these rights.
+              </p>
+              <p>
+                To opt out of analytics tracking, reject non-essential cookies via the cookie consent
+                banner on your first visit. You can also enable your browser&apos;s Do Not Track setting
+                or clear your cookies from Settings. PostHog respects the Do Not Track header when enabled.
+              </p>
+            </Section>
+
+            <Section id="california-privacy-rights-(ccpa)" title="California Privacy Rights (CCPA)">
+              <p>
+                If you are a California resident, the California Consumer Privacy Act (CCPA) provides
+                you with additional rights regarding your personal information:
+              </p>
+              <ul>
+                <li><strong>Right to Know:</strong> You may request details about the categories and specific pieces of personal information we collect.</li>
+                <li><strong>Right to Delete:</strong> You may request deletion of your personal information (available via Settings &gt; Delete Account).</li>
+                <li><strong>Right to Opt-Out of Sale:</strong> Winnow does <strong>not</strong> sell your personal information to third parties. We do not share personal information for cross-context behavioral advertising.</li>
+                <li><strong>Right to Non-Discrimination:</strong> We will not discriminate against you for exercising any of your CCPA rights.</li>
+              </ul>
+              <p>
+                To exercise these rights, email{' '}
+                <a href="mailto:hello@winnowcc.ai" style={{ color: '#6366f1' }}>hello@winnowcc.ai</a>{' '}
+                with the subject line &quot;CCPA Request&quot; or use the data export and account deletion
+                features in your Settings.
               </p>
             </Section>
 
