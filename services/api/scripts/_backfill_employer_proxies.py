@@ -1,4 +1,4 @@
-"""Backfill proxy Job rows for all active employer and recruiter jobs, then re-match Zachary."""
+"""Backfill proxy Job rows for all active employer and recruiter jobs."""
 
 import os
 import sys
@@ -12,7 +12,10 @@ load_dotenv()
 from sqlalchemy import text
 
 from app.db.session import get_session_factory
-from app.services.job_pipeline import sync_employer_job_to_jobs, sync_recruiter_job_to_jobs
+from app.services.job_pipeline import (
+    sync_employer_job_to_jobs,
+    sync_recruiter_job_to_jobs,
+)
 
 # ── Employer jobs ────────────────────────────────────────────────────────
 

@@ -211,7 +211,9 @@ def sync_employer_job_to_jobs(job_id: int) -> None:
     try:
         ej = session.get(EmployerJob, job_id)
         if not ej:
-            logger.warning("sync_employer_job_to_jobs: EmployerJob %s not found", job_id)
+            logger.warning(
+                "sync_employer_job_to_jobs: EmployerJob %s not found", job_id
+            )
             return
 
         ep = session.get(EmployerProfile, ej.employer_id)
@@ -271,7 +273,10 @@ def deactivate_employer_job_proxy(job_id: int) -> None:
         if proxy:
             proxy.is_active = False
             session.commit()
-            logger.info("deactivate_employer_job_proxy: deactivated proxy for employer job %s", job_id)
+            logger.info(
+                "deactivate_employer_job_proxy: deactivated proxy for employer job %s",
+                job_id,
+            )
     except Exception:
         session.rollback()
         logger.exception("deactivate_employer_job_proxy: failed for %s", job_id)
@@ -344,11 +349,15 @@ def sync_recruiter_job_to_jobs(job_id: int) -> None:
     try:
         rj = session.get(RecruiterJob, job_id)
         if not rj:
-            logger.warning("sync_recruiter_job_to_jobs: RecruiterJob %s not found", job_id)
+            logger.warning(
+                "sync_recruiter_job_to_jobs: RecruiterJob %s not found", job_id
+            )
             return
 
         rp = session.get(RecruiterProfile, rj.recruiter_profile_id)
-        company = rj.client_company_name or (rp.company_name if rp else None) or "Unknown"
+        company = (
+            rj.client_company_name or (rp.company_name if rp else None) or "Unknown"
+        )
 
         desc = (rj.description or "") + "\n" + (rj.requirements or "")
         content_hash = hashlib.sha256(desc.encode()).hexdigest()
@@ -383,7 +392,9 @@ def sync_recruiter_job_to_jobs(job_id: int) -> None:
             text = prepare_job_text(proxy)
             proxy.embedding = generate_embedding(text)
         except Exception:
-            logger.warning("sync_recruiter_job_to_jobs: embedding failed for %s", job_id)
+            logger.warning(
+                "sync_recruiter_job_to_jobs: embedding failed for %s", job_id
+            )
 
         session.commit()
         logger.info("sync_recruiter_job_to_jobs: synced recruiter job %s", job_id)
@@ -404,7 +415,11 @@ def deactivate_recruiter_job_proxy(job_id: int) -> None:
         if proxy:
             proxy.is_active = False
             session.commit()
-            logger.info("deactivate_recruiter_job_proxy: deactivated proxy for recruiter job %s", job_id)
+            logger.info(
+                "deactivate_recruiter_job_proxy: deactivated proxy for recruiter job"
+                " %s",
+                job_id,
+            )
     except Exception:
         session.rollback()
         logger.exception("deactivate_recruiter_job_proxy: failed for %s", job_id)

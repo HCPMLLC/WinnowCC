@@ -88,7 +88,8 @@ def compute_matches(
     source_filters = []
     if "board" in allowed_sources:
         source_filters.append(
-            (Job.source.not_in(["employer", "recruiter"])) & (Job.posted_at >= board_cutoff)
+            (Job.source.not_in(["employer", "recruiter"]))
+            & (Job.posted_at >= board_cutoff)
         )
     if "employer" in allowed_sources:
         source_filters.append(
