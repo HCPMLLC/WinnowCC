@@ -9,7 +9,6 @@ import {
   Switch,
   RefreshControl,
   Alert,
-  Linking,
 } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import { useRouter } from "expo-router";
@@ -20,7 +19,6 @@ import LoadingSpinner from "../../components/LoadingSpinner";
 import ProfileMenuItem from "../../components/ProfileMenuItem";
 import type {
   RecruiterProfile,
-  RecruiterPlan,
   TeamMember,
 } from "../../lib/recruiter-types";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
@@ -36,7 +34,6 @@ export default function RecruiterSettingsScreen() {
   const { email, role, logout } = useAuth();
   const router = useRouter();
   const [profile, setProfile] = useState<RecruiterProfile | null>(null);
-  const [plan, setPlan] = useState<RecruiterPlan | null>(null);
   const [team, setTeam] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -51,9 +48,8 @@ export default function RecruiterSettingsScreen() {
 
   const loadData = async () => {
     try {
-      const [profileRes, planRes, teamRes] = await Promise.all([
+      const [profileRes, teamRes] = await Promise.all([
         api.get("/api/recruiter/profile"),
-        api.get("/api/recruiter/plan").catch(() => null),
         api.get("/api/recruiter/team").catch(() => null),
       ]);
 
@@ -64,9 +60,6 @@ export default function RecruiterSettingsScreen() {
         setEditType(p.company_type ?? "");
         setEditWebsite(p.company_website ?? "");
         setAutoPopulate(p.auto_populate_pipeline ?? false);
-      }
-      if (planRes && planRes.ok) {
-        setPlan(await planRes.json());
       }
       if (teamRes && teamRes.ok) {
         const data = await teamRes.json();
@@ -126,42 +119,6 @@ export default function RecruiterSettingsScreen() {
     }
   };
 
-  const handleUpgrade = async (tier: string) => {
-    try {
-      const res = await api.post("/api/billing/unified-checkout", {
-        segment: "recruiter",
-        tier,
-        interval: "monthly",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.checkout_url) {
-          Linking.openURL(data.checkout_url);
-        }
-      } else {
-        Alert.alert("Error", "Failed to start checkout.");
-      }
-    } catch {
-      Alert.alert("Error", "Something went wrong.");
-    }
-  };
-
-  const handleManageBilling = async () => {
-    try {
-      const res = await api.post("/api/billing/portal", {});
-      if (res.ok) {
-        const data = await res.json();
-        if (data.portal_url) {
-          Linking.openURL(data.portal_url);
-        }
-      } else {
-        Alert.alert("Error", "Failed to open billing portal.");
-      }
-    } catch {
-      Alert.alert("Error", "Something went wrong.");
-    }
-  };
-
   const handleLogout = () => {
     Alert.alert("Log Out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
@@ -170,8 +127,6 @@ export default function RecruiterSettingsScreen() {
   };
 
   if (loading) return <LoadingSpinner />;
-
-  const tier = plan?.tier ?? profile?.subscription_tier ?? "free";
 
   return (
     <ScrollView
@@ -255,84 +210,9 @@ export default function RecruiterSettingsScreen() {
         </View>
       )}
 
-      {/* Plan & Billing */}
-      <Text style={styles.sectionTitle}>Plan & Billing</Text>
-
-      {/* Trial banner */}
-      {profile?.is_trial_active && (
-        <View style={styles.trialBanner}>
-          <Ionicons name="time-outline" size={16} color={colors.primary} />
-          <Text style={styles.trialText}>
-            Trial: {profile.trial_days_remaining} days remaining
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.card}>
-        <View style={styles.planRow}>
-          <Text style={styles.planLabel}>Current Plan</Text>
-          <View style={styles.planBadge}>
-            <Text style={styles.planBadgeText}>{tier.toUpperCase()}</Text>
-          </View>
-        </View>
-
-        {tier !== "agency" && (
-          <View style={styles.upgradeSection}>
-            {tier === "free" && (
-              <>
-                <UpgradeButton
-                  label="Solo — $79/mo"
-                  onPress={() => handleUpgrade("solo")}
-                />
-                <UpgradeButton
-                  label="Team — $149/mo"
-                  onPress={() => handleUpgrade("team")}
-                />
-                <UpgradeButton
-                  label="Agency — $299/mo"
-                  onPress={() => handleUpgrade("agency")}
-                />
-              </>
-            )}
-            {tier === "solo" && (
-              <>
-                <UpgradeButton
-                  label="Team — $149/mo"
-                  onPress={() => handleUpgrade("team")}
-                />
-                <UpgradeButton
-                  label="Agency — $299/mo"
-                  onPress={() => handleUpgrade("agency")}
-                />
-              </>
-            )}
-            {tier === "team" && (
-              <UpgradeButton
-                label="Agency — $299/mo"
-                onPress={() => handleUpgrade("agency")}
-              />
-            )}
-          </View>
-        )}
-
-        {tier !== "free" && (
-          <TouchableOpacity
-            style={styles.manageBtn}
-            onPress={handleManageBilling}
-          >
-            <Text style={styles.manageBtnText}>Manage Subscription</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-
       {/* Team */}
       <Text style={styles.sectionTitle}>Team</Text>
       <View style={styles.card}>
-        {profile && (
-          <Text style={styles.seatInfo}>
-            Seats: {profile.seats_used} / {profile.seats_purchased} used
-          </Text>
-        )}
         {team.length > 0 ? (
           team.map((member) => (
             <View key={member.id} style={styles.teamRow}>
@@ -389,39 +269,6 @@ export default function RecruiterSettingsScreen() {
     </ScrollView>
   );
 }
-
-function UpgradeButton({
-  label,
-  onPress,
-}: {
-  label: string;
-  onPress: () => void;
-}) {
-  return (
-    <TouchableOpacity style={upgradeStyles.btn} onPress={onPress}>
-      <Text style={upgradeStyles.text}>{label}</Text>
-      <Ionicons name="arrow-forward" size={16} color={colors.primary} />
-    </TouchableOpacity>
-  );
-}
-
-const upgradeStyles = StyleSheet.create({
-  btn: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: colors.sage,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginTop: spacing.sm,
-  },
-  text: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-});
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.gray50 },
@@ -502,61 +349,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.lg,
     fontWeight: "600",
     color: colors.primary,
-  },
-  trialBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    backgroundColor: colors.gold,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  trialText: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  planRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
-  planLabel: {
-    fontSize: fontSize.md,
-    fontWeight: "600",
-    color: colors.gray700,
-  },
-  planBadge: {
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  planBadgeText: {
-    color: colors.gold,
-    fontSize: fontSize.xs,
-    fontWeight: "600",
-  },
-  upgradeSection: { marginTop: spacing.sm },
-  manageBtn: {
-    borderWidth: 1,
-    borderColor: colors.primary,
-    borderRadius: borderRadius.md,
-    paddingVertical: spacing.sm,
-    alignItems: "center",
-    marginTop: spacing.md,
-  },
-  manageBtnText: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  seatInfo: {
-    fontSize: fontSize.sm,
-    color: colors.gray600,
-    marginBottom: spacing.sm,
   },
   teamRow: {
     flexDirection: "row",

@@ -95,23 +95,6 @@ export default function RecruiterDashboardScreen() {
         Welcome{firstName ? `, ${firstName}` : ""}
       </Text>
 
-      {/* Trial banner */}
-      {profile?.is_trial_active && (
-        <View style={styles.trialBanner}>
-          <Ionicons name="time-outline" size={16} color={colors.primary} />
-          <Text style={styles.trialText}>
-            Trial: {profile.trial_days_remaining} days remaining
-          </Text>
-        </View>
-      )}
-
-      {/* Plan badge */}
-      <View style={styles.planBadge}>
-        <Text style={styles.planText}>
-          {(profile?.subscription_tier ?? "free").toUpperCase()} Plan
-        </Text>
-      </View>
-
       {/* Stats grid */}
       <View style={styles.grid}>
         <RecruiterStatCard
@@ -243,34 +226,6 @@ const styles = StyleSheet.create({
     fontWeight: "700",
     color: colors.gray900,
     marginBottom: spacing.sm,
-  },
-  trialBanner: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    backgroundColor: colors.gold,
-    borderRadius: borderRadius.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-    marginBottom: spacing.sm,
-  },
-  trialText: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.primary,
-  },
-  planBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  planText: {
-    color: colors.gold,
-    fontSize: fontSize.xs,
-    fontWeight: "600",
   },
   grid: {
     flexDirection: "row",

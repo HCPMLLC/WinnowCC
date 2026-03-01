@@ -19,10 +19,7 @@ interface Analytics {
   total_job_views: number;
   total_applications: number;
   candidate_views_this_month: number;
-  candidate_views_limit: number | null;
   saved_candidates: number;
-  subscription_tier: string;
-  subscription_status: string;
 }
 
 export default function EmployerDashboardScreen() {
@@ -61,10 +58,6 @@ export default function EmployerDashboardScreen() {
   };
 
   if (loading) return <LoadingSpinner />;
-
-  const viewsUsed = analytics?.candidate_views_this_month ?? 0;
-  const viewsLimit = analytics?.candidate_views_limit;
-  const viewsPercent = viewsLimit ? Math.min(100, (viewsUsed / viewsLimit) * 100) : 0;
 
   const cards = [
     {
@@ -123,13 +116,6 @@ export default function EmployerDashboardScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Plan badge */}
-      <View style={styles.planBadge}>
-        <Text style={styles.planText}>
-          {(analytics?.subscription_tier ?? "free").toUpperCase()} Plan
-        </Text>
-      </View>
-
       {/* Metric cards */}
       <View style={styles.grid}>
         {cards.map((card) => (
@@ -141,20 +127,6 @@ export default function EmployerDashboardScreen() {
           </View>
         ))}
       </View>
-
-      {/* Candidate views progress */}
-      {viewsLimit != null && (
-        <View style={styles.progressCard}>
-          <Text style={styles.progressLabel}>
-            Candidate Views: {viewsUsed} / {viewsLimit}
-          </Text>
-          <View style={styles.progressBar}>
-            <View
-              style={[styles.progressFill, { width: `${viewsPercent}%` }]}
-            />
-          </View>
-        </View>
-      )}
 
       {/* Quick actions */}
       <Text style={styles.sectionTitle}>Quick Actions</Text>
@@ -251,19 +223,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: colors.gold,
   },
-  planBadge: {
-    alignSelf: "flex-start",
-    backgroundColor: colors.primary,
-    borderRadius: borderRadius.full,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    marginBottom: spacing.lg,
-  },
-  planText: {
-    color: colors.gold,
-    fontSize: fontSize.xs,
-    fontWeight: "600",
-  },
   grid: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -289,33 +248,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.sm,
     color: colors.gray500,
     marginTop: spacing.xs,
-  },
-  progressCard: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.lg,
-    padding: spacing.md,
-    marginBottom: spacing.lg,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 8,
-    elevation: 2,
-  },
-  progressLabel: {
-    fontSize: fontSize.sm,
-    fontWeight: "600",
-    color: colors.gray700,
-    marginBottom: spacing.sm,
-  },
-  progressBar: {
-    height: 8,
-    backgroundColor: colors.gray200,
-    borderRadius: borderRadius.full,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    backgroundColor: colors.gold,
-    borderRadius: borderRadius.full,
   },
   sectionTitle: {
     fontSize: fontSize.lg,

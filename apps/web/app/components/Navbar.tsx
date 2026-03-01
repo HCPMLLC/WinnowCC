@@ -186,6 +186,12 @@ export default function Navbar() {
                 Admin
               </span>
             )}
+            <Link
+              href="/trust-safety"
+              className="text-sm text-gray-500 transition-colors hover:text-gray-300"
+            >
+              Trust &amp; Safety
+            </Link>
             <button
               onClick={handleLogout}
               className="text-sm text-gray-400 transition-colors hover:text-white"
@@ -318,6 +324,13 @@ export default function Navbar() {
             )}
 
             <div className="my-2 border-t border-slate-700" />
+            <Link
+              href="/trust-safety"
+              onClick={() => setMobileOpen(false)}
+              className="block rounded-md px-3 py-2 text-sm text-gray-500 hover:text-gray-300"
+            >
+              Trust &amp; Safety
+            </Link>
             <div className="px-3 py-2">
               <p className="text-sm text-gray-400">{user.email}</p>
               <button
