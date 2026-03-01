@@ -217,3 +217,65 @@ class MatchDiagnosticsResponse(BaseModel):
     total_recent_jobs: int = 0
     trust_status: str | None = None
     diagnosis: list[str] = []
+
+
+# --- KPI Dashboard ---
+
+
+class MonthlyDataPoint(BaseModel):
+    month: str  # "2025-03" ISO year-month
+    new_signups: int
+    new_paid: int
+
+
+class TrendData(BaseModel):
+    points: list[MonthlyDataPoint]
+
+
+class OverallKpis(BaseModel):
+    total_users: int
+    users_by_role: dict[str, int]
+    new_users_7d: int
+    new_users_30d: int
+
+
+class CandidateKpis(BaseModel):
+    total: int
+    by_tier: dict[str, int]
+    resume_upload_rate: float
+    avg_matches_per_candidate: float
+    avg_match_score: float
+    application_funnel: dict[str, int]
+    tailored_resumes_total: int
+    sieve_adoption_rate: float
+    onboarding_completion_rate: float
+
+
+class EmployerKpis(BaseModel):
+    total: int
+    by_tier: dict[str, int]
+    active_jobs: int
+    avg_jobs_per_employer: float
+    avg_views_per_job: float
+    avg_applications_per_job: float
+    onboarding_completion_rate: float
+
+
+class RecruiterKpis(BaseModel):
+    total: int
+    by_tier: dict[str, int]
+    total_pipeline_candidates: int
+    avg_pipeline_per_recruiter: float
+    pipeline_stage_distribution: dict[str, int]
+    avg_seat_utilization: float
+    total_jobs_posted: int
+    onboarding_completion_rate: float
+
+
+class KpiDashboardResponse(BaseModel):
+    overall: OverallKpis
+    candidates: CandidateKpis
+    employers: EmployerKpis
+    recruiters: RecruiterKpis
+    trends: dict[str, TrendData]
+    generated_at: datetime

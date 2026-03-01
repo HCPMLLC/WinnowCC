@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 
 const ADMIN_NAV = [
+  { href: "/admin/kpi", label: "KPI" },
   { href: "/admin/profile", label: "Users" },
   { href: "/admin/candidates", label: "Candidates" },
   { href: "/admin/employers", label: "Employers" },
