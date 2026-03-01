@@ -13,6 +13,7 @@ class TailorStatusResponse(BaseModel):
     resume_url: str | None = None
     cover_letter_url: str | None = None
     error_message: str | None = None
+    keyword_alignment: dict | None = None
 
 
 class TailoredDocumentResponse(BaseModel):

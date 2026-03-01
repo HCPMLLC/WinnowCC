@@ -27,6 +27,8 @@ class MatchResponse(BaseModel):
     semantic_similarity: float | None = None
     # Application tracking
     application_status: str | None = None
+    # IPS coaching (Pro only)
+    coaching_tips: dict | None = None
 
 
 class MatchesRefreshResponse(BaseModel):

@@ -425,6 +425,7 @@ def list_pipeline(
     stage: str | None = Query(None),
     job_id: int | None = Query(None),
     search: str | None = Query(None),
+    tags: str | None = Query(None, description="Comma-separated tag filter"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
@@ -435,12 +436,14 @@ def list_pipeline(
     from app.services.recruiter_service import list_pipeline as svc_list
     from app.services.recruiter_service import resolve_candidate_name
 
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
     pcs = svc_list(
         session,
         profile,
         stage=stage,
         job_id=job_id,
         search=search,
+        tags=tag_list,
         limit=limit,
         offset=offset,
     )
@@ -708,6 +711,62 @@ def delete_pipeline_candidate(
 
 
 # ============================================================================
+# TAGS
+# ============================================================================
+
+
+@router.post("/pipeline/{candidate_id}/tags")
+def add_pipeline_tags(
+    candidate_id: int,
+    tags: list[str],
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Add tags to a pipeline candidate."""
+    from app.services.recruiter_service import add_tags
+
+    pc = add_tags(session, profile, candidate_id, tags)
+    if pc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pipeline candidate not found.",
+        )
+    session.commit()
+    return {"id": pc.id, "tags": pc.tags}
+
+
+@router.delete("/pipeline/{candidate_id}/tags")
+def remove_pipeline_tags(
+    candidate_id: int,
+    tags: list[str] = Query(...),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Remove tags from a pipeline candidate."""
+    from app.services.recruiter_service import remove_tags
+
+    pc = remove_tags(session, profile, candidate_id, tags)
+    if pc is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Pipeline candidate not found.",
+        )
+    session.commit()
+    return {"id": pc.id, "tags": pc.tags}
+
+
+@router.get("/tags")
+def list_recruiter_tags(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """List all unique tags used by this recruiter (for autocomplete)."""
+    from app.services.recruiter_service import list_unique_tags
+
+    return {"tags": list_unique_tags(session, profile)}
+
+
+# ============================================================================
 # ACTIVITIES
 # ============================================================================
 
@@ -774,6 +833,184 @@ def get_activities(
 
 
 # ============================================================================
+# ANALYTICS
+# ============================================================================
+
+
+@router.get("/analytics/funnel")
+def analytics_funnel(
+    job_id: int | None = Query(None),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Pipeline funnel — candidates at each stage."""
+    from app.services.recruiter_analytics import get_pipeline_funnel
+
+    return {"funnel": get_pipeline_funnel(session, profile.id, job_id)}
+
+
+@router.get("/analytics/time-to-hire")
+def analytics_time_to_hire(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Time-to-hire metrics (avg/median/p75 days)."""
+    from app.services.recruiter_analytics import get_time_to_hire
+
+    return get_time_to_hire(session, profile.id)
+
+
+@router.get("/analytics/conversions")
+def analytics_conversions(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Stage-to-stage conversion rates."""
+    from app.services.recruiter_analytics import get_stage_conversion_rates
+
+    return {"conversions": get_stage_conversion_rates(session, profile.id)}
+
+
+@router.get("/analytics/sources")
+def analytics_sources(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Source effectiveness breakdown."""
+    from app.services.recruiter_analytics import get_source_effectiveness
+
+    return {"sources": get_source_effectiveness(session, profile.id)}
+
+
+# ============================================================================
+# STAGE RULES
+# ============================================================================
+
+
+@router.post("/stage-rules", status_code=status.HTTP_201_CREATED)
+def create_stage_rule(
+    data: dict,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Create an automated stage advancement rule."""
+    from app.services.stage_rules import create_rule
+
+    allowed = {
+        "recruiter_job_id",
+        "from_stage",
+        "to_stage",
+        "condition_type",
+        "condition_value",
+        "is_active",
+    }
+    filtered = {k: v for k, v in data.items() if k in allowed}
+    rule = create_rule(session, profile.id, filtered)
+    session.commit()
+    return {
+        "id": rule.id,
+        "from_stage": rule.from_stage,
+        "to_stage": rule.to_stage,
+        "condition_type": rule.condition_type,
+        "condition_value": rule.condition_value,
+        "is_active": rule.is_active,
+        "recruiter_job_id": rule.recruiter_job_id,
+    }
+
+
+@router.get("/stage-rules")
+def list_stage_rules(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """List all stage rules for this recruiter."""
+    from app.services.stage_rules import list_rules
+
+    rules = list_rules(session, profile.id)
+    return {
+        "rules": [
+            {
+                "id": r.id,
+                "from_stage": r.from_stage,
+                "to_stage": r.to_stage,
+                "condition_type": r.condition_type,
+                "condition_value": r.condition_value,
+                "is_active": r.is_active,
+                "recruiter_job_id": r.recruiter_job_id,
+            }
+            for r in rules
+        ]
+    }
+
+
+@router.patch("/stage-rules/{rule_id}")
+def update_stage_rule(
+    rule_id: int,
+    data: dict,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Update a stage rule."""
+    from app.services.stage_rules import update_rule
+
+    allowed = {
+        "from_stage",
+        "to_stage",
+        "condition_type",
+        "condition_value",
+        "is_active",
+        "recruiter_job_id",
+    }
+    filtered = {k: v for k, v in data.items() if k in allowed}
+    rule = update_rule(session, profile.id, rule_id, filtered)
+    if rule is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stage rule not found.",
+        )
+    session.commit()
+    return {
+        "id": rule.id,
+        "from_stage": rule.from_stage,
+        "to_stage": rule.to_stage,
+        "condition_type": rule.condition_type,
+        "condition_value": rule.condition_value,
+        "is_active": rule.is_active,
+        "recruiter_job_id": rule.recruiter_job_id,
+    }
+
+
+@router.delete("/stage-rules/{rule_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_stage_rule(
+    rule_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> None:
+    """Delete a stage rule."""
+    from app.services.stage_rules import delete_rule
+
+    if not delete_rule(session, profile.id, rule_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Stage rule not found.",
+        )
+    session.commit()
+
+
+@router.post("/stage-rules/apply")
+def apply_stage_rules(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Apply all active rules to all pipeline candidates."""
+    from app.services.stage_rules import apply_rules_to_batch
+
+    advanced = apply_rules_to_batch(session, profile.id)
+    session.commit()
+    return {"advanced": advanced}
+
+
+# ============================================================================
 # TEAM
 # ============================================================================
 
@@ -834,6 +1071,83 @@ def remove_team_member(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Team member not found.",
         )
+
+
+# ============================================================================
+# NOTIFICATIONS & @MENTIONS
+# ============================================================================
+
+
+@router.post("/pipeline/{candidate_id}/notes")
+def add_pipeline_note(
+    candidate_id: int,
+    body: dict,
+    user: User = Depends(require_recruiter),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Add a note to a pipeline candidate with @mention support."""
+    from app.services.recruiter_service import create_note_with_mentions
+
+    text = body.get("body", "")
+    if not text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Note body is required.",
+        )
+    activity = create_note_with_mentions(session, profile, user.id, candidate_id, text)
+    session.commit()
+    return {
+        "id": activity.id,
+        "body": activity.body,
+        "created_at": (
+            activity.created_at.isoformat() if activity.created_at else None
+        ),
+    }
+
+
+@router.get("/notifications")
+def get_recruiter_notifications(
+    unread_only: bool = Query(False),
+    limit: int = Query(50, ge=1, le=200),
+    user: User = Depends(require_recruiter),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Get notifications for the current user."""
+    from app.services.recruiter_service import get_notifications
+
+    notifs = get_notifications(session, user.id, unread_only=unread_only, limit=limit)
+    return {
+        "notifications": [
+            {
+                "id": n.id,
+                "notification_type": n.notification_type,
+                "message": n.message,
+                "is_read": n.is_read,
+                "sender_user_id": n.sender_user_id,
+                "created_at": (n.created_at.isoformat() if n.created_at else None),
+            }
+            for n in notifs
+        ]
+    }
+
+
+@router.post("/notifications/{notification_id}/read")
+def mark_notification_as_read(
+    notification_id: int,
+    user: User = Depends(require_recruiter),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Mark a notification as read."""
+    from app.services.recruiter_service import mark_notification_read
+
+    if not mark_notification_read(session, user.id, notification_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found.",
+        )
+    session.commit()
+    return {"status": "ok"}
 
 
 # ============================================================================
@@ -2576,6 +2890,23 @@ def link_employer_job(
 # ============================================================================
 # CANDIDATE SUBMISSIONS
 # ============================================================================
+
+
+@router.get("/submission-check")
+def check_submission_duplicate(
+    candidate_profile_id: int = Query(...),
+    recruiter_job_id: int = Query(...),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Check if a candidate was already submitted to this job."""
+    from app.services.submission import check_duplicate_submission
+
+    return check_duplicate_submission(
+        session,
+        candidate_profile_id=candidate_profile_id,
+        recruiter_job_id=recruiter_job_id,
+    )
 
 
 @router.post(

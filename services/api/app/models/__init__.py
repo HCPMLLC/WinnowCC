@@ -52,9 +52,11 @@ from app.models.recruiter_activity import RecruiterActivity
 from app.models.recruiter_client import RecruiterClient
 from app.models.recruiter_job import RecruiterJob
 from app.models.recruiter_job_candidate import RecruiterJobCandidate
+from app.models.recruiter_notification import RecruiterNotification
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
+from app.models.stage_rule import StageRule
 from app.models.tailored_resume import TailoredResume
 from app.models.talent_pipeline import TalentPipeline
 from app.models.trust_audit_log import TrustAuditLog
@@ -107,9 +109,11 @@ __all__ = [
     "RecruiterClient",
     "RecruiterJob",
     "RecruiterJobCandidate",
+    "RecruiterNotification",
     "RecruiterPipelineCandidate",
     "RecruiterProfile",
     "RecruiterTeamMember",
+    "StageRule",
     "ResumeDocument",
     "SieveConversation",
     "TailoredResume",

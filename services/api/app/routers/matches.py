@@ -33,6 +33,7 @@ from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
 from app.services.matching import (
     _get_embedding_list,
     compute_cosine_similarity,
+    generate_ips_coaching,
     recalculate_interview_probability,
 )
 from app.services.queue import get_queue
@@ -434,6 +435,28 @@ def get_match(
     if row is None:
         raise HTTPException(status_code=404, detail="Match not found.")
     match, job = row
+
+    # Pro-tier coaching tips
+    coaching = None
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    ips_detail = get_tier_limit(tier, "ips_detail")
+    if ips_detail == "full_coaching":
+        reasons = dict(match.reasons or {})
+        days_ago = None
+        if job.posted_at:
+            days_ago = (datetime.now(UTC) - job.posted_at).days
+        coaching = generate_ips_coaching(
+            resume_score=match.resume_score,
+            cover_letter_score=match.cover_letter_score,
+            application_logistics_score=match.application_logistics_score,
+            matched_skills=reasons.get("matched_skills"),
+            missing_skills=reasons.get("missing_skills"),
+            job_posted_days_ago=days_ago,
+        )
+
     return MatchResponse(
         id=match.id,
         job=JobResponse.model_validate(job),
@@ -449,6 +472,7 @@ def get_match(
         interview_probability=match.interview_probability,
         application_status=match.application_status,
         semantic_similarity=match.semantic_similarity,
+        coaching_tips=coaching,
     )
 
 

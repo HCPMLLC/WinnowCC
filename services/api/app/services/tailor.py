@@ -65,6 +65,9 @@ def create_tailored_docs(
         match.cover_letter_score = cover_letter_score
         match.interview_probability = recalculate_interview_probability(match)
 
+    # Compute keyword alignment
+    kw_alignment = _compute_keyword_alignment(job, profile.profile_json)
+
     tailored = TailoredResume(
         user_id=user_id,
         job_id=job_id,
@@ -73,8 +76,9 @@ def create_tailored_docs(
         cover_letter_url=cover_stored,
         change_log={
             "job_title": job.title,
-            "matched_skills": profile.profile_json.get("skills", []),
+            "matched_skills": kw_alignment["matched"],
             "cover_letter_score": cover_letter_score,
+            "keyword_alignment": kw_alignment,
         },
         job_title_snapshot=job.title,
         job_company_snapshot=job.company,
@@ -101,6 +105,27 @@ def _get_profile(
             .limit(1)
         )
     return session.execute(stmt).scalars().first()
+
+
+def _compute_keyword_alignment(job: Job, profile_json: dict) -> dict:
+    """Compute keyword alignment between candidate skills and job description."""
+    from app.services.matching import _tokenize, _top_keywords
+
+    skills = [
+        s.lower() for s in (profile_json.get("skills", []) or []) if isinstance(s, str)
+    ]
+    job_tokens = _tokenize(job.description_text)
+    top_job_kw = _top_keywords(job_tokens)
+
+    matched = [s for s in skills if s in job_tokens]
+    missing = [k for k in top_job_kw if k not in skills][:10]
+    score = round(len(matched) / max(len(top_job_kw), 1) * 100)
+
+    return {
+        "matched": matched[:15],
+        "missing": missing,
+        "alignment_score": min(100, score),
+    }
 
 
 def _build_resume_doc(path: Path, job: Job, profile_json: dict) -> None:
