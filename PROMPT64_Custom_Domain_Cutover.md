@@ -1,5 +1,7 @@
 # PROMPT64_Custom_Domain_Cutover.md
 
+> **IMPORTANT — Revert before starting:** The deploy workflow (`deploy.yml`) and `apps/web/.env.production` currently use the direct Cloud Run `*.run.app` URLs. As part of this cutover, you must change `NEXT_PUBLIC_API_BASE_URL` back to `https://api.winnowcc.ai` and `NEXT_PUBLIC_APP_URL` back to `https://winnowcc.ai` in both files. Do NOT push those changes until the Cloud Run domain mappings and SSL certificates are confirmed `ACTIVE`.
+
 Read CLAUDE.md, ARCHITECTURE.md, PROMPT26_Custom_Domain.md, and tasks/lessons.md (especially lesson #20) before making changes.
 
 ## Purpose
