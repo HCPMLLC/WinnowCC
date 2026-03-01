@@ -8,7 +8,7 @@ import logging
 from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import func, select, text
+from sqlalchemy import extract, func, select, text
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -18,9 +18,13 @@ from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.employer import EmployerJob, EmployerProfile
 from app.models.employer_compliance_log import EmployerComplianceLog
 from app.models.job_run import JobRun
+from app.models.match import Match
 from app.models.recruiter import RecruiterProfile
+from app.models.recruiter_job import RecruiterJob
+from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
+from app.models.tailored_resume import TailoredResume
 from app.models.trust_audit_log import TrustAuditLog
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
@@ -29,11 +33,18 @@ from app.schemas.admin_support import (
     AuditLogResponse,
     BillingIssuesResponse,
     BillingIssueUser,
+    CandidateKpis,
+    EmployerKpis,
     FeatureUsageResponse,
+    KpiDashboardResponse,
     MatchDiagnosticsResponse,
+    MonthlyDataPoint,
+    OverallKpis,
     OverviewResponse,
     QueueMonitorResponse,
+    RecruiterKpis,
     TierOverrideRequest,
+    TrendData,
     UserLookupResult,
 )
 from app.services.auth import require_admin_user
@@ -1062,3 +1073,356 @@ def match_diagnostics(
         "trust_status": trust_record.status if trust_record else None,
         "diagnosis": diagnosis,
     }
+
+
+# ---------------------------------------------------------------------------
+# Endpoint: GET /kpi-dashboard  (founder-only summary dashboard)
+# ---------------------------------------------------------------------------
+
+
+@router.get("/kpi-dashboard", response_model=KpiDashboardResponse)
+def kpi_dashboard(
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+    db: Session = Depends(get_session),  # noqa: B008
+):
+    """Aggregate KPI summary across all three user segments with 12-month trends."""
+    now = datetime.now(UTC)
+    one_year_ago = now - timedelta(days=365)
+
+    # ------------------------------------------------------------------ #
+    # Overall                                                              #
+    # ------------------------------------------------------------------ #
+    role_counts: dict[str, int] = {
+        (k or "unknown"): v
+        for k, v in db.execute(
+            select(User.role, func.count()).group_by(User.role)
+        ).all()
+    }
+    total_users = sum(role_counts.values())
+    new_7d = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=7))
+        )
+        or 0
+    )
+    new_30d = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.created_at >= now - timedelta(days=30))
+        )
+        or 0
+    )
+
+    # ------------------------------------------------------------------ #
+    # Candidates                                                           #
+    # ------------------------------------------------------------------ #
+    cand_by_tier: dict[str, int] = {
+        (t or "free"): c
+        for t, c in db.execute(
+            select(Candidate.plan_tier, func.count()).group_by(Candidate.plan_tier)
+        ).all()
+    }
+    total_cands = sum(cand_by_tier.values()) or 1  # avoid div-zero
+
+    cands_with_resume = (
+        db.scalar(
+            select(func.count(func.distinct(ResumeDocument.user_id))).where(
+                ResumeDocument.deleted_at.is_(None)
+            )
+        )
+        or 0
+    )
+    resume_upload_rate = cands_with_resume / total_cands
+
+    match_count, avg_score_raw = db.execute(
+        select(func.count(), func.avg(Match.match_score)).select_from(Match)
+    ).one()
+    total_matches = match_count or 0
+    avg_match_score = float(avg_score_raw or 0)
+    avg_matches_per_cand = total_matches / total_cands
+
+    funnel: dict[str, int] = {
+        s: c
+        for s, c in db.execute(
+            select(Match.application_status, func.count())
+            .where(Match.application_status.isnot(None))
+            .group_by(Match.application_status)
+        ).all()
+    }
+
+    tailor_total = db.scalar(select(func.count()).select_from(TailoredResume)) or 0
+
+    sieve_users = (
+        db.scalar(
+            select(func.count(func.distinct(SieveConversation.user_id)))
+        )
+        or 0
+    )
+    sieve_rate = sieve_users / total_cands
+
+    cand_onboarded = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.role == "candidate",
+                User.onboarding_completed_at.isnot(None),
+            )
+        )
+        or 0
+    )
+    cand_onboard_rate = cand_onboarded / total_cands
+
+    # ------------------------------------------------------------------ #
+    # Employers                                                            #
+    # ------------------------------------------------------------------ #
+    emp_by_tier: dict[str, int] = {
+        (t or "free"): c
+        for t, c in db.execute(
+            select(EmployerProfile.subscription_tier, func.count()).group_by(
+                EmployerProfile.subscription_tier
+            )
+        ).all()
+    }
+    total_emps = sum(emp_by_tier.values()) or 1
+
+    active_jobs = (
+        db.scalar(
+            select(func.count())
+            .select_from(EmployerJob)
+            .where(EmployerJob.status == "active", EmployerJob.archived.is_(False))
+        )
+        or 0
+    )
+    avg_jobs_per_emp = active_jobs / total_emps
+
+    avg_views_raw, avg_apps_raw = db.execute(
+        select(
+            func.avg(EmployerJob.view_count), func.avg(EmployerJob.application_count)
+        ).select_from(EmployerJob)
+    ).one()
+    avg_views = float(avg_views_raw or 0)
+    avg_apps = float(avg_apps_raw or 0)
+
+    emp_onboarded = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.role == "employer",
+                User.onboarding_completed_at.isnot(None),
+            )
+        )
+        or 0
+    )
+    emp_onboard_rate = emp_onboarded / total_emps
+
+    # ------------------------------------------------------------------ #
+    # Recruiters                                                           #
+    # ------------------------------------------------------------------ #
+    rec_by_tier: dict[str, int] = {
+        (t or "trial"): c
+        for t, c in db.execute(
+            select(RecruiterProfile.subscription_tier, func.count()).group_by(
+                RecruiterProfile.subscription_tier
+            )
+        ).all()
+    }
+    total_recs = sum(rec_by_tier.values()) or 1
+
+    pipeline_total = (
+        db.scalar(select(func.count()).select_from(RecruiterPipelineCandidate)) or 0
+    )
+    avg_pipeline = pipeline_total / total_recs
+
+    stage_dist: dict[str, int] = {
+        s: c
+        for s, c in db.execute(
+            select(RecruiterPipelineCandidate.stage, func.count()).group_by(
+                RecruiterPipelineCandidate.stage
+            )
+        ).all()
+    }
+
+    seat_rows = db.execute(
+        select(RecruiterProfile.seats_purchased, RecruiterProfile.seats_used).where(
+            RecruiterProfile.subscription_tier.in_(["team", "agency"])
+        )
+    ).all()
+    util_vals = [u / p for p, u in seat_rows if p and p > 0]
+    avg_seat_util = sum(util_vals) / len(util_vals) if util_vals else 0.0
+
+    jobs_posted = (
+        db.scalar(
+            select(func.count())
+            .select_from(RecruiterJob)
+            .where(RecruiterJob.status != "draft")
+        )
+        or 0
+    )
+
+    rec_onboarded = (
+        db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(
+                User.role == "recruiter",
+                User.onboarding_completed_at.isnot(None),
+            )
+        )
+        or 0
+    )
+    rec_onboard_rate = rec_onboarded / total_recs
+
+    # ------------------------------------------------------------------ #
+    # Trend data — last 12 months                                         #
+    # ------------------------------------------------------------------ #
+    # Build ordered list of (year, month) tuples for the last 12 months
+    month_tuples: list[tuple[int, int]] = []
+    for i in range(11, -1, -1):
+        d = now - timedelta(days=30 * i)
+        month_tuples.append((d.year, d.month))
+    month_labels = [f"{y}-{m:02d}" for y, m in month_tuples]
+
+    def _signups_by_role(role: str) -> list[int]:
+        rows = db.execute(
+            select(
+                extract("year", User.created_at).label("y"),
+                extract("month", User.created_at).label("m"),
+                func.count(),
+            )
+            .where(User.role == role, User.created_at >= one_year_ago)
+            .group_by("y", "m")
+        ).all()
+        lk = {(int(r.y), int(r.m)): r[2] for r in rows}
+        return [lk.get(t, 0) for t in month_tuples]
+
+    def _paid_candidates() -> list[int]:
+        rows = db.execute(
+            select(
+                extract("year", Candidate.updated_at).label("y"),
+                extract("month", Candidate.updated_at).label("m"),
+                func.count(),
+            )
+            .where(
+                Candidate.plan_tier.notin_(["free"]),
+                Candidate.plan_tier.isnot(None),
+                Candidate.subscription_status == "active",
+                Candidate.updated_at >= one_year_ago,
+            )
+            .group_by("y", "m")
+        ).all()
+        lk = {(int(r.y), int(r.m)): r[2] for r in rows}
+        return [lk.get(t, 0) for t in month_tuples]
+
+    def _paid_employers() -> list[int]:
+        rows = db.execute(
+            select(
+                extract("year", EmployerProfile.current_period_start).label("y"),
+                extract("month", EmployerProfile.current_period_start).label("m"),
+                func.count(),
+            )
+            .where(
+                EmployerProfile.subscription_tier.notin_(["free"]),
+                EmployerProfile.subscription_tier.isnot(None),
+                EmployerProfile.subscription_status == "active",
+                EmployerProfile.current_period_start.isnot(None),
+                EmployerProfile.current_period_start >= one_year_ago,
+            )
+            .group_by("y", "m")
+        ).all()
+        lk = {(int(r.y), int(r.m)): r[2] for r in rows}
+        return [lk.get(t, 0) for t in month_tuples]
+
+    def _paid_recruiters() -> list[int]:
+        rows = db.execute(
+            select(
+                extract("year", RecruiterProfile.updated_at).label("y"),
+                extract("month", RecruiterProfile.updated_at).label("m"),
+                func.count(),
+            )
+            .where(
+                RecruiterProfile.subscription_tier.notin_(["trial"]),
+                RecruiterProfile.subscription_tier.isnot(None),
+                RecruiterProfile.subscription_status == "active",
+                RecruiterProfile.updated_at.isnot(None),
+                RecruiterProfile.updated_at >= one_year_ago,
+            )
+            .group_by("y", "m")
+        ).all()
+        lk = {(int(r.y), int(r.m)): r[2] for r in rows}
+        return [lk.get(t, 0) for t in month_tuples]
+
+    cand_sig = _signups_by_role("candidate")
+    cand_paid = _paid_candidates()
+    emp_sig = _signups_by_role("employer")
+    emp_paid = _paid_employers()
+    rec_sig = _signups_by_role("recruiter")
+    rec_paid = _paid_recruiters()
+
+    def _build_trend(signups: list[int], paid: list[int]) -> TrendData:
+        return TrendData(
+            points=[
+                MonthlyDataPoint(
+                    month=month_labels[i], new_signups=signups[i], new_paid=paid[i]
+                )
+                for i in range(len(month_labels))
+            ]
+        )
+
+    trends = {
+        "candidates": _build_trend(cand_sig, cand_paid),
+        "employers": _build_trend(emp_sig, emp_paid),
+        "recruiters": _build_trend(rec_sig, rec_paid),
+        "total": _build_trend(
+            [cand_sig[i] + emp_sig[i] + rec_sig[i] for i in range(len(month_tuples))],
+            [
+                cand_paid[i] + emp_paid[i] + rec_paid[i]
+                for i in range(len(month_tuples))
+            ],
+        ),
+    }
+
+    return KpiDashboardResponse(
+        overall=OverallKpis(
+            total_users=total_users,
+            users_by_role=role_counts,
+            new_users_7d=new_7d,
+            new_users_30d=new_30d,
+        ),
+        candidates=CandidateKpis(
+            total=total_cands,
+            by_tier=cand_by_tier,
+            resume_upload_rate=round(resume_upload_rate, 4),
+            avg_matches_per_candidate=round(avg_matches_per_cand, 2),
+            avg_match_score=round(avg_match_score, 1),
+            application_funnel=funnel,
+            tailored_resumes_total=tailor_total,
+            sieve_adoption_rate=round(sieve_rate, 4),
+            onboarding_completion_rate=round(cand_onboard_rate, 4),
+        ),
+        employers=EmployerKpis(
+            total=total_emps,
+            by_tier=emp_by_tier,
+            active_jobs=active_jobs,
+            avg_jobs_per_employer=round(avg_jobs_per_emp, 2),
+            avg_views_per_job=round(avg_views, 1),
+            avg_applications_per_job=round(avg_apps, 1),
+            onboarding_completion_rate=round(emp_onboard_rate, 4),
+        ),
+        recruiters=RecruiterKpis(
+            total=total_recs,
+            by_tier=rec_by_tier,
+            total_pipeline_candidates=pipeline_total,
+            avg_pipeline_per_recruiter=round(avg_pipeline, 2),
+            pipeline_stage_distribution=stage_dist,
+            avg_seat_utilization=round(avg_seat_util, 4),
+            total_jobs_posted=jobs_posted,
+            onboarding_completion_rate=round(rec_onboard_rate, 4),
+        ),
+        trends=trends,
+        generated_at=now,
+    )
