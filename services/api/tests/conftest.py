@@ -93,7 +93,10 @@ def engine():
         conn.commit()
 
     yield eng
-    Base.metadata.drop_all(eng)
+    with eng.connect() as conn:
+        conn.execute(text("DROP SCHEMA public CASCADE"))
+        conn.execute(text("CREATE SCHEMA public"))
+        conn.commit()
 
 
 @pytest.fixture(scope="function")
