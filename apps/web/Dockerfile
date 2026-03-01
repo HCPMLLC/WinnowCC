@@ -35,6 +35,12 @@ WORKDIR /app
 
 ENV NODE_ENV=production
 
+# Runtime env vars needed by server-side API routes (not inlined by Next.js at build time)
+ARG NEXT_PUBLIC_APP_URL
+ARG NEXT_PUBLIC_API_BASE_URL
+ENV NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+
 # Copy built assets
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
