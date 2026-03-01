@@ -55,6 +55,7 @@ def _send(payload: dict, description: str) -> None:
     # Inject deliverability headers (don't overwrite caller-supplied ones)
     headers = payload.get("headers", {})
     headers.setdefault("X-Entity-Ref-ID", uuid.uuid4().hex)
+    headers.setdefault("List-Unsubscribe", "<mailto:unsubscribe@winnowcc.ai>")
     payload["headers"] = headers
     try:
         result = resend.Emails.send(payload)
@@ -477,4 +478,98 @@ def send_trust_quarantine_email(
             "html": html_body,
         },
         "trust_quarantine",
+    )
+
+
+def send_payment_failed_email(to_email: str) -> None:
+    """Notify a user that their payment failed (FTC compliance)."""
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping payment failed email to %s",
+            to_email,
+        )
+        return
+
+    settings_url = f"{FRONTEND_URL}/settings"
+    resend.api_key = RESEND_API_KEY
+    _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": "Action required: Your Winnow payment was unsuccessful",
+            "text": (
+                "We were unable to process your most recent Winnow "
+                "subscription payment. Your account has been marked as "
+                "past due.\n\n"
+                "To avoid any interruption in service, please update "
+                "your payment method in Settings.\n\n"
+                f"Update payment: {settings_url}\n\n"
+                "If you believe this is an error, reply to this email "
+                "or contact hello@winnowcc.ai.\n\n"
+                "Thank you,\nThe Winnow Team"
+            ),
+            "html": (
+                "<p>We were unable to process your most recent Winnow "
+                "subscription payment. Your account has been marked as "
+                "past due.</p>"
+                "<p>To avoid any interruption in service, please "
+                "<a href=\"" + settings_url + "\">update your payment "
+                "method in Settings</a>.</p>"
+                "<p>If you believe this is an error, reply to this email "
+                "or contact "
+                "<a href=\"mailto:hello@winnowcc.ai\">hello@winnowcc.ai"
+                "</a>.</p>"
+                "<p>Thank you,<br>The Winnow Team</p>"
+            ),
+        },
+        "payment_failed",
+    )
+
+
+def send_subscription_canceled_email(to_email: str, end_date: str) -> None:
+    """Confirm subscription cancellation (FTC negative option rule)."""
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping cancellation email to %s",
+            to_email,
+        )
+        return
+
+    resend.api_key = RESEND_API_KEY
+    _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": "Your Winnow subscription has been canceled",
+            "text": (
+                "This confirms that your Winnow subscription has been "
+                "canceled.\n\n"
+                f"You will continue to have access to paid features "
+                f"until {end_date}. After that date, your account will "
+                "revert to the free tier.\n\n"
+                "Your data will be retained for 30 days after the end "
+                "of your billing period. You can resubscribe at any "
+                "time from Settings.\n\n"
+                "If you did not request this cancellation, please "
+                "contact hello@winnowcc.ai immediately.\n\n"
+                "Thank you for being a Winnow user,\nThe Winnow Team"
+            ),
+            "html": (
+                "<p>This confirms that your Winnow subscription has "
+                "been canceled.</p>"
+                f"<p>You will continue to have access to paid features "
+                f"until <strong>{end_date}</strong>. After that date, "
+                "your account will revert to the free tier.</p>"
+                "<p>Your data will be retained for 30 days after the "
+                "end of your billing period. You can resubscribe at "
+                "any time from Settings.</p>"
+                "<p>If you did not request this cancellation, please "
+                "contact "
+                "<a href=\"mailto:hello@winnowcc.ai\">hello@winnowcc.ai"
+                "</a> immediately.</p>"
+                "<p>Thank you for being a Winnow user,<br>"
+                "The Winnow Team</p>"
+            ),
+        },
+        "subscription_canceled",
     )

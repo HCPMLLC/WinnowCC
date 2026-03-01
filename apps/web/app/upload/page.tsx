@@ -38,10 +38,18 @@ function UploadPageContent() {
   const [parseStatus, setParseStatus] = useState<string | null>(null);
   const parseProg = useProgress();
 
+  const [showUploadConsent, setShowUploadConsent] = useState(false);
+
   const sleep = (ms: number) =>
     new Promise<void>((resolve) => {
       setTimeout(resolve, ms);
     });
+
+  useEffect(() => {
+    if (!localStorage.getItem("winnow_upload_consent_shown")) {
+      setShowUploadConsent(true);
+    }
+  }, []);
 
   useEffect(() => {
     const guard = async () => {
@@ -179,6 +187,30 @@ function UploadPageContent() {
           Upload a PDF or DOCX. Maximum size is {MAX_UPLOAD_MB}MB.
         </p>
       </header>
+
+      {showUploadConsent && (
+        <div className="flex items-start gap-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+          <p className="flex-1">
+            By uploading your resume, you confirm that the information is accurate
+            and consent to Winnow processing it with AI to extract your profile,
+            match jobs, and generate tailored documents. See our{" "}
+            <a href="/privacy" className="font-semibold underline">
+              Privacy Policy
+            </a>{" "}
+            for details.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              localStorage.setItem("winnow_upload_consent_shown", "1");
+              setShowUploadConsent(false);
+            }}
+            className="shrink-0 rounded-full px-3 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-100"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <form
         onSubmit={handleSubmit}
