@@ -2231,6 +2231,31 @@ def salary_lookup(
     return result
 
 
+@router.get("/time-to-fill/{job_id}")
+def recruiter_time_to_fill(
+    job_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Predict time-to-fill for a recruiter job order."""
+    from app.services.career_intelligence import predict_time_to_fill
+
+    # Verify the recruiter owns this job
+    rj = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if not rj:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    try:
+        return predict_time_to_fill(recruiter_job_id=job_id, db=session)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e)) from e
+
+
 @router.get("/career-trajectory/{candidate_profile_id}")
 def career_trajectory(
     candidate_profile_id: int,
