@@ -387,16 +387,24 @@ def salary_intelligence(
             idx = int(n * pct / 100)
             return int(salaries[min(idx, n - 1)])
 
+        confidence = "high" if n >= 50 else ("medium" if n >= 10 else "low")
         result = {
             "role": role_title,
             "location": location,
             "sample_size": n,
+            "confidence": confidence,
             "currency": "USD",
             "p10": percentile(10),
             "p25": percentile(25),
             "p50": percentile(50),
             "p75": percentile(75),
             "p90": percentile(90),
+            "disclaimer": f"Based on {n} data points. "
+            + (
+                "Salary ranges may not reflect current market conditions."
+                if n < 50
+                else "Sufficient sample for reliable estimates."
+            ),
         }
 
         # Cache with 7-day expiry
@@ -901,7 +909,14 @@ def predict_career_trajectory(
     db.commit()
     db.refresh(record)
 
-    return {"id": record.id, **trajectory_json}
+    return {
+        "id": record.id,
+        **trajectory_json,
+        "disclaimer": (
+            "AI-generated prediction based on career patterns. "
+            "Not a guarantee of future outcomes."
+        ),
+    }
 
 
 # ---------------------------------------------------------------------------

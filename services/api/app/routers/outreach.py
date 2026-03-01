@@ -1,11 +1,15 @@
 """Outreach sequence router — automated multi-step email campaigns for recruiters."""
 
 import logging
+import os
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.outreach_enrollment import OutreachEnrollment
 from app.models.recruiter import RecruiterProfile
 from app.schemas.outreach import (
     EnrollCandidatesRequest,
@@ -32,6 +36,9 @@ router = APIRouter(
     tags=["recruiter-outreach"],
 )
 logger = logging.getLogger(__name__)
+
+# Separate router for public unsubscribe (no auth required)
+unsubscribe_router = APIRouter(tags=["outreach-unsubscribe"])
 
 
 @router.post("", response_model=OutreachSequenceResponse)
@@ -161,3 +168,55 @@ def get_enrollments(
 ):
     """List enrollments for a sequence."""
     return list_enrollments(db, profile, sequence_id, status_filter=status)
+
+
+# ---------------------------------------------------------------------------
+# Public unsubscribe endpoint (no auth required — CAN-SPAM compliance)
+# ---------------------------------------------------------------------------
+
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/")
+
+
+@unsubscribe_router.get(
+    "/api/outreach/{enrollment_id}/unsubscribe/{token}",
+    response_class=HTMLResponse,
+)
+def unsubscribe_from_outreach(
+    enrollment_id: int,
+    token: str,
+    db: Session = Depends(get_session),
+):
+    """One-click unsubscribe from an outreach sequence (CAN-SPAM)."""
+    enrollment = db.execute(
+        select(OutreachEnrollment).where(
+            OutreachEnrollment.id == enrollment_id,
+            OutreachEnrollment.unsubscribe_token == token,
+        )
+    ).scalar_one_or_none()
+
+    if enrollment is None:
+        return HTMLResponse(
+            content=(
+                "<html><body style='font-family:sans-serif;padding:40px;'>"
+                "<h2>Invalid or expired link</h2>"
+                "<p>This unsubscribe link is no longer valid.</p>"
+                "</body></html>"
+            ),
+            status_code=404,
+        )
+
+    if enrollment.status not in ("unenrolled", "completed"):
+        enrollment.status = "unenrolled"
+        db.commit()
+
+    return HTMLResponse(
+        content=(
+            "<html><body style='font-family:sans-serif;padding:40px;"
+            "text-align:center;'>"
+            "<h2>You have been unsubscribed</h2>"
+            "<p>You will no longer receive emails from this sequence.</p>"
+            "<p style='margin-top:24px;color:#666;font-size:14px;'>"
+            "Powered by Winnow</p>"
+            "</body></html>"
+        ),
+    )

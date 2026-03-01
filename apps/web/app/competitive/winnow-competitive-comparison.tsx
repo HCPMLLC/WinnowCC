@@ -162,8 +162,8 @@ const CATEGORIES = [
         monster: "none", glassdoor: "none", scalejobs: "none",
       },
       {
-        name: "No-hallucination guarantee",
-        tooltip: "System will not invent employers, titles, degrees, dates, or certifications not in your profile",
+        name: "Hallucination safeguards",
+        tooltip: "System is designed not to invent employers, titles, degrees, dates, or certifications not in your profile — always review before submitting",
         winnow: "full", linkedin: "none", indeed: "none", ziprecruiter: "none",
         monster: "none", glassdoor: "none", scalejobs: "none",
       },
@@ -947,12 +947,16 @@ export default function CompetitiveComparison() {
           }}
         >
           <strong style={{ color: "#64748b" }}>Methodology:</strong> Feature data reflects
-          publicly available product capabilities as of February 2026. &quot;Partial&quot; indicates
-          limited, basic, or opt-in-only support. Winnow features based on current
+          publicly available product capabilities as of February 2026 (last verified:
+          February 28, 2026). <strong>Definitions:</strong> &quot;Full&quot; = feature is generally
+          available and included in at least one paid tier. &quot;Partial&quot; = feature exists
+          but with significant limitations, requires add-ons, or is in beta.
+          &quot;None&quot; = feature is not offered. Winnow features based on current
           implementation spec. Competitor features verified via public documentation,
           Chrome Web Store listings, and third-party reviews. Scale.jobs represents the
-          human-assisted mass application category (MJASS). This comparison should
-          be periodically re-verified as competitor features evolve.
+          human-assisted mass application category (MJASS).
+          <strong> Feature availability may have changed since our last review.
+          Verify directly with each vendor before making purchasing decisions.</strong>
         </div>
       </div>
     </div>

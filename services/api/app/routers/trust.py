@@ -27,7 +27,10 @@ def get_my_trust_status(
             user_message="Upload a resume to begin verification.",
         )
     return TrustStatusResponse(
-        trust_status=trust.status, score=trust.score, user_message=trust.user_message
+        trust_status=trust.status,
+        score=trust.score,
+        user_message=trust.user_message,
+        reasons=trust.reasons or [],
     )
 
 

@@ -1,5 +1,6 @@
 """Outreach enrollment model — tracks a candidate's progress through a sequence."""
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import (
@@ -14,6 +15,10 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
+
+
+def _generate_token() -> str:
+    return uuid.uuid4().hex
 
 
 class OutreachEnrollment(Base):
@@ -47,6 +52,9 @@ class OutreachEnrollment(Base):
 
     current_step: Mapped[int] = mapped_column(Integer, server_default="0")
     status: Mapped[str] = mapped_column(String(20), server_default="active")
+    unsubscribe_token: Mapped[str] = mapped_column(
+        String(64), default=_generate_token, nullable=False
+    )
     next_send_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

@@ -15,8 +15,11 @@ from sqlalchemy.orm import Session
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.candidate_trust import CandidateTrust
+from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.match import Match
+from app.models.recruiter_activity import RecruiterActivity
 from app.models.resume_document import ResumeDocument
+from app.models.sieve_conversation import SieveConversation
 from app.models.tailored_resume import TailoredResume
 from app.models.trust_audit_log import TrustAuditLog
 from app.models.usage_counter import UsageCounter
@@ -265,6 +268,84 @@ def export_user_data(user_id: int, db: Session) -> io.BytesIO:
                             "tailor_requests": c.tailor_requests,
                         }
                         for c in counters
+                    ]
+                ),
+            )
+
+        # 9. Sieve conversations (AI chat history)
+        sieve_msgs = (
+            db.execute(
+                select(SieveConversation)
+                .where(SieveConversation.user_id == user_id)
+                .order_by(SieveConversation.created_at)
+            )
+            .scalars()
+            .all()
+        )
+        if sieve_msgs:
+            zf.writestr(
+                f"{folder}/sieve_conversations.json",
+                _dump(
+                    [
+                        {
+                            "role": m.role,
+                            "content": m.content,
+                            "trigger_id": m.trigger_id,
+                            "created_at": m.created_at,
+                        }
+                        for m in sieve_msgs
+                    ]
+                ),
+            )
+
+        # 10. Recruiter activity log (if user has recruiter activities)
+        recruiter_activities = (
+            db.execute(
+                select(RecruiterActivity)
+                .where(RecruiterActivity.user_id == user_id)
+                .order_by(RecruiterActivity.created_at.desc())
+            )
+            .scalars()
+            .all()
+        )
+        if recruiter_activities:
+            zf.writestr(
+                f"{folder}/recruiter_activities.json",
+                _dump(
+                    [
+                        {
+                            "activity_type": a.activity_type,
+                            "subject": a.subject,
+                            "body": a.body,
+                            "metadata": a.activity_metadata,
+                            "created_at": a.created_at,
+                        }
+                        for a in recruiter_activities
+                    ]
+                ),
+            )
+
+        # 11. Daily usage counters
+        daily_counters = (
+            db.execute(
+                select(DailyUsageCounter)
+                .where(DailyUsageCounter.user_id == user_id)
+                .order_by(DailyUsageCounter.date.desc())
+            )
+            .scalars()
+            .all()
+        )
+        if daily_counters:
+            zf.writestr(
+                f"{folder}/daily_usage.json",
+                _dump(
+                    [
+                        {
+                            "counter_name": c.counter_name,
+                            "date": str(c.date),
+                            "count": c.count,
+                        }
+                        for c in daily_counters
                     ]
                 ),
             )

@@ -139,6 +139,23 @@ def main():
     )
     logger.info(f"Scheduled job purge registered: {purge_job.id}")
 
+    # Schedule hard-delete of expired soft-deleted files (daily at 5am UTC)
+    for job in scheduler.get_jobs():
+        if (
+            hasattr(job, "meta")
+            and job.meta.get("scheduled_job_type") == "hard_delete"
+        ):
+            scheduler.cancel(job)
+            logger.info(f"Cancelled existing hard-delete job: {job.id}")
+
+    hard_delete_job = scheduler.cron(
+        cron_string="0 5 * * *",
+        func="app.services.scheduled_jobs:scheduled_hard_delete_expired",
+        queue_name="default",
+        meta={"scheduled_job_type": "hard_delete"},
+    )
+    logger.info(f"Scheduled hard-delete registered: {hard_delete_job.id}")
+
     logger.info("Scheduler running. Press Ctrl+C to stop.")
 
     # Run the scheduler

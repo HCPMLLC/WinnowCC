@@ -96,10 +96,11 @@ export default function CandidateDisclaimer() {
                   <span className="text-emerald-600 mt-0.5">✓</span>
                   <span>
                     <strong>Grounded resume tailoring.</strong> Every tailored resume
-                    is built from your real experience. Winnow will never invent
-                    employers, titles, degrees, dates, or certifications that aren&apos;t
-                    in your profile. Every change includes a source-grounded audit
-                    trail.
+                    is built from your real experience. Winnow is designed not to
+                    invent employers, titles, degrees, dates, or certifications
+                    that aren&apos;t in your profile. Every change includes a
+                    source-grounded audit trail. Always review AI-generated
+                    documents before submitting.
                   </span>
                 </li>
                 <li className="flex items-start gap-2">

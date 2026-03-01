@@ -7,6 +7,7 @@ class TrustStatusResponse(BaseModel):
     trust_status: str
     score: int
     user_message: str
+    reasons: list[dict] = []
 
 
 class TrustReviewRequestResponse(BaseModel):

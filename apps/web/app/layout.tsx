@@ -1,5 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
+import CookieConsent from "./components/CookieConsent";
 import Navbar from "./components/Navbar";
 import AuthenticatedSieve from "./components/sieve/AuthenticatedSieve";
 import CandidateDisclaimer from "./components/CandidateDisclaimer";
@@ -30,6 +31,7 @@ export default function RootLayout({
         <Navbar />
         {children}
         <CandidateDisclaimer />
+        <CookieConsent />
         <AuthenticatedSieve />
       </body>
     </html>
