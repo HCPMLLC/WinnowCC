@@ -147,7 +147,7 @@ function SearchableDropdown<T>({
 
 export default function RecruiterIntelligence() {
   const [activeTab, setActiveTab] = useState<
-    "salary" | "brief" | "trajectory"
+    "salary" | "brief" | "trajectory" | "ttf"
   >("salary");
   const [usage, setUsage] = useState<UsageInfo | null>(null);
 
@@ -182,6 +182,12 @@ export default function RecruiterIntelligence() {
   const [trajResult, setTrajResult] = useState<Record<string, any> | null>(null);
   const [trajLoading, setTrajLoading] = useState(false);
   const [trajError, setTrajError] = useState("");
+
+  // Time-to-Fill state
+  const [ttfJobId, setTtfJobId] = useState("");
+  const [ttfResult, setTtfResult] = useState<Record<string, any> | null>(null);
+  const [ttfLoading, setTtfLoading] = useState(false);
+  const [ttfError, setTtfError] = useState("");
 
   // Fetch candidates (sourced + pipeline) and jobs on mount
   useEffect(() => {
@@ -415,10 +421,35 @@ export default function RecruiterIntelligence() {
     }
   }
 
+  async function predictTimeFill() {
+    if (!ttfJobId) return;
+    setTtfLoading(true);
+    setTtfError("");
+    setTtfResult(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/recruiter/time-to-fill/${ttfJobId}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `Error ${res.status}`);
+      }
+      setTtfResult(await res.json());
+    } catch (e: unknown) {
+      setTtfError(
+        e instanceof Error ? e.message : "Failed to predict time-to-fill",
+      );
+    } finally {
+      setTtfLoading(false);
+    }
+  }
+
   const tabs = [
     { key: "salary" as const, label: "Salary Intelligence" },
     { key: "brief" as const, label: "Candidate Briefs" },
     { key: "trajectory" as const, label: "Career Trajectory" },
+    { key: "ttf" as const, label: "Time-to-Fill" },
   ];
 
   function fmt(n: number | undefined) {
@@ -1038,6 +1069,195 @@ export default function RecruiterIntelligence() {
                   </div>
                 </div>
               )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Time-to-Fill */}
+      {activeTab === "ttf" && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="text-lg font-semibold text-slate-900">
+            Time-to-Fill Prediction
+          </h2>
+          <p className="mt-1 text-sm text-slate-500">
+            AI-powered estimate of days to fill a role based on market
+            data and job attributes
+          </p>
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="mb-1 block text-xs font-medium uppercase tracking-wide text-slate-500">
+                Job Order
+              </label>
+              <select
+                value={ttfJobId}
+                onChange={(e) => setTtfJobId(e.target.value)}
+                className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">
+                  {jobs.length === 0
+                    ? "No jobs created"
+                    : "Select a job order..."}
+                </option>
+                {jobs.map((j) => (
+                  <option key={j.id} value={j.id}>
+                    {j.title}
+                    {j.client_company_name
+                      ? ` — ${j.client_company_name}`
+                      : ""}{" "}
+                    ({j.status})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <button
+              onClick={predictTimeFill}
+              disabled={ttfLoading || !ttfJobId}
+              className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {ttfLoading ? "Predicting..." : "Predict Time-to-Fill"}
+            </button>
+          </div>
+
+          {ttfError && (
+            <div className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700">
+              {ttfError}
+            </div>
+          )}
+
+          {ttfResult && !ttfError && (
+            <div className="mt-4 space-y-4">
+              <div className="rounded-lg bg-blue-50 p-4">
+                <div className="text-3xl font-bold text-blue-700">
+                  {String(ttfResult.predicted_days)} days
+                </div>
+                <div className="mt-1 text-xs text-blue-600">
+                  Confidence:{" "}
+                  {String(
+                    Math.round(Number(ttfResult.confidence) * 100),
+                  )}
+                  %
+                </div>
+                {ttfResult.factors?.method && (
+                  <span
+                    className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                      ttfResult.factors.method === "hybrid"
+                        ? "bg-green-100 text-green-800"
+                        : "bg-yellow-100 text-yellow-800"
+                    }`}
+                  >
+                    {ttfResult.factors.method === "hybrid"
+                      ? "Data-driven"
+                      : "Estimated"}
+                  </span>
+                )}
+              </div>
+
+              {/* Statistical base */}
+              {ttfResult.factors?.statistical_base && (
+                <div className="rounded-lg border border-slate-200 p-4">
+                  <div className="text-xs font-semibold uppercase text-slate-500">
+                    Market Data
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 gap-3 text-center">
+                    <div>
+                      <div className="text-lg font-bold text-slate-700">
+                        {String(
+                          ttfResult.factors.statistical_base.p25_days,
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Fast (P25)
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-blue-700">
+                        {String(
+                          ttfResult.factors.statistical_base
+                            .median_days,
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Median
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-slate-700">
+                        {String(
+                          ttfResult.factors.statistical_base.p75_days,
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-400">
+                        Slow (P75)
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-2 text-xs text-slate-400">
+                    Based on{" "}
+                    {String(
+                      ttfResult.factors.statistical_base.sample_size,
+                    )}{" "}
+                    similar roles
+                  </div>
+                </div>
+              )}
+
+              {/* LLM signals */}
+              {ttfResult.factors?.llm_adjustment &&
+                Array.isArray(
+                  ttfResult.factors.llm_adjustment.signals,
+                ) &&
+                ttfResult.factors.llm_adjustment.signals.length >
+                  0 && (
+                  <div className="rounded-lg border border-slate-200 p-4">
+                    <div className="text-xs font-semibold uppercase text-slate-500">
+                      AI Analysis
+                    </div>
+                    {ttfResult.factors.llm_adjustment.reasoning && (
+                      <p className="mt-1 text-sm text-slate-600">
+                        {String(
+                          ttfResult.factors.llm_adjustment.reasoning,
+                        )}
+                      </p>
+                    )}
+                    <div className="mt-2 space-y-1">
+                      {(
+                        ttfResult.factors.llm_adjustment.signals as {
+                          signal: string;
+                          impact: string;
+                          detail?: string;
+                        }[]
+                      ).map(
+                        (
+                          s: {
+                            signal: string;
+                            impact: string;
+                            detail?: string;
+                          },
+                          i: number,
+                        ) => (
+                          <div
+                            key={i}
+                            className="flex justify-between text-xs"
+                          >
+                            <span className="text-slate-600">
+                              {s.detail || s.signal}
+                            </span>
+                            <span
+                              className={
+                                s.impact.startsWith("-")
+                                  ? "text-green-600"
+                                  : "text-red-600"
+                              }
+                            >
+                              {s.impact}
+                            </span>
+                          </div>
+                        ),
+                      )}
+                    </div>
+                  </div>
+                )}
             </div>
           )}
         </div>

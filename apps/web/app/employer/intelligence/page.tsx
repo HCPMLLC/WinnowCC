@@ -689,35 +689,65 @@ export default function IntelligenceDashboard() {
                   {String(ttfResult.error)}
                 </div>
               ) : (
-                <div className="rounded-lg bg-blue-50 p-4">
-                  <div className="text-3xl font-bold text-blue-700">
-                    {String(ttfResult.predicted_days)} days
+                <div className="space-y-3">
+                  <div className="rounded-lg bg-blue-50 p-4">
+                    <div className="text-3xl font-bold text-blue-700">
+                      {String(ttfResult.predicted_days)} days
+                    </div>
+                    <div className="mt-1 text-xs text-blue-600">
+                      Confidence: {String(Math.round(Number(ttfResult.confidence) * 100))}%
+                    </div>
+                    {ttfResult.factors?.method && (
+                      <span className={`mt-2 inline-block rounded-full px-2 py-0.5 text-xs font-medium ${
+                        ttfResult.factors.method === "hybrid"
+                          ? "bg-green-100 text-green-800"
+                          : "bg-yellow-100 text-yellow-800"
+                      }`}>
+                        {ttfResult.factors.method === "hybrid" ? "Data-driven" : "Estimated"}
+                      </span>
+                    )}
                   </div>
-                  <div className="mt-1 text-xs text-blue-600">
-                    Confidence: {String(Math.round(Number(ttfResult.confidence) * 100))}%
-                  </div>
-                  {ttfResult.factors && (
-                    <div className="mt-3 space-y-1">
-                      <div className="text-xs font-semibold text-slate-500">
-                        FACTORS
-                      </div>
-                      {Object.entries(
-                        ttfResult.factors as Record<string, number>
-                      ).map(([key, val]) => (
-                        <div key={key} className="flex justify-between text-xs">
-                          <span className="text-slate-600">
-                            {key.replace(/_/g, " ")}
-                          </span>
-                          <span
-                            className={
-                              val < 0 ? "text-green-600" : "text-red-600"
-                            }
-                          >
-                            {val > 0 ? "+" : ""}
-                            {Math.round(val * 100)}%
-                          </span>
+                  {ttfResult.factors?.statistical_base && (
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs font-semibold uppercase text-slate-500">Market Data</div>
+                      <div className="mt-2 grid grid-cols-3 gap-2 text-center">
+                        <div>
+                          <div className="text-sm font-bold text-slate-700">{String(ttfResult.factors.statistical_base.p25_days)}</div>
+                          <div className="text-xs text-slate-400">Fast (P25)</div>
                         </div>
-                      ))}
+                        <div>
+                          <div className="text-sm font-bold text-blue-700">{String(ttfResult.factors.statistical_base.median_days)}</div>
+                          <div className="text-xs text-slate-400">Median</div>
+                        </div>
+                        <div>
+                          <div className="text-sm font-bold text-slate-700">{String(ttfResult.factors.statistical_base.p75_days)}</div>
+                          <div className="text-xs text-slate-400">Slow (P75)</div>
+                        </div>
+                      </div>
+                      <div className="mt-1 text-xs text-slate-400">
+                        Based on {String(ttfResult.factors.statistical_base.sample_size)} similar roles
+                      </div>
+                    </div>
+                  )}
+                  {ttfResult.factors?.llm_adjustment &&
+                    Array.isArray(ttfResult.factors.llm_adjustment.signals) &&
+                    ttfResult.factors.llm_adjustment.signals.length > 0 && (
+                    <div className="rounded-lg border border-slate-200 p-3">
+                      <div className="text-xs font-semibold uppercase text-slate-500">AI Analysis</div>
+                      {ttfResult.factors.llm_adjustment.reasoning && (
+                        <p className="mt-1 text-xs text-slate-600">{String(ttfResult.factors.llm_adjustment.reasoning)}</p>
+                      )}
+                      <div className="mt-2 space-y-1">
+                        {(ttfResult.factors.llm_adjustment.signals as {signal: string; impact: string; detail?: string}[]).map(
+                          (s: {signal: string; impact: string; detail?: string}, i: number) => (
+                          <div key={i} className="flex justify-between text-xs">
+                            <span className="text-slate-600">{s.detail || s.signal}</span>
+                            <span className={s.impact.startsWith("-") ? "text-green-600" : "text-red-600"}>
+                              {s.impact}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>

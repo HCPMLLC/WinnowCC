@@ -11,6 +11,7 @@ Capabilities:
 
 import json
 import logging
+import math
 import os
 import re
 import statistics
@@ -510,67 +511,320 @@ def salary_intelligence(
 
 
 # ---------------------------------------------------------------------------
-# 4. Time-to-fill prediction
+# 4. Time-to-fill prediction (hybrid: empirical stats + LLM adjustment)
 # ---------------------------------------------------------------------------
-def predict_time_to_fill(
+
+_HAIKU_MODEL = "claude-haiku-4-5-20251001"
+
+_TTF_LLM_SYSTEM = """\
+You are a hiring‐analytics expert. Given a job posting, estimate how its \
+specific attributes will affect time-to-fill RELATIVE to the statistical \
+median for similar roles.
+
+Return ONLY valid JSON (no markdown, no commentary):
+{
+  "adjustment_factor": <float 0.70 to 1.50>,
+  "reasoning": "<1-2 sentence summary>",
+  "signals": [
+    {"signal": "<keyword>", "impact": "<e.g. +15%>", "detail": "<brief>"}
+  ]
+}
+
+Signals to look for:
+- urgency language ("ASAP", "backfill", "immediate") → faster (factor < 1)
+- niche/rare skill combinations → slower (factor > 1)
+- security clearance, visa sponsorship → slower
+- strong employer brand or "FAANG-tier" → faster
+- location constraints (rural, no remote option) → slower
+- excessive mandatory requirements (10+) → slower
+- competitive compensation explicitly stated → faster
+- contract/temp vs permanent → faster for short-term
+
+Be conservative: most jobs should be 0.90–1.15. Only use extremes for \
+truly unusual postings."""
+
+
+def _llm_ttf_adjustment(
+    title: str,
+    description: str,
+    segment_median: int,
+    employment_type: str,
     employer_job_id: int,
     db: Session,
 ) -> dict:
-    """Predict days to fill an employer job based on attributes."""
-    job = db.execute(
-        select(EmployerJob).where(EmployerJob.id == employer_job_id)
+    """Call Claude Haiku to analyse the job posting for TTF adjustment signals.
+
+    Returns ``{"adjustment_factor": float, "reasoning": str, "signals": list}``.
+    Falls back to ``{"adjustment_factor": 1.0}`` on any failure.
+    """
+    neutral = {
+        "adjustment_factor": 1.0,
+        "reasoning": "LLM analysis unavailable",
+        "signals": [],
+    }
+
+    if not os.getenv("ANTHROPIC_API_KEY"):
+        return neutral
+
+    # Check cache (keyed by employer_job_id, 1-day TTL)
+    cache_key = f"ej_{employer_job_id}"
+    cached = db.execute(
+        select(MarketIntel).where(
+            MarketIntel.scope_type == "ttf_llm",
+            MarketIntel.scope_key == cache_key,
+            MarketIntel.expires_at > datetime.now(UTC),
+        )
     ).scalar_one_or_none()
-    if not job:
-        raise ValueError("Job not found")
+    if cached:
+        return cached.data_json
 
-    # Base estimate by employment type
-    base_days = {
-        "full-time": 42,
-        "contract": 21,
-        "part-time": 28,
-        "internship": 14,
-    }.get((job.employment_type or "full-time").lower(), 42)
+    # Truncate description to stay within token budget
+    desc_truncated = (description or "")[:3000]
+    user_msg = (
+        f"Job title: {title}\n"
+        f"Employment type: {employment_type}\n"
+        f"Statistical median for similar roles: {segment_median} days\n\n"
+        f"Job description:\n{desc_truncated}"
+    )
 
-    factors = {}
+    try:
+        client = _get_client()
+        resp = client.messages.create(
+            model=_HAIKU_MODEL,
+            max_tokens=256,
+            temperature=0.0,
+            system=_TTF_LLM_SYSTEM,
+            messages=[{"role": "user", "content": user_msg}],
+        )
+        raw = _extract_json(resp.content[0].text)
+        result = json.loads(raw)
 
-    # Remote policy adjustment
-    if job.remote_policy and "remote" in job.remote_policy.lower():
-        base_days = int(base_days * 0.85)
-        factors["remote_friendly"] = -0.15
+        # Clamp factor to safe range
+        factor = max(0.70, min(1.50, float(result.get("adjustment_factor", 1.0))))
+        result["adjustment_factor"] = factor
+    except Exception:
+        logger.warning(
+            "LLM TTF adjustment failed for job %d",
+            employer_job_id,
+            exc_info=True,
+        )
+        return neutral
 
-    # Salary competitiveness
-    if job.salary_max and job.salary_max > 150000:
-        base_days = int(base_days * 0.9)
-        factors["high_compensation"] = -0.1
+    # Cache result
+    try:
+        mi = MarketIntel(
+            scope_type="ttf_llm",
+            scope_key=cache_key,
+            data_json=result,
+            sample_size=1,
+            expires_at=datetime.now(UTC) + timedelta(days=1),
+        )
+        db.merge(mi)
+        db.flush()
+    except Exception:
+        logger.warning("Failed to cache LLM TTF adjustment", exc_info=True)
 
-    # Seniority signal from title
-    title_lower = (job.title or "").lower()
-    if any(w in title_lower for w in ["senior", "lead", "principal", "director"]):
-        base_days = int(base_days * 1.25)
-        factors["senior_role"] = 0.25
-    elif any(w in title_lower for w in ["junior", "entry", "intern"]):
-        base_days = int(base_days * 0.75)
-        factors["entry_level"] = -0.25
+    return result
 
-    confidence = 0.65  # Heuristic-based confidence
+
+def _compute_confidence(sample_size: int) -> float:
+    """Compute prediction confidence from sample size (logarithmic curve)."""
+    if sample_size < _MIN_SEGMENT_SAMPLE:
+        return 0.40
+    return min(0.90, 0.40 + 0.50 * (1.0 - 1.0 / math.sqrt(sample_size)))
+
+
+_MIN_SEGMENT_SAMPLE = 20
+
+
+def predict_time_to_fill(
+    employer_job_id: int | None = None,
+    db: Session | None = None,
+    *,
+    recruiter_job_id: int | None = None,
+) -> dict:
+    """Predict days to fill a job.
+
+    Accepts either ``employer_job_id`` or ``recruiter_job_id`` (not both).
+
+    Hybrid approach:
+    1. Statistical base — segment-based empirical medians from scraped jobs.
+    2. LLM adjustment — Claude analyses job description for niche signals.
+    3. Heuristic fallback — if no historical data exists at all.
+    """
+    from app.services.market_intelligence import compute_ttf_segment_stats
+
+    if not employer_job_id and not recruiter_job_id:
+        raise ValueError("Provide employer_job_id or recruiter_job_id")
+
+    # --- Load job record (employer or recruiter) ---
+    if recruiter_job_id:
+        from app.models.recruiter_job import RecruiterJob
+
+        job = db.execute(
+            select(RecruiterJob).where(RecruiterJob.id == recruiter_job_id)
+        ).scalar_one_or_none()
+        if not job:
+            raise ValueError("Recruiter job not found")
+        job_source = "recruiter"
+        # Use linked employer_job_id if available for the prediction record
+        ej_id = getattr(job, "employer_job_id", None)
+    else:
+        job = db.execute(
+            select(EmployerJob).where(EmployerJob.id == employer_job_id)
+        ).scalar_one_or_none()
+        if not job:
+            raise ValueError("Job not found")
+        job_source = "employer"
+        ej_id = employer_job_id
+
+    employment_type = (job.employment_type or "full-time").lower()
+    title = job.title or ""
+
+    # Try to get richer features from linked scraped job's parsed details
+    seniority = None
+    work_mode = None
+    industry = None
+
+    # Check for linked scraped job (employer jobs or recruiter jobs)
+    linked_ej_id = (
+        employer_job_id
+        if job_source == "employer"
+        else getattr(job, "employer_job_id", None)
+    )
+    if linked_ej_id:
+        linked = db.execute(
+            select(Job).where(Job.employer_job_id == linked_ej_id)
+        ).scalar_one_or_none()
+        if linked:
+            from app.models.job_parsed_detail import JobParsedDetail
+
+            jpd = db.execute(
+                select(JobParsedDetail).where(JobParsedDetail.job_id == linked.id)
+            ).scalar_one_or_none()
+            if jpd:
+                seniority = jpd.seniority_level
+                work_mode = jpd.work_mode
+                industry = jpd.inferred_industry
+
+    # Infer seniority from title if not available from parsed details
+    if not seniority:
+        seniority = _infer_seniority(title)
+
+    # Infer work_mode from remote_policy if not available
+    if not work_mode and job.remote_policy:
+        rp = job.remote_policy.lower()
+        if "remote" in rp:
+            work_mode = "remote"
+        elif "hybrid" in rp:
+            work_mode = "hybrid"
+        else:
+            work_mode = "onsite"
+
+    # Unique key for LLM cache (works for both job types)
+    llm_cache_id = ej_id or -(recruiter_job_id or 0)
+
+    # --- Step 1: Statistical base ---
+    segment = compute_ttf_segment_stats(
+        employment_type=employment_type,
+        seniority_level=seniority,
+        work_mode=work_mode,
+        industry=industry,
+        session=db,
+    )
+
+    if segment:
+        base_days = segment["median_days"]
+        confidence = _compute_confidence(segment["sample_size"])
+        method = "hybrid"
+
+        # --- Step 2: LLM adjustment ---
+        description = getattr(job, "description", "") or ""
+        llm = _llm_ttf_adjustment(
+            title=title,
+            description=description,
+            segment_median=base_days,
+            employment_type=employment_type,
+            employer_job_id=llm_cache_id,
+            db=db,
+        )
+        adjustment = llm.get("adjustment_factor", 1.0)
+        predicted_days = max(3, round(base_days * adjustment))
+
+        factors = {
+            "method": method,
+            "statistical_base": {
+                "tier": segment["tier_used"],
+                "sample_size": segment["sample_size"],
+                "median_days": segment["median_days"],
+                "p25_days": segment["p25_days"],
+                "p75_days": segment["p75_days"],
+            },
+            "llm_adjustment": {
+                "factor": adjustment,
+                "reasoning": llm.get("reasoning", ""),
+                "signals": llm.get("signals", []),
+            },
+            "segment_key": (f"{employment_type}|{seniority}|{work_mode}|{industry}"),
+        }
+    else:
+        # --- Step 3: Heuristic fallback ---
+        base_days = {
+            "full-time": 42,
+            "contract": 21,
+            "part-time": 28,
+            "internship": 14,
+        }.get(employment_type, 42)
+
+        if job.remote_policy and "remote" in job.remote_policy.lower():
+            base_days = int(base_days * 0.85)
+        t = title.lower()
+        if any(w in t for w in ("senior", "lead", "principal", "director")):
+            base_days = int(base_days * 1.25)
+        elif any(w in t for w in ("junior", "entry", "intern")):
+            base_days = int(base_days * 0.75)
+
+        predicted_days = base_days
+        confidence = 0.40
+        method = "heuristic_fallback"
+        factors = {
+            "method": method,
+            "note": "Insufficient historical data for segment matching",
+        }
+
+    # Track recruiter_job_id in factors when no employer_job_id FK
+    if recruiter_job_id:
+        factors["recruiter_job_id"] = recruiter_job_id
 
     prediction = TimeFillPrediction(
-        employer_job_id=employer_job_id,
-        predicted_days=base_days,
+        employer_job_id=ej_id or 0,
+        predicted_days=predicted_days,
         confidence=confidence,
         factors_json=factors,
     )
-    db.add(prediction)
-    db.commit()
-    db.refresh(prediction)
+    # Only persist if we have a valid employer_job_id FK
+    if ej_id:
+        db.add(prediction)
+        db.commit()
+        db.refresh(prediction)
+        pred_id = prediction.id
+    else:
+        # Recruiter job without employer link — don't persist
+        # (avoids FK constraint on employer_jobs.id)
+        pred_id = None
 
-    return {
-        "id": prediction.id,
-        "employer_job_id": employer_job_id,
-        "predicted_days": base_days,
-        "confidence": float(confidence),
+    result = {
+        "predicted_days": predicted_days,
+        "confidence": round(float(confidence), 2),
         "factors": factors,
     }
+    if pred_id:
+        result["id"] = pred_id
+    if employer_job_id:
+        result["employer_job_id"] = employer_job_id
+    if recruiter_job_id:
+        result["recruiter_job_id"] = recruiter_job_id
+    return result
 
 
 # ---------------------------------------------------------------------------
