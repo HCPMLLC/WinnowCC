@@ -152,9 +152,7 @@ def _build_ingest_query_from_profile(profile_json: dict) -> dict:
     search = search_terms[0] if search_terms else ""
     if not search:
         experience = (
-            profile_json.get("experience", [])
-            if isinstance(profile_json, dict)
-            else []
+            profile_json.get("experience", []) if isinstance(profile_json, dict) else []
         )
         if experience and isinstance(experience[0], dict):
             search = experience[0].get("title", "")

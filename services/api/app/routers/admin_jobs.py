@@ -63,6 +63,7 @@ def _get_jsearch_usage() -> dict:
 
     return result
 
+
 _ADMIN_SORT_COLUMNS = {
     "title": Job.title,
     "company": Job.company,

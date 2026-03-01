@@ -189,9 +189,7 @@ def _do_send_otp(
         # Fall back to email when SMS fails
         if method == "sms" and fallback_email:
             try:
-                logger.info(
-                    "Falling back to email OTP for user %s", user_id
-                )
+                logger.info("Falling back to email OTP for user %s", user_id)
                 send_mfa_otp_email(fallback_email, code)
             except Exception:
                 logger.error(
