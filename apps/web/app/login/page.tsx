@@ -280,7 +280,8 @@ function LoginForm() {
         `client_id=${auth0ClientId}&` +
         `redirect_uri=${encodeURIComponent(callbackUrl)}&` +
         `scope=openid%20profile%20email&` +
-        `connection=${provider}`;
+        `connection=${provider}` +
+        (provider === "windowslive" ? `&prompt=select_account` : "");
       window.location.href = authUrl;
     } else {
       setErr(`Social login with ${provider} coming soon. Please use email/password.`);
