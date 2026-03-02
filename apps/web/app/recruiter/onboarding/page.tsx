@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { ProgressRing } from "../../components/ProgressRing";
+import { parseApiError } from "../../lib/api-error";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -59,7 +60,7 @@ export default function RecruiterOnboarding() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.detail || "Failed to create profile");
+        throw new Error(parseApiError(data, "Failed to create profile"));
       }
 
       router.push("/recruiter/dashboard");

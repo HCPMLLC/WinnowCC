@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import IntroductionRequestModal from "../../components/IntroductionRequestModal";
+import { parseApiError } from "../../lib/api-error";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -245,7 +246,7 @@ export default function RecruiterPipeline() {
         setSelected(new Set());
         setTimeout(() => setShowEnrollModal(false), 2000);
       } else {
-        setEnrollResult(data.detail || "Failed to enroll");
+        setEnrollResult(parseApiError(data, "Failed to enroll"));
       }
     } catch {
       setEnrollResult("Network error");
@@ -276,7 +277,7 @@ export default function RecruiterPipeline() {
         fetchPipeline();
       } else {
         const data = await res.json();
-        setError(data.detail || "Failed to add candidate");
+        setError(parseApiError(data, "Failed to add candidate"));
       }
     } catch {
       setError("Network error");

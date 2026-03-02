@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
+import { parseApiError } from "../../../lib/api-error";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -297,10 +298,10 @@ export default function RecruiterJobDetailPage() {
         setAddedToPipeline((prev) => new Set(prev).add(candidate.id));
       } else if (res.status === 429) {
         const data = await res.json();
-        setPipelineError(data.detail || "Pipeline limit reached. Upgrade your plan.");
+        setPipelineError(parseApiError(data, "Pipeline limit reached. Upgrade your plan."));
       } else {
         const data = await res.json();
-        setPipelineError(data.detail || "Failed to add to pipeline");
+        setPipelineError(parseApiError(data, "Failed to add to pipeline"));
       }
     } catch {
       setPipelineError("Network error");
@@ -389,7 +390,7 @@ export default function RecruiterJobDetailPage() {
         setEditing(false);
       } else {
         const data = await res.json();
-        setError(data.detail || "Failed to update job");
+        setError(parseApiError(data, "Failed to update job"));
       }
     } catch {
       setError("Network error");
@@ -470,7 +471,7 @@ export default function RecruiterJobDetailPage() {
         ]);
       } else {
         const data = await res.json();
-        setPipelineError(data.detail || "Failed to submit candidate");
+        setPipelineError(parseApiError(data, "Failed to submit candidate"));
       }
     } catch {
       setPipelineError("Network error");

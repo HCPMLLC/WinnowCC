@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { parseApiError } from "../../lib/api-error";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -155,7 +156,7 @@ export default function RecruiterJobsPage() {
         fetchJobs();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Failed to delete jobs");
+        setError(parseApiError(data, "Failed to delete jobs"));
       }
     } catch {
       setError("Network error");
@@ -181,7 +182,7 @@ export default function RecruiterJobsPage() {
         fetchJobs();
       } else {
         const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Failed to update jobs");
+        setError(parseApiError(data, "Failed to update jobs"));
       }
     } catch {
       setError("Network error");
@@ -252,7 +253,7 @@ export default function RecruiterJobsPage() {
         fetchJobs();
       } else {
         const data = await res.json();
-        setError(data.detail || "Failed to create job");
+        setError(parseApiError(data, "Failed to create job"));
       }
     } catch {
       setError("Network error");

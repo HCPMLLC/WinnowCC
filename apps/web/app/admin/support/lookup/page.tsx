@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { parseApiError } from "../../../lib/api-error";
 
 type CandidateInfo = {
   plan_tier: string | null;
@@ -98,7 +99,7 @@ function UserCard({ result }: { result: UserResult }) {
       }
       const data = await res.json();
       if (!res.ok) {
-        setActionErr(data.detail || "Action failed");
+        setActionErr(parseApiError(data, "Action failed"));
         return;
       }
       setActionMsg(data.message);
