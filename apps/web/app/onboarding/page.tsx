@@ -492,8 +492,9 @@ function OnboardingPageContent() {
                 <span>
                   I agree to receive automated text messages from Winnow about job matches,
                   application updates, and career alerts at the phone number provided. Message
-                  frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out or HELP
-                  for help. See our{" "}
+                  frequency varies. Standard Msg &amp; data rates may apply. Reply STOP to opt
+                  out or HELP for help. We will not share your mobile information with third
+                  parties for promotional or marketing purposes. See our{" "}
                   <Link href="/terms" target="_blank" className="font-semibold underline hover:text-slate-900">
                     Terms of Service
                   </Link>{" "}

@@ -108,6 +108,7 @@ from app.routers.tailor import router as tailor_router  # noqa: E402
 from app.routers.talent_pipeline import router as talent_pipeline_router  # noqa: E402
 from app.routers.trust import router as trust_router  # noqa: E402
 from app.routers.upload_batches import router as upload_batches_router  # noqa: E402
+from app.routers.telnyx_webhook import router as telnyx_webhook_router  # noqa: E402
 from app.routers.webhooks import router as webhooks_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
@@ -217,6 +218,7 @@ app.include_router(account_router)
 app.include_router(security_check_router)
 app.include_router(observability_router)
 app.include_router(webhooks_router)
+app.include_router(telnyx_webhook_router)
 app.include_router(employer_analytics_router)
 app.include_router(employer_compliance_router)
 app.include_router(employer_introductions_router)
