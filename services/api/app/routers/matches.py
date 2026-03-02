@@ -25,9 +25,11 @@ from app.schemas.matches import (
 from app.services.auth import get_current_user, require_onboarded_user
 from app.services.billing import (
     check_daily_limit,
+    check_interview_prep_limit,
     get_plan_tier,
     get_tier_limit,
     increment_daily_counter,
+    increment_interview_preps,
 )
 from app.services.job_pipeline import ingest_jobs_job, match_jobs_job
 from app.services.matching import (
@@ -519,17 +521,61 @@ def update_application_status(
     """Update application tracking status for a match.
 
     Valid statuses: saved, applied, interviewing, rejected, offer
+    When status changes to 'interviewing', triggers interview prep generation.
     """
+    from app.models.interview_prep import InterviewPrep
+
     match = session.execute(
         select(Match).where(Match.id == match_id, Match.user_id == user.id)
     ).scalar_one_or_none()
     if match is None:
         raise HTTPException(status_code=404, detail="Match not found.")
 
+    old_status = match.application_status
     match.application_status = body.status
+
+    interview_prep_status = None
+
+    # Trigger interview prep when transitioning to "interviewing"
+    if body.status == "interviewing" and old_status != "interviewing":
+        # Check if prep already exists for this match
+        existing_prep = session.execute(
+            select(InterviewPrep).where(InterviewPrep.match_id == match_id)
+        ).scalar_one_or_none()
+
+        if existing_prep is None:
+            candidate = session.execute(
+                select(Candidate).where(Candidate.user_id == user.id)
+            ).scalar_one_or_none()
+
+            # Check billing — raises 403/429 if not allowed
+            check_interview_prep_limit(session, user, candidate)
+
+            # Create prep row and enqueue
+            prep = InterviewPrep(
+                user_id=user.id,
+                match_id=match_id,
+                job_id=match.job_id,
+                status="pending",
+            )
+            session.add(prep)
+            session.flush()
+
+            increment_interview_preps(session, user.id)
+
+            from app.services.interview_prep import generate_interview_prep_job
+
+            queue = get_queue("default")
+            queue.enqueue(generate_interview_prep_job, prep.id)
+
+            interview_prep_status = "pending"
+        else:
+            interview_prep_status = existing_prep.status
+
     session.commit()
 
     return ApplicationStatusUpdateResponse(
         id=match.id,
         application_status=match.application_status,
+        interview_prep_status=interview_prep_status,
     )

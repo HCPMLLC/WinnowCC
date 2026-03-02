@@ -20,6 +20,7 @@ from app.services.auth import get_current_user, require_onboarded_user
 from app.services.location_utils import normalize_city, normalize_state
 from app.services.profile_parser import default_profile_json
 from app.services.profile_scoring import compute_profile_completeness
+from app.services.queue import get_queue
 
 router = APIRouter(
     prefix="/api/profile",
@@ -115,6 +116,9 @@ def update_profile(
                     profile_json["preferences"] = {}
                 profile_json["preferences"]["skill_categories"] = existing_cats
 
+    # Clear stale enhancement suggestions from previous version
+    profile_json.pop("enhancement_suggestions", None)
+
     stmt = select(func.max(CandidateProfile.version)).where(
         CandidateProfile.user_id == user.id
     )
@@ -193,6 +197,67 @@ def get_profile_completeness(
         profile_json = profile.profile_json
 
     return compute_profile_completeness(profile_json)
+
+
+@router.get("/enhancement-suggestions")
+def get_enhancement_suggestions(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Return enhancement suggestions from the latest profile version."""
+    stmt = (
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user.id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    profile = session.execute(stmt).scalars().first()
+    if profile is None:
+        return {"status": "not_generated"}
+
+    suggestions = (profile.profile_json or {}).get("enhancement_suggestions")
+    if suggestions is None:
+        return {"status": "not_generated"}
+    return suggestions
+
+
+@router.post("/enhancement-suggestions/regenerate")
+def regenerate_enhancement_suggestions(
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+):
+    """Trigger re-generation of enhancement suggestions for the latest profile."""
+    from app.services.profile_enhancement import generate_enhancement_suggestions
+
+    stmt = (
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user.id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    profile = session.execute(stmt).scalars().first()
+    if profile is None:
+        raise HTTPException(404, "No profile found.")
+
+    # Mark as generating immediately
+    pj = dict(profile.profile_json)
+    pj["enhancement_suggestions"] = {
+        "status": "generating",
+        "suggestions": [],
+        "overall_assessment": None,
+        "generated_at": None,
+    }
+    profile.profile_json = pj
+    session.commit()
+
+    try:
+        get_queue("low").enqueue(
+            generate_enhancement_suggestions, user.id, profile.version
+        )
+    except Exception:
+        pass
+
+    return {"status": "generating"}
 
 
 @router.put("/skill-categories", response_model=CandidateProfileResponse)

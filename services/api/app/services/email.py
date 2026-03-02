@@ -45,12 +45,14 @@ if not TELNYX_API_KEY:
     )
 
 
-def _send(payload: dict, description: str) -> None:
+def _send(payload: dict, description: str) -> str | None:
     """Send an email via Resend with logging and error context.
 
     Automatically injects headers that improve inbox placement:
     - ``X-Entity-Ref-ID``: unique per message to prevent thread-grouping
     - ``X-Priority``: marks transactional mail as normal priority
+
+    Returns the Resend message ID on success, or ``None`` on failure.
     """
     # Inject deliverability headers (don't overwrite caller-supplied ones)
     headers = payload.get("headers", {})
@@ -59,12 +61,14 @@ def _send(payload: dict, description: str) -> None:
     payload["headers"] = headers
     try:
         result = resend.Emails.send(payload)
+        msg_id = result.get("id") if isinstance(result, dict) else result
         logger.info(
             "Email sent: %s to=%s id=%s",
             description,
             payload["to"],
-            result.get("id") if isinstance(result, dict) else result,
+            msg_id,
         )
+        return msg_id
     except Exception:
         logger.error(
             "Email FAILED: %s to=%s from=%s",
@@ -572,4 +576,153 @@ def send_subscription_canceled_email(to_email: str, end_date: str) -> None:
             ),
         },
         "subscription_canceled",
+    )
+
+
+def send_weekly_digest_email(
+    to_email: str,
+    first_name: str | None,
+    summary_text: str,
+    top_matches: list[dict],
+    hidden_gem: dict | None,
+    market_stats: dict,
+    new_match_count: int,
+) -> str | None:
+    """Send personalized weekly job market digest.
+
+    Returns the Resend message ID on success, or ``None`` if skipped.
+    """
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping weekly digest email to %s", to_email
+        )
+        return None
+
+    greeting = first_name or "there"
+    matches_url = f"{FRONTEND_URL}/matches"
+    settings_url = f"{FRONTEND_URL}/settings"
+
+    # Build top matches rows
+    matches_text = ""
+    matches_html = ""
+    for m in top_matches:
+        title = m.get("title", "Unknown")
+        company = m.get("company", "Unknown")
+        score = m.get("score", 0)
+        matches_text += f"  - {title} at {company} (match: {score}%)\n"
+        matches_html += (
+            f"<tr><td style='padding:4px 8px'>{title}</td>"
+            f"<td style='padding:4px 8px'>{company}</td>"
+            f"<td style='padding:4px 8px;text-align:center'>{score}%</td></tr>"
+        )
+
+    # Build hidden gem section
+    gem_text = ""
+    gem_html = ""
+    if hidden_gem:
+        gem_title = hidden_gem.get("title", "Unknown")
+        gem_company = hidden_gem.get("company", "Unknown")
+        gem_score = hidden_gem.get("score", 0)
+        gem_id = hidden_gem.get("job_id", "")
+        gem_url = f"{matches_url}?highlight={gem_id}"
+        gem_text = (
+            f"\nHidden Gem: {gem_title} at {gem_company} "
+            f"(match: {gem_score}%)\n"
+            f"Check it out: {gem_url}\n"
+        )
+        gem_html = (
+            "<div style='margin:16px 0;padding:12px;background:#f0f9ff;"
+            "border-left:4px solid #0284c7;border-radius:4px'>"
+            "<p style='margin:0 0 4px 0;font-weight:bold'>"
+            "Hidden Gem You Might Have Missed</p>"
+            f"<p style='margin:0'>{gem_title} at {gem_company} "
+            f"(match: {gem_score}%)</p>"
+            f"<p style='margin:8px 0 0 0'><a href=\"{gem_url}\" "
+            "style='color:#0284c7'>View this match &rarr;</a></p>"
+            "</div>"
+        )
+
+    # Market stats
+    total_jobs = market_stats.get("total_active_jobs", 0)
+    new_jobs = market_stats.get("new_this_week", 0)
+    avg_salary = market_stats.get("avg_salary", 0)
+    remote_pct = market_stats.get("remote_pct", 0)
+    salary_display = f"${avg_salary:,.0f}" if avg_salary else "N/A"
+
+    stats_text = (
+        f"\nMarket Snapshot:\n"
+        f"  Active jobs: {total_jobs:,}\n"
+        f"  New this week: {new_jobs:,}\n"
+        f"  Avg salary: {salary_display}\n"
+        f"  Remote: {remote_pct:.0f}%\n"
+    )
+    stats_html = (
+        "<table style='width:100%;border-collapse:collapse;margin:12px 0'>"
+        "<tr style='background:#f8fafc'>"
+        f"<td style='padding:6px 10px'><strong>Active jobs</strong></td>"
+        f"<td style='padding:6px 10px'>{total_jobs:,}</td>"
+        f"<td style='padding:6px 10px'><strong>New this week</strong></td>"
+        f"<td style='padding:6px 10px'>{new_jobs:,}</td></tr>"
+        "<tr>"
+        f"<td style='padding:6px 10px'><strong>Avg salary</strong></td>"
+        f"<td style='padding:6px 10px'>{salary_display}</td>"
+        f"<td style='padding:6px 10px'><strong>Remote</strong></td>"
+        f"<td style='padding:6px 10px'>{remote_pct:.0f}%</td></tr>"
+        "</table>"
+    )
+
+    subject = (
+        f"Your Weekly Job Market Digest \u2014 "
+        f"{new_match_count} new match{'es' if new_match_count != 1 else ''}"
+    )
+
+    text_body = (
+        f"Hi {greeting},\n\n"
+        f"{summary_text}\n\n"
+        f"Your Top Matches This Week:\n{matches_text}"
+        f"{gem_text}"
+        f"{stats_text}\n"
+        f"View all matches: {matches_url}\n\n"
+        "Happy job hunting!\nThe Winnow Team\n\n"
+        "---\n"
+        f"Manage email preferences: {settings_url}\n"
+        "You're receiving this because you have a Winnow account "
+        "with marketing emails enabled."
+    )
+
+    html_body = (
+        f"<p>Hi {greeting},</p>"
+        f"<p>{summary_text.replace(chr(10), '<br>')}</p>"
+        "<h3 style='margin:16px 0 8px 0'>Your Top Matches This Week</h3>"
+        "<table style='width:100%;border-collapse:collapse'>"
+        "<tr style='background:#f1f5f9'>"
+        "<th style='padding:6px 8px;text-align:left'>Role</th>"
+        "<th style='padding:6px 8px;text-align:left'>Company</th>"
+        "<th style='padding:6px 8px;text-align:center'>Match</th></tr>"
+        f"{matches_html}</table>"
+        f"{gem_html}"
+        "<h3 style='margin:16px 0 8px 0'>Market Snapshot</h3>"
+        f"{stats_html}"
+        f"<p><a href=\"{matches_url}\" style='display:inline-block;"
+        "padding:10px 20px;background:#0284c7;color:#fff;"
+        "text-decoration:none;border-radius:6px'>View All Matches</a></p>"
+        "<p>Happy job hunting!<br>The Winnow Team</p>"
+        "<hr style='margin:24px 0;border:none;border-top:1px solid #e2e8f0'>"
+        "<p style='font-size:12px;color:#94a3b8'>"
+        f"<a href=\"{settings_url}\" style='color:#94a3b8'>"
+        "Manage email preferences</a> &middot; "
+        "You\u2019re receiving this because you have a Winnow account "
+        "with marketing emails enabled.</p>"
+    )
+
+    resend.api_key = RESEND_API_KEY
+    return _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "text": text_body,
+            "html": html_body,
+        },
+        "weekly_digest",
     )

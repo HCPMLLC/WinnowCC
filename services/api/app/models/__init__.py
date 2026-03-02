@@ -28,6 +28,7 @@ from app.models.employer_introduction import EmployerIntroductionRequest
 from app.models.employer_job_candidate import EmployerJobCandidate
 from app.models.employer_team import EmployerTeamMember, InterviewFeedback
 from app.models.filled_form import FilledForm
+from app.models.interview_prep import InterviewPrep
 from app.models.introduction_request import IntroductionRequest
 from app.models.job import Job
 from app.models.job_form import JobForm
@@ -64,6 +65,7 @@ from app.models.trust_audit_log import TrustAuditLog
 from app.models.upload_batch import UploadBatch, UploadBatchFile
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
+from app.models.weekly_digest_log import WeeklyDigestLog
 
 __all__ = [
     "BoardConnection",
@@ -86,6 +88,7 @@ __all__ = [
     "ExtractedSkill",
     "FilledForm",
     "InterviewFeedback",
+    "InterviewPrep",
     "IntroductionRequest",
     "Job",
     "JobDistribution",
@@ -127,4 +130,5 @@ __all__ = [
     "UploadBatchFile",
     "UsageCounter",
     "User",
+    "WeeklyDigestLog",
 ]

@@ -11,6 +11,7 @@ import CandidateLayout from "../components/CandidateLayout";
 import ReferralToggle from "../components/ReferralToggle";
 import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
 import CollapsibleTip from "../components/CollapsibleTip";
+import InterviewPrepPanel from "../components/InterviewPrepPanel";
 
 type Job = {
   id: number;
@@ -218,6 +219,7 @@ function MatchesPageContent() {
   const [searchResults, setSearchResults] = useState<Match[] | null>(null);
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
+  const [planTier, setPlanTier] = useState<string>("free");
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
   const now = Date.now();
@@ -270,6 +272,14 @@ function MatchesPageContent() {
     };
     void loadMatches();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only: selectedMatchId is set by this effect
+  }, []);
+
+  // Fetch billing tier for feature gating
+  useEffect(() => {
+    fetch(`${API_BASE}/api/billing/status`, { credentials: "include" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.plan_tier) setPlanTier(data.plan_tier); })
+      .catch(() => {});
   }, []);
 
   const handlePrepare = async (jobId: number) => {
@@ -929,6 +939,13 @@ function MatchesPageContent() {
                       )}
                     </div>
                   )}
+
+                  {/* Interview Prep Coach */}
+                  <InterviewPrepPanel
+                    matchId={selectedMatch.id}
+                    applicationStatus={selectedMatch.application_status ?? null}
+                    planTier={planTier}
+                  />
 
                   {/* Job description */}
                   <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">

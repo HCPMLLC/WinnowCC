@@ -53,3 +53,4 @@ class ApplicationStatusUpdateRequest(BaseModel):
 class ApplicationStatusUpdateResponse(BaseModel):
     id: int
     application_status: str | None
+    interview_prep_status: str | None = None

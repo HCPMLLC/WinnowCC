@@ -392,6 +392,28 @@ def scheduled_hard_delete_expired() -> dict:
         session.close()
 
 
+def scheduled_send_weekly_digests() -> dict:
+    """Send personalized weekly job market digests to eligible candidates.
+
+    Runs weekly on Sunday at 7am UTC. Uses the 'low' queue so it never
+    blocks matching/parsing on higher-priority queues.
+    """
+    from app.services.weekly_digest import send_weekly_digests
+
+    try:
+        result = send_weekly_digests()
+        logger.info(
+            "Weekly digest: sent=%d skipped=%d errors=%d",
+            result.get("sent", 0),
+            result.get("skipped", 0),
+            result.get("errors", 0),
+        )
+        return {"status": "completed", **result}
+    except Exception as e:
+        logger.exception("Weekly digest batch failed: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
 def scheduled_sync_distribution_metrics() -> dict:
     """Sync metrics for all live job distributions across all employers.
 

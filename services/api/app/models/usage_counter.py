@@ -23,6 +23,9 @@ class UsageCounter(Base):
     tailor_requests: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
+    interview_preps: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )

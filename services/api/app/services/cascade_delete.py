@@ -207,6 +207,12 @@ def cascade_delete_user(session: Session, user_id: int) -> bool:
         {"uid": user_id},
     )
 
+    # 1b. Interview prep results
+    session.execute(
+        text("DELETE FROM interview_prep_results WHERE user_id = :uid"),
+        {"uid": user_id},
+    )
+
     # 2. Tailored resumes — delete physical files first, then DB rows
     tailored = (
         session.execute(select(TailoredResume).where(TailoredResume.user_id == user_id))
