@@ -24,6 +24,7 @@ router = APIRouter(prefix="/api/employer/billing", tags=["employer-billing"])
 
 class CheckoutRequest(BaseModel):
     tier: str  # "starter" or "pro"
+    interval: str = "monthly"  # "monthly" or "annual"
 
 
 class CheckoutResponse(BaseModel):
@@ -59,8 +60,15 @@ def employer_billing_checkout(
             status_code=400,
             detail="tier must be 'starter' or 'pro'.",
         )
+    if body.interval not in ("monthly", "annual"):
+        raise HTTPException(
+            status_code=400,
+            detail="interval must be 'monthly' or 'annual'.",
+        )
 
-    url = create_checkout_session(session, employer, user.email, body.tier)
+    url = create_checkout_session(
+        session, employer, user.email, body.tier, body.interval
+    )
     session.commit()
     return CheckoutResponse(url=url)
 
