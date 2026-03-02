@@ -7,6 +7,8 @@ Uses Email (Resend) and SMS (Telnyx) from the existing email service.
 import logging
 import os
 
+import resend
+
 from app.models.support_ticket import SupportTicket, TicketPriority
 from app.services.email import FRONTEND_URL, RESEND_API_KEY, RESEND_FROM, _send
 
@@ -31,6 +33,7 @@ def send_escalation_email(ticket: SupportTicket) -> bool:
         return False
 
     try:
+        resend.api_key = RESEND_API_KEY
         user_info = ticket.user_snapshot or {}
         user_name = user_info.get("name", "Unknown User")
         user_email = user_info.get("email", "unknown@email.com")
@@ -161,6 +164,7 @@ def send_resolution_transcript_email(
         return False
 
     try:
+        resend.api_key = RESEND_API_KEY
         user_info = ticket.user_snapshot or {}
         user_name = user_info.get("name", "Unknown User")
 
