@@ -68,6 +68,27 @@ class User(Base):
     oauth_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     oauth_sub: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Session management
+    last_login_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_login_ip: Mapped[str | None] = mapped_column(String(45), nullable=True)
+    token_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+
+    # Abuse detection / lockout
+    account_locked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    account_lock_reason: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    failed_login_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    failed_login_window_start: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
     # Back-references for ORM relationships declared on other models
     employer_profile = relationship(
         "EmployerProfile", back_populates="user", uselist=False

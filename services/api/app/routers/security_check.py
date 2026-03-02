@@ -6,7 +6,13 @@ Reports on security configuration of the running instance.
 import logging
 import os
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.db.session import get_session
+from app.models.user import User
+from app.services.auth import require_admin_user
 
 logger = logging.getLogger(__name__)
 
@@ -145,3 +151,65 @@ async def security_check(
         "all_pass": all_pass,
         "checks": checks,
     }
+
+
+@router.get("/auth-events")
+def get_auth_events(
+    admin: User = Depends(require_admin_user),
+    session: Session = Depends(get_session),
+    email: str | None = Query(None),
+    ip: str | None = Query(None),
+    hours: int = Query(24, ge=1, le=720),
+) -> dict:
+    """Query auth event log. Admin only."""
+    from app.services.abuse_detection import get_abuse_summary
+
+    events = get_abuse_summary(session, email=email, ip_address=ip, hours=hours)
+    return {"events": events, "count": len(events)}
+
+
+@router.get("/locked-accounts")
+def get_locked_accounts(
+    admin: User = Depends(require_admin_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """List currently locked accounts. Admin only."""
+    locked = (
+        session.execute(
+            select(User).where(User.account_locked_at.isnot(None))
+        )
+        .scalars()
+        .all()
+    )
+    return {
+        "accounts": [
+            {
+                "user_id": u.id,
+                "email": u.email,
+                "locked_at": u.account_locked_at.isoformat()
+                if u.account_locked_at
+                else None,
+                "reason": u.account_lock_reason,
+                "failed_count": u.failed_login_count,
+            }
+            for u in locked
+        ]
+    }
+
+
+@router.post("/unlock/{user_id}")
+def unlock_account_endpoint(
+    user_id: int,
+    admin: User = Depends(require_admin_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Manually unlock a locked account. Admin only."""
+    from app.services.abuse_detection import unlock_account
+
+    user = session.execute(
+        select(User).where(User.id == user_id)
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    unlock_account(session, user=user)
+    return {"status": "unlocked", "user_id": user_id, "email": user.email}

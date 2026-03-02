@@ -1,7 +1,9 @@
 """Scheduled job functions for RQ Scheduler."""
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+
+from sqlalchemy import select
 
 from app.db.session import get_session_factory
 from app.models.employer import EmployerJob
@@ -392,6 +394,36 @@ def scheduled_hard_delete_expired() -> dict:
         session.close()
 
 
+def scheduled_reconcile_stale_batches() -> dict:
+    """Reconcile batches stuck in 'processing' where all files are done.
+
+    Runs every 10 minutes. Safety net for missed _finalize_batch calls.
+    """
+    from app.services.batch_upload import reconcile_stale_batches
+
+    try:
+        reconcile_stale_batches()
+        return {"status": "completed", "error": None}
+    except Exception as e:
+        logger.exception("Reconcile stale batches failed: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
+def scheduled_start_queued_imports() -> dict:
+    """Auto-start next queued import if no import is currently active.
+
+    Runs every 2 minutes. Safety net for missed triggers from worker crashes.
+    """
+    from app.services.batch_upload import start_queued_imports
+
+    try:
+        start_queued_imports()
+        return {"status": "completed", "error": None}
+    except Exception as e:
+        logger.exception("Start queued imports failed: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
 def scheduled_sync_distribution_metrics() -> dict:
     """Sync metrics for all live job distributions across all employers.
 
@@ -443,5 +475,65 @@ def scheduled_sync_distribution_metrics() -> dict:
         logger.exception("Distribution metrics sync failed: %s", e)
         session.rollback()
         return {"status": "failed", "synced": 0, "error": str(e)}
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Session cleanup
+# ---------------------------------------------------------------------------
+def scheduled_cleanup_expired_sessions():
+    """Delete sessions that expired more than 30 days ago."""
+    from app.db.session import get_session_factory
+    from app.models.session import UserSession
+
+    session = get_session_factory()()
+    try:
+        cutoff = datetime.now(UTC) - timedelta(days=30)
+        result = session.execute(
+            select(UserSession).where(UserSession.expires_at < cutoff)
+        )
+        rows = result.scalars().all()
+        count = len(rows)
+        for row in rows:
+            session.delete(row)
+        if count:
+            session.commit()
+        logger.info("Cleaned up %d expired sessions", count)
+        return {"status": "completed", "deleted": count}
+    except Exception as e:
+        logger.exception("Session cleanup failed: %s", e)
+        session.rollback()
+        return {"status": "failed", "error": str(e)}
+    finally:
+        session.close()
+
+
+# ---------------------------------------------------------------------------
+# Auth event purge
+# ---------------------------------------------------------------------------
+def scheduled_purge_old_auth_events():
+    """Delete auth_events older than 90 days."""
+    from app.db.session import get_session_factory
+    from app.models.auth_event import AuthEvent
+
+    session = get_session_factory()()
+    try:
+        cutoff = datetime.now(UTC) - timedelta(days=90)
+        result = session.execute(
+            select(AuthEvent).where(AuthEvent.created_at < cutoff)
+        )
+        rows = result.scalars().all()
+        count = len(rows)
+        for row in rows:
+            session.delete(row)
+        if count:
+            session.commit()
+        logger.info("Purged %d old auth events", count)
+        return {"status": "completed", "deleted": count}
+    except Exception as e:
+        logger.exception("Auth event purge failed: %s", e)
+        session.rollback()
+        return {"status": "failed", "error": str(e)}
     finally:
         session.close()
