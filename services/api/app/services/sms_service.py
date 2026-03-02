@@ -1,3 +1,4 @@
+import logging
 import os
 import random
 import string
@@ -5,9 +6,15 @@ from datetime import datetime, timedelta
 
 from telnyx import Telnyx
 
+logger = logging.getLogger(__name__)
+
 # Configure Telnyx client
 _client = Telnyx(api_key=os.getenv("TELNYX_API_KEY"))
-TELNYX_PHONE = os.getenv("TELNYX_PHONE_NUMBER")
+TELNYX_PHONE = (
+    os.getenv("TELNYX_FROM_NUMBER", "").strip()
+    or os.getenv("TELNYX_PHONE_NUMBER", "").strip()
+    or None
+)
 OTP_EXPIRY_MINUTES = int(os.getenv("OTP_EXPIRY_MINUTES", "10"))
 
 # In-memory OTP store: { phone_number: { "code": "123456", "expires_at": datetime } }
@@ -68,3 +75,49 @@ def verify_otp(phone_number: str, code: str) -> bool:
     # Code is correct! Clean it up so it can't be reused.
     del _otp_store[phone_number]
     return True
+
+
+# ---------------------------------------------------------------------------
+# Generic SMS send + 10DLC auto-response helpers
+# ---------------------------------------------------------------------------
+
+
+def send_sms(phone_number: str, message: str) -> bool:
+    """Send an SMS message via Telnyx. Returns True on success."""
+    if not TELNYX_PHONE:
+        logger.error("TELNYX_FROM_NUMBER not set; skipping SMS to %s", phone_number)
+        return False
+    try:
+        _client.messages.send(from_=TELNYX_PHONE, to=phone_number, text=message)
+        return True
+    except Exception as e:
+        logger.error("Failed to send SMS to %s: %s", phone_number, e)
+        return False
+
+
+def send_opt_in_confirmation(phone_number: str) -> bool:
+    """10DLC-required opt-in confirmation auto-response."""
+    return send_sms(
+        phone_number,
+        "Winnow: Thanks for subscribing to job match alerts and application "
+        "updates! Reply HELP for help. Message frequency may vary. Msg&data "
+        "rates may apply. Consent is not a condition of purchase. Reply STOP "
+        "to opt out.",
+    )
+
+
+def send_stop_confirmation(phone_number: str) -> bool:
+    """10DLC-required STOP auto-response."""
+    return send_sms(
+        phone_number,
+        "Winnow: You are unsubscribed and will receive no further messages.",
+    )
+
+
+def send_help_response(phone_number: str) -> bool:
+    """10DLC-required HELP auto-response."""
+    return send_sms(
+        phone_number,
+        "Winnow: For help, contact us at support@winnowcc.ai or visit "
+        "https://winnowcc.ai/support",
+    )

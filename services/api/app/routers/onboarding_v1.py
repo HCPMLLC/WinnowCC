@@ -392,6 +392,16 @@ def put_consent(
         user_record.phone = phone_e164
 
     session.commit()
+
+    # Send 10DLC opt-in confirmation SMS (fire-and-forget, after commit)
+    if sms_consent and phone_e164:
+        try:
+            from app.services.sms_service import send_opt_in_confirmation
+
+            send_opt_in_confirmation(phone_e164)
+        except Exception:
+            pass  # Don't block onboarding if SMS fails
+
     return {"ok": True}
 
 
@@ -470,6 +480,16 @@ def update_sms_consent(
     )
 
     session.commit()
+
+    # Send 10DLC opt-in confirmation SMS (fire-and-forget, after commit)
+    if sms_consent and phone_e164:
+        try:
+            from app.services.sms_service import send_opt_in_confirmation
+
+            send_opt_in_confirmation(phone_e164)
+        except Exception:
+            pass  # Don't block settings save if SMS fails
+
     return {
         "ok": True,
         "phone": phone_e164,
