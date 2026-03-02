@@ -1,6 +1,6 @@
 """add user_sessions table and session columns to users
 
-Revision ID: a1b2c3d4e5f6
+Revision ID: 724853a1db37
 Revises: 07e141326d14
 Create Date: 2026-03-02 14:00:00.000000
 
@@ -12,7 +12,7 @@ import sqlalchemy as sa
 from alembic import op
 
 # revision identifiers, used by Alembic.
-revision: str = "a1b2c3d4e5f6"
+revision: str = "724853a1db37"
 down_revision: Union[str, None] = "07e141326d14"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
