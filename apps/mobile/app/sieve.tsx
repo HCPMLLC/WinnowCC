@@ -15,16 +15,46 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api } from "../lib/api";
+import { getToken } from "../lib/auth";
 
 const GoldenSieveStatic = require("../assets/golden-sieve-static.png");
 
 const GREETING =
   "Greetings. I\u2019m Sieve, your personal concierge. Ask me anything and I\u2019ll start sifting.";
 
+const API_BASE =
+  Platform.OS === "web"
+    ? "http://localhost:8000"
+    : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+
+const ESCALATION_PHRASES = [
+  "talk to a person",
+  "talk to someone",
+  "speak to a human",
+  "human help",
+  "live agent",
+  "representative",
+  "customer support",
+  "real person",
+  "not a bot",
+  "get a human",
+  "transfer me",
+  "escalate",
+];
+
 interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  isAgent?: boolean;
+  isSystem?: boolean;
+  senderName?: string;
+}
+
+interface ActiveTicket {
+  ticket_id: number;
+  status: string;
+  agent_joined: boolean;
 }
 
 export default function SieveScreen() {
@@ -35,6 +65,140 @@ export default function SieveScreen() {
   const [sending, setSending] = useState(false);
   const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
+
+  // Live agent state
+  const [liveAgentMode, setLiveAgentMode] = useState(false);
+  const [activeTicket, setActiveTicket] = useState<ActiveTicket | null>(null);
+  const [isEscalating, setIsEscalating] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
+  // Connect WebSocket to a support ticket
+  const connectWebSocket = useCallback(async (ticketId: number) => {
+    if (wsRef.current) wsRef.current.close();
+
+    const token = await getToken();
+    const wsBase = API_BASE.replace("http", "ws");
+    const wsUrl = `${wsBase}/ws/support/${ticketId}?role=user&token=${token || ""}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log("WebSocket connected for ticket", ticketId);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "connected") {
+          if (data.status === "active") {
+            setActiveTicket((prev) =>
+              prev ? { ...prev, agent_joined: true } : null
+            );
+          }
+        } else if (data.type === "message") {
+          if (data.sender_type === "agent") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `agent-${Date.now()}`,
+                role: "assistant",
+                content: data.content,
+                senderName: data.sender_name,
+                isAgent: true,
+              },
+            ]);
+            setActiveTicket((prev) =>
+              prev ? { ...prev, agent_joined: true } : null
+            );
+          }
+          if (data.sender_type === "system") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: `sys-${Date.now()}`,
+                role: "assistant",
+                content: data.content,
+                isSystem: true,
+              },
+            ]);
+          }
+        }
+      } catch (e) {
+        console.error("WebSocket message parse error:", e);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    wsRef.current = ws;
+  }, []);
+
+  // Escalate to a live agent
+  const escalateToAgent = useCallback(
+    async (text: string) => {
+      setIsEscalating(true);
+      setSending(true);
+
+      try {
+        const recentHistory = messages
+          .slice(-20)
+          .map((m) => ({ role: m.role, content: m.content }));
+
+        const res = await api.post("/api/support/escalate", {
+          message: text,
+          conversation_history: recentHistory,
+        });
+
+        if (!res.ok) throw new Error("Failed to escalate");
+
+        const data = await res.json();
+
+        setActiveTicket({
+          ticket_id: data.ticket_id,
+          status: data.status,
+          agent_joined: false,
+        });
+        setLiveAgentMode(true);
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `sys-${Date.now()}`,
+            role: "assistant",
+            content: data.message,
+            isSystem: true,
+          },
+        ]);
+
+        connectWebSocket(data.ticket_id);
+      } catch (error) {
+        console.error("Escalation error:", error);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `e-${Date.now()}`,
+            role: "assistant",
+            content:
+              "I\u2019m having trouble connecting you to support. Please try again or email support@winnowcc.ai.",
+          },
+        ]);
+      } finally {
+        setIsEscalating(false);
+        setSending(false);
+        setTimeout(
+          () => scrollRef.current?.scrollToEnd({ animated: true }),
+          100
+        );
+      }
+    },
+    [messages, connectWebSocket]
+  );
 
   // Load conversation history on mount
   useEffect(() => {
@@ -65,6 +229,55 @@ export default function SieveScreen() {
     })();
   }, []);
 
+  // Resume active support ticket on mount
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await api.get("/api/support/ticket/active");
+        if (res.ok) {
+          const data = await res.json().catch(() => null);
+          if (data && data.ticket_id) {
+            setActiveTicket({
+              ticket_id: data.ticket_id,
+              status: data.status,
+              agent_joined: data.status === "active",
+            });
+            setLiveAgentMode(true);
+
+            // Load existing ticket messages
+            if (Array.isArray(data.messages)) {
+              const ticketMsgs: Message[] = data.messages.map(
+                (m: any, i: number) => ({
+                  id: `tm-${i}`,
+                  role: m.sender_type === "user" ? "user" : "assistant",
+                  content: m.content,
+                  isAgent: m.sender_type === "agent",
+                  isSystem: m.sender_type === "system",
+                  senderName: m.sender_name,
+                })
+              );
+              setMessages((prev) => [...prev, ...ticketMsgs]);
+            }
+
+            connectWebSocket(data.ticket_id);
+          }
+        }
+      } catch {
+        // Non-critical — ticket resume is best-effort
+      }
+    })();
+  }, [connectWebSocket]);
+
+  // Cleanup WebSocket on unmount
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, []);
+
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
@@ -80,6 +293,52 @@ export default function SieveScreen() {
       setSending(true);
       setSuggestedActions([]);
 
+      // Branch 1: Live agent mode — send via WebSocket or REST fallback
+      if (liveAgentMode && activeTicket) {
+        try {
+          if (
+            wsRef.current &&
+            wsRef.current.readyState === WebSocket.OPEN
+          ) {
+            wsRef.current.send(
+              JSON.stringify({ type: "message", content: trimmed })
+            );
+          } else {
+            await api.post(
+              `/api/support/ticket/${activeTicket.ticket_id}/message`,
+              { content: trimmed }
+            );
+          }
+        } catch {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `e-${Date.now()}`,
+              role: "assistant",
+              content: "Failed to send message. Please try again.",
+            },
+          ]);
+        } finally {
+          setSending(false);
+          setTimeout(
+            () => scrollRef.current?.scrollToEnd({ animated: true }),
+            100
+          );
+        }
+        return;
+      }
+
+      // Branch 2: Escalation phrase detected — escalate to live agent
+      const lower = trimmed.toLowerCase();
+      const isEscalationRequest = ESCALATION_PHRASES.some((phrase) =>
+        lower.includes(phrase)
+      );
+      if (isEscalationRequest) {
+        await escalateToAgent(trimmed);
+        return;
+      }
+
+      // Branch 3: Normal AI chat
       try {
         const recentHistory = [...messages, userMsg]
           .slice(-20)
@@ -154,10 +413,17 @@ export default function SieveScreen() {
         );
       }
     },
-    [messages, sending]
+    [messages, sending, liveAgentMode, activeTicket, escalateToAgent]
   );
 
   function handleClear() {
+    if (liveAgentMode) {
+      Alert.alert(
+        "Live Session Active",
+        "You can\u2019t clear chat during a live support session."
+      );
+      return;
+    }
     Alert.alert("Clear Chat", "Delete all Sieve conversation history?", [
       { text: "Cancel", style: "cancel" },
       {
@@ -176,7 +442,7 @@ export default function SieveScreen() {
     ]);
   }
 
-  const canSend = input.trim().length > 0 && !sending;
+  const canSend = input.trim().length > 0 && !sending && !isEscalating;
 
   return (
     <KeyboardAvoidingView
@@ -213,10 +479,33 @@ export default function SieveScreen() {
                 color="rgba(232, 200, 74, 0.7)"
               />
             </TouchableOpacity>
-            <View style={styles.onlineRow}>
-              <View style={styles.onlineDot} />
-              <Text style={styles.onlineText}>Online</Text>
-            </View>
+            {liveAgentMode ? (
+              <View style={styles.onlineRow}>
+                <View
+                  style={[
+                    styles.statusDot,
+                    activeTicket?.agent_joined
+                      ? styles.statusDotGreen
+                      : styles.statusDotAmber,
+                  ]}
+                />
+                <Text
+                  style={[
+                    styles.statusBadge,
+                    activeTicket?.agent_joined
+                      ? styles.statusBadgeGreen
+                      : styles.statusBadgeAmber,
+                  ]}
+                >
+                  {activeTicket?.agent_joined ? "LIVE AGENT" : "WAITING..."}
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.onlineRow}>
+                <View style={styles.onlineDot} />
+                <Text style={styles.onlineText}>Online</Text>
+              </View>
+            )}
           </View>
         </View>
       </View>
@@ -235,38 +524,69 @@ export default function SieveScreen() {
             <Text style={styles.greetingText}>{GREETING}</Text>
           </View>
         )}
-        {messages.map((msg) => (
-          <View
-            key={msg.id}
-            style={[
-              styles.msgRow,
-              msg.role === "user"
-                ? styles.msgRowUser
-                : styles.msgRowAssistant,
-            ]}
-          >
+        {messages.map((msg) => {
+          // System messages — centered, italic
+          if (msg.isSystem) {
+            return (
+              <View key={msg.id} style={styles.systemMsgRow}>
+                <Text style={styles.systemMsgText}>{msg.content}</Text>
+              </View>
+            );
+          }
+
+          // Agent messages — gold bubble
+          if (msg.isAgent) {
+            return (
+              <View
+                key={msg.id}
+                style={[styles.msgRow, styles.msgRowAssistant]}
+              >
+                {msg.senderName && (
+                  <Text style={styles.agentNameLabel}>{msg.senderName}</Text>
+                )}
+                <View style={[styles.msgBubble, styles.agentBubble]}>
+                  <Text style={[styles.msgText, styles.agentText]}>
+                    {msg.content}
+                  </Text>
+                </View>
+              </View>
+            );
+          }
+
+          // Normal user/assistant messages
+          return (
             <View
+              key={msg.id}
               style={[
-                styles.msgBubble,
+                styles.msgRow,
                 msg.role === "user"
-                  ? styles.userBubble
-                  : styles.assistantBubble,
+                  ? styles.msgRowUser
+                  : styles.msgRowAssistant,
               ]}
             >
-              <Text
+              <View
                 style={[
-                  styles.msgText,
+                  styles.msgBubble,
                   msg.role === "user"
-                    ? styles.userText
-                    : styles.assistantText,
+                    ? styles.userBubble
+                    : styles.assistantBubble,
                 ]}
               >
-                {msg.content}
-              </Text>
+                <Text
+                  style={[
+                    styles.msgText,
+                    msg.role === "user"
+                      ? styles.userText
+                      : styles.assistantText,
+                  ]}
+                >
+                  {msg.content}
+                </Text>
+              </View>
             </View>
-          </View>
-        ))}
-        {sending && (
+          );
+        })}
+        {(sending || isEscalating) && (
           <View style={[styles.msgRow, styles.msgRowAssistant]}>
             <View style={[styles.msgBubble, styles.assistantBubble]}>
               <View style={styles.typingDots}>
@@ -287,21 +607,23 @@ export default function SieveScreen() {
 
       {/* Suggested actions */}
       {suggestedActions.length > 0 && !sending && messages.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={styles.suggestionsRow}
-        >
-          {suggestedActions.map((action, i) => (
-            <TouchableOpacity
-              key={i}
-              style={styles.suggestionChip}
-              onPress={() => sendMessage(action)}
-            >
-              <Text style={styles.suggestionText} numberOfLines={1}>{action}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <View style={styles.suggestionsContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.suggestionsRow}
+          >
+            {suggestedActions.map((action, i) => (
+              <TouchableOpacity
+                key={i}
+                style={styles.suggestionChip}
+                onPress={() => sendMessage(action)}
+              >
+                <Text style={styles.suggestionText} numberOfLines={1}>{action}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {/* Input */}
@@ -310,11 +632,13 @@ export default function SieveScreen() {
           style={styles.input}
           value={input}
           onChangeText={setInput}
-          placeholder="Type a message\u2026"
+          placeholder={
+            liveAgentMode ? "Message support agent\u2026" : "Type a message\u2026"
+          }
           placeholderTextColor="#9CA3AF"
           multiline
           maxLength={2000}
-          editable={!sending}
+          editable={!sending && !isEscalating}
         />
         <TouchableOpacity
           style={[styles.sendBtn, !canSend && styles.sendBtnDisabled]}
@@ -397,6 +721,23 @@ const styles = StyleSheet.create({
   },
   onlineText: { fontSize: 11, color: "#FFFFFF" },
 
+  // Live agent status
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    marginRight: 5,
+  },
+  statusDotAmber: { backgroundColor: "#F59E0B" },
+  statusDotGreen: { backgroundColor: "#5CB87A" },
+  statusBadge: {
+    fontSize: 10,
+    fontWeight: "700",
+    letterSpacing: 0.5,
+  },
+  statusBadgeAmber: { color: "#F59E0B" },
+  statusBadgeGreen: { color: "#5CB87A" },
+
   // Messages
   messageArea: { flex: 1 },
   messagesContent: { padding: 16, paddingBottom: 8, flexGrow: 1 },
@@ -455,6 +796,44 @@ const styles = StyleSheet.create({
   userText: { color: "#F0E8D0" },
   assistantText: { color: "#3E3525" },
 
+  // Agent bubbles
+  agentBubble: {
+    backgroundColor: "#FFF8DC",
+    borderTopLeftRadius: 4,
+    borderTopRightRadius: 16,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    borderWidth: 1,
+    borderColor: "#DAA520",
+    shadowColor: "#8B6318",
+    shadowOpacity: 0.08,
+    shadowRadius: 3,
+    shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  agentText: { color: "#3E3525" },
+  agentNameLabel: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#DAA520",
+    marginBottom: 3,
+    marginLeft: 4,
+  },
+
+  // System messages
+  systemMsgRow: {
+    alignItems: "center",
+    marginVertical: 8,
+    paddingHorizontal: 20,
+  },
+  systemMsgText: {
+    fontSize: 12,
+    fontStyle: "italic",
+    color: "#9CA3AF",
+    textAlign: "center",
+    lineHeight: 18,
+  },
+
   // Typing indicator
   typingDots: { flexDirection: "row", alignItems: "center" },
   typingDot: {
@@ -466,17 +845,27 @@ const styles = StyleSheet.create({
   },
 
   // Suggestions
-  suggestionsRow: { paddingHorizontal: 12, paddingVertical: 4 },
+  suggestionsContainer: {
+    maxHeight: 32,
+    overflow: "hidden",
+  },
+  suggestionsRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 2,
+    alignItems: "center",
+  },
   suggestionChip: {
     borderWidth: 1,
     borderColor: "#E8C84A",
-    borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 3,
+    borderRadius: 10,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
     backgroundColor: "transparent",
-    marginRight: 5,
+    marginRight: 4,
+    height: 24,
+    justifyContent: "center",
   },
-  suggestionText: { fontSize: 11, color: "#3E3525" },
+  suggestionText: { fontSize: 10, color: "#3E3525" },
 
   // Input bar
   inputBar: {
