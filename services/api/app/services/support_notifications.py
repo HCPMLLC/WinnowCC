@@ -15,7 +15,7 @@ from app.services.email import FRONTEND_URL, RESEND_API_KEY, RESEND_FROM, _send
 logger = logging.getLogger(__name__)
 
 # Admin contact info
-ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "winnow@hcpm.llc")
+ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "ron@winnowcc.com")
 ADMIN_PHONE = os.environ.get("ADMIN_PHONE", "")  # +1XXXXXXXXXX format
 
 # Telnyx config (reuse from email.py)

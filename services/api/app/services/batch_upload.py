@@ -14,6 +14,8 @@ import hashlib
 import json
 import logging
 import os
+import shutil
+import tempfile
 import zipfile
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,9 +31,7 @@ logger = logging.getLogger(__name__)
 MAX_ACTIVE_BATCHES = 3
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 MAX_RETRIES = 2
-MAX_ZIP_FILES = 10_000
-CHUNK_COMMIT_SIZE = 500  # rows committed per chunk during ZIP streaming
-PROCESSING_RATE = 960  # estimated files/hour for ETA calculations
+MAX_ZIP_FILES = 1000
 RESUME_EXTENSIONS = {".pdf", ".docx"}
 
 
@@ -86,17 +86,9 @@ def create_upload_batch(
 
     bulk_queue = get_queue("bulk")
     batch_files = []
-    seen_hashes: set[str] = set()
-    duplicates_skipped = 0
 
     for idx, (filename, contents) in enumerate(files):
         file_hash = hashlib.sha256(contents).hexdigest()
-
-        # Within-batch dedup: skip files with identical content
-        if file_hash in seen_hashes:
-            duplicates_skipped += 1
-            continue
-        seen_hashes.add(file_hash)
 
         # Stage raw bytes to storage under staging prefix
         staged_name = f"{idx}_{file_hash[:12]}_{filename}"
@@ -114,16 +106,6 @@ def create_upload_batch(
         session.add(bf)
         session.flush()
         batch_files.append(bf)
-
-    # Update total_files to actual deduplicated count
-    batch.total_files = len(batch_files)
-
-    if duplicates_skipped:
-        logger.info(
-            "Batch %s: skipped %d duplicate files",
-            batch_id,
-            duplicates_skipped,
-        )
 
     session.commit()
 
@@ -170,11 +152,10 @@ def create_upload_batch_from_zip(
     zip_stored_path: str,
     session,
 ) -> dict:
-    """Stream files from a ZIP in storage, stage them one-at-a-time,
-    create tracking rows (committed every CHUNK_COMMIT_SIZE), and
-    enqueue ``process_batch_resume_file`` worker jobs.
+    """Extract a ZIP from storage, stage individual files, create batch
+    tracking rows, and enqueue the same ``process_batch_resume_file``
+    worker jobs used by the HTTP batch upload path.
 
-    Peak memory: ~one resume file at a time instead of the full ZIP contents.
     Returns dict with ``batch_id`` and ``status_url``.
     """
     from app.services.queue import get_queue
@@ -184,112 +165,65 @@ def create_upload_batch_from_zip(
         upload_bytes,
     )
 
-    # Download ZIP to a local temp file (only file kept on disk)
+    # Download ZIP to a local temp file
     zip_local = download_to_tempfile(zip_stored_path, suffix=".zip")
+    extract_dir = tempfile.mkdtemp(prefix="winnow_zip_expand_")
 
     try:
         with zipfile.ZipFile(str(zip_local)) as zf:
-            # Filter resume entries from the ZIP without extracting
-            resume_infos = [
-                info
-                for info in zf.infolist()
-                if not info.is_dir()
-                and not info.filename.startswith("__MACOSX")
-                and not Path(info.filename).name.startswith(".")
-                and Path(info.filename).suffix.lower() in RESUME_EXTENSIONS
-                and info.file_size <= MAX_FILE_SIZE
-            ]
+            zf.extractall(extract_dir)
 
-            if not resume_infos:
-                raise ValueError("ZIP contains no PDF or DOCX resume files.")
-            if len(resume_infos) > MAX_ZIP_FILES:
-                raise ValueError(
-                    f"ZIP contains {len(resume_infos)} resume files, "
-                    f"exceeding the limit of {MAX_ZIP_FILES:,}."
-                )
-
-            # Sort by filename for deterministic ordering
-            resume_infos.sort(key=lambda i: Path(i.filename).name.lower())
-
-            batch_id = str(uuid4())
-            batch = UploadBatch(
-                batch_id=batch_id,
-                user_id=user_id,
-                batch_type="recruiter_resume_zip",
-                owner_profile_id=owner_profile_id,
-                status="pending",
-                total_files=len(resume_infos),
+        resume_paths = _collect_resume_files(extract_dir)
+        if not resume_paths:
+            raise ValueError("ZIP contains no PDF or DOCX resume files.")
+        if len(resume_paths) > MAX_ZIP_FILES:
+            raise ValueError(
+                f"ZIP contains {len(resume_paths)} resume files, "
+                f"exceeding the limit of {MAX_ZIP_FILES}."
             )
-            session.add(batch)
+
+        batch_id = str(uuid4())
+        batch = UploadBatch(
+            batch_id=batch_id,
+            user_id=user_id,
+            batch_type="recruiter_resume_zip",
+            owner_profile_id=owner_profile_id,
+            status="pending",
+            total_files=len(resume_paths),
+        )
+        session.add(batch)
+        session.flush()
+
+        bulk_queue = get_queue("bulk")
+        batch_files = []
+
+        for idx, fpath in enumerate(resume_paths):
+            contents = fpath.read_bytes()
+            file_hash = hashlib.sha256(contents).hexdigest()
+
+            staged_name = f"{idx}_{file_hash[:12]}_{fpath.name}"
+            staged_path = upload_bytes(contents, f"staging/{batch_id}/", staged_name)
+
+            bf = UploadBatchFile(
+                batch_id=batch_id,
+                file_index=idx,
+                original_filename=fpath.name,
+                staged_path=staged_path,
+                file_size_bytes=len(contents),
+                sha256=file_hash,
+                status="pending",
+            )
+            session.add(bf)
             session.flush()
+            batch_files.append(bf)
 
-            bulk_queue = get_queue("bulk")
-            batch_file_ids: list[int] = []
-            seen_hashes: set[str] = set()
-            duplicates_skipped = 0
+        session.commit()
 
-            for idx, info in enumerate(resume_infos):
-                # Read one file at a time — keeps peak memory low
-                contents = zf.read(info)
-                file_hash = hashlib.sha256(contents).hexdigest()
-                fname = Path(info.filename).name
-
-                # Within-batch dedup: skip files with identical content
-                if file_hash in seen_hashes:
-                    duplicates_skipped += 1
-                    del contents
-                    continue
-                seen_hashes.add(file_hash)
-
-                staged_name = f"{idx}_{file_hash[:12]}_{fname}"
-                staged_path = upload_bytes(
-                    contents, f"staging/{batch_id}/", staged_name
-                )
-
-                bf = UploadBatchFile(
-                    batch_id=batch_id,
-                    file_index=idx,
-                    original_filename=fname,
-                    staged_path=staged_path,
-                    file_size_bytes=len(contents),
-                    sha256=file_hash,
-                    status="pending",
-                )
-                session.add(bf)
-                session.flush()
-                batch_file_ids.append(bf.id)
-
-                # Free memory immediately
-                del contents
-
-                # Commit in chunks to avoid giant transactions
-                if (idx + 1) % CHUNK_COMMIT_SIZE == 0:
-                    session.commit()
-                    logger.info(
-                        "ZIP batch %s: staged %d/%d files",
-                        batch_id,
-                        idx + 1,
-                        len(resume_infos),
-                    )
-
-            # Update total_files to actual deduplicated count
-            batch.total_files = len(batch_file_ids)
-
-            if duplicates_skipped:
-                logger.info(
-                    "ZIP batch %s: skipped %d duplicate files within ZIP",
-                    batch_id,
-                    duplicates_skipped,
-                )
-
-            # Final commit for remaining rows
-            session.commit()
-
-        # Enqueue per-file worker jobs (after commit so rows are visible)
-        for bf_id in batch_file_ids:
+        # Enqueue per-file worker jobs (same as HTTP batch path)
+        for bf in batch_files:
             bulk_queue.enqueue(
                 process_batch_resume_file,
-                bf_id,
+                bf.id,
                 batch_id,
                 owner_profile_id,
                 job_timeout="10m",
@@ -301,7 +235,7 @@ def create_upload_batch_from_zip(
         logger.info(
             "ZIP batch %s: staged %d files, enqueued worker jobs",
             batch_id,
-            len(batch_file_ids),
+            len(batch_files),
         )
 
         return {
@@ -310,6 +244,8 @@ def create_upload_batch_from_zip(
         }
 
     finally:
+        # Clean up temp files
+        shutil.rmtree(extract_dir, ignore_errors=True)
         from app.services.storage import is_gcs_path
 
         if is_gcs_path(zip_stored_path) and zip_local.exists():
@@ -410,30 +346,8 @@ def process_batch_resume_file(
         profile = session.get(RecruiterProfile, recruiter_profile_id)
         if profile is None:
             _fail_file(session, bf, "Recruiter profile not found")
-            _finalize_batch(session, batch_id, "failed")
+            _finalize_batch(session, batch_id)
             return
-
-        # Cross-batch dedup: check if same content already succeeded for this recruiter
-        if bf.sha256:
-            existing = session.execute(
-                select(UploadBatchFile.id)
-                .join(UploadBatch, UploadBatchFile.batch_id == UploadBatch.batch_id)
-                .where(
-                    UploadBatchFile.sha256 == bf.sha256,
-                    UploadBatchFile.status == "succeeded",
-                    UploadBatch.owner_profile_id == recruiter_profile_id,
-                    UploadBatchFile.id != batch_file_id,
-                )
-                .limit(1)
-            ).scalar_one_or_none()
-
-            if existing is not None:
-                bf.status = "skipped"
-                bf.error_message = "Duplicate resume (already imported)"
-                bf.processed_at = datetime.now(UTC)
-                session.commit()
-                _finalize_batch(session, batch_id, "skipped")
-                return
 
         filename = bf.original_filename
         ext = Path(filename).suffix.lower()
@@ -445,7 +359,7 @@ def process_batch_resume_file(
             text = extract_text(tmp_path)
             if not text or len(text.strip()) < 20:
                 _fail_file(session, bf, "Could not extract meaningful text from file.")
-                _finalize_batch(session, batch_id, "failed")
+                _finalize_batch(session, batch_id)
                 return
 
             # Parse profile (fast regex)
@@ -584,7 +498,7 @@ def process_batch_resume_file(
                     recruiter_llm_reparse_job,
                 )
 
-                get_queue("low").enqueue(
+                get_queue("bulk").enqueue(
                     recruiter_llm_reparse_job,
                     new_cp.id,
                     resume_doc.id,
@@ -627,7 +541,7 @@ def process_batch_resume_file(
         except Exception:
             pass
 
-        _finalize_batch(session, batch_id, "succeeded")
+        _finalize_batch(session, batch_id)
 
     except Exception as exc:
         session.rollback()
@@ -650,7 +564,7 @@ def process_batch_resume_file(
                 )
             else:
                 _fail_file(session, bf, str(exc))
-                _finalize_batch(session, batch_id, "failed")
+                _finalize_batch(session, batch_id)
     finally:
         session.close()
 
@@ -689,7 +603,7 @@ def process_batch_job_document(
 
             if not parsed.get("title"):
                 _fail_file(session, bf, "Could not extract job title from document.")
-                _finalize_batch(session, batch_id, "failed")
+                _finalize_batch(session, batch_id)
                 return
 
             if batch_type == "employer_job_doc":
@@ -709,7 +623,7 @@ def process_batch_job_document(
 
         except RuntimeError as exc:
             _fail_file(session, bf, str(exc))
-            _finalize_batch(session, batch_id, "failed")
+            _finalize_batch(session, batch_id)
             return
         finally:
             from app.services.storage import is_gcs_path
@@ -726,7 +640,7 @@ def process_batch_job_document(
         except Exception:
             pass
 
-        _finalize_batch(session, batch_id, "succeeded")
+        _finalize_batch(session, batch_id)
 
     except Exception as exc:
         session.rollback()
@@ -749,7 +663,7 @@ def process_batch_job_document(
                 )
             else:
                 _fail_file(session, bf, str(exc))
-                _finalize_batch(session, batch_id, "failed")
+                _finalize_batch(session, batch_id)
     finally:
         session.close()
 
@@ -858,60 +772,42 @@ def _create_recruiter_job(session, parsed, recruiter_profile_id, bf):
 # ---------------------------------------------------------------------------
 
 
-def _finalize_batch(
-    session, batch_id: str, file_status: str = "succeeded"
-) -> None:
-    """Atomically increment batch counters. Mark completed when all files done.
-
-    ``file_status`` should be ``"succeeded"``, ``"failed"``, or ``"skipped"``.
-    Uses a single UPDATE … SET … RETURNING instead of 4× COUNT(*) aggregates,
-    making this O(1) per call instead of O(N).
-    """
-    from sqlalchemy import update
-
-    # Build the increments based on file terminal status
-    increments: dict = {
-        UploadBatch.files_completed: UploadBatch.files_completed + 1,
-    }
-    if file_status == "succeeded":
-        increments[UploadBatch.files_succeeded] = UploadBatch.files_succeeded + 1
-    elif file_status in ("failed", "skipped"):
-        increments[UploadBatch.files_failed] = UploadBatch.files_failed + 1
-
-    result = session.execute(
-        update(UploadBatch)
-        .where(UploadBatch.batch_id == batch_id)
-        .values(**increments)
-        .returning(
-            UploadBatch.files_completed,
-            UploadBatch.total_files,
-            UploadBatch.files_succeeded,
-            UploadBatch.files_failed,
-            UploadBatch.batch_type,
-            UploadBatch.user_id,
-        )
-    )
-    row = result.fetchone()
-    if row is None:
-        session.commit()
+def _finalize_batch(session, batch_id: str) -> None:
+    """Update batch counters. Mark completed when all files are done."""
+    batch = session.execute(
+        select(UploadBatch).where(UploadBatch.batch_id == batch_id)
+    ).scalar_one_or_none()
+    if batch is None:
         return
 
-    completed, total, succeeded, failed, batch_type, user_id = row
+    counts = session.execute(
+        select(
+            func.count(UploadBatchFile.id).label("total"),
+            func.count(UploadBatchFile.id)
+            .filter(UploadBatchFile.status.in_(["succeeded", "failed", "skipped"]))
+            .label("completed"),
+            func.count(UploadBatchFile.id)
+            .filter(UploadBatchFile.status == "succeeded")
+            .label("succeeded"),
+            func.count(UploadBatchFile.id)
+            .filter(UploadBatchFile.status == "failed")
+            .label("failed"),
+        ).where(UploadBatchFile.batch_id == batch_id)
+    ).one()
 
-    if completed >= total:
-        session.execute(
-            update(UploadBatch)
-            .where(UploadBatch.batch_id == batch_id)
-            .values(status="completed", completed_at=datetime.now(UTC))
-        )
+    batch.files_completed = counts.completed
+    batch.files_succeeded = counts.succeeded
+    batch.files_failed = counts.failed
+
+    if counts.completed >= batch.total_files:
+        batch.status = "completed"
+        batch.completed_at = datetime.now(UTC)
 
     session.commit()
 
-    # Post-completion actions
-    if completed >= total:
-        if batch_type == "recruiter_resume_zip":
-            _send_zip_batch_email_simple(session, user_id, succeeded, failed, total)
-        _maybe_start_next_queued_import(session)
+    # Send completion email for large ZIP-originated batches
+    if batch.status == "completed" and batch.batch_type == "recruiter_resume_zip":
+        _send_zip_batch_email(session, batch, counts)
 
 
 # ---------------------------------------------------------------------------
@@ -969,23 +865,21 @@ def cleanup_stale_staging() -> None:
 # ---------------------------------------------------------------------------
 
 
-def _send_zip_batch_email_simple(
-    session, user_id: int, succeeded: int, failed: int, total: int
-) -> None:
+def _send_zip_batch_email(session, batch: UploadBatch, counts) -> None:
     """Best-effort completion email for ZIP resume imports."""
     try:
         from app.models.user import User
         from app.services.email import send_migration_complete_email
 
-        user = session.get(User, user_id)
+        user = session.get(User, batch.user_id)
         if not user or not user.email:
             return
         send_migration_complete_email(
             to_email=user.email,
-            imported=succeeded,
+            imported=counts.succeeded,
             skipped=0,
-            errors=failed,
-            total=total,
+            errors=counts.failed,
+            total=batch.total_files,
             job_id=0,
         )
     except Exception:
@@ -1031,174 +925,3 @@ def _collect_resume_files(directory: str) -> list[Path]:
                     resume_files.append(full)
     resume_files.sort(key=lambda p: p.name.lower())
     return resume_files
-
-
-# ---------------------------------------------------------------------------
-# Import queue management (Phase E — system-wide import gate)
-# ---------------------------------------------------------------------------
-
-
-def get_import_queue_info(session) -> dict:
-    """Return info about the system-wide import queue.
-
-    Returns dict with:
-    - active_import_running: bool
-    - queue_depth: int (number of queued jobs)
-    - files_remaining: int (files left in active import, 0 if none)
-    - estimated_wait_minutes: float
-    """
-    from app.models.migration import MigrationJob
-
-    # Check for active import
-    active = session.execute(
-        select(MigrationJob).where(MigrationJob.status == "importing")
-    ).scalar_one_or_none()
-
-    active_files_remaining = 0
-    if active and active.stats_json and active.stats_json.get("batch_id"):
-        batch = session.execute(
-            select(UploadBatch).where(
-                UploadBatch.batch_id == active.stats_json["batch_id"]
-            )
-        ).scalar_one_or_none()
-        if batch:
-            active_files_remaining = max(
-                0, batch.total_files - batch.files_completed
-            )
-
-    # Count queued jobs
-    queued_jobs = (
-        session.execute(
-            select(MigrationJob)
-            .where(MigrationJob.status == "queued")
-            .order_by(MigrationJob.queued_at.asc())
-        )
-        .scalars()
-        .all()
-    )
-
-    # Estimate total files in queued jobs (from config_json if available)
-    queued_files = 0
-    for qj in queued_jobs:
-        cfg = qj.config_json or {}
-        detection = cfg.get("detection", {})
-        queued_files += detection.get("row_count", 1000)  # default estimate
-
-    total_files = active_files_remaining + queued_files
-    estimated_minutes = (total_files / PROCESSING_RATE) * 60 if total_files > 0 else 0
-
-    return {
-        "active_import_running": active is not None,
-        "queue_depth": len(queued_jobs),
-        "files_remaining": active_files_remaining,
-        "estimated_wait_minutes": round(estimated_minutes, 1),
-    }
-
-
-def _maybe_start_next_queued_import(session) -> None:
-    """If no import is active, start the next queued one (FIFO by queued_at)."""
-    from app.models.migration import MigrationJob
-
-    # Check for any active import
-    active = session.execute(
-        select(MigrationJob).where(MigrationJob.status == "importing")
-    ).scalar_one_or_none()
-    if active is not None:
-        return
-
-    # Find the oldest queued job
-    next_job = session.execute(
-        select(MigrationJob)
-        .where(MigrationJob.status == "queued")
-        .order_by(MigrationJob.queued_at.asc())
-    ).scalar_one_or_none()
-    if next_job is None:
-        return
-
-    # Transition to importing and enqueue the ZIP expand job
-    next_job.status = "importing"
-    next_job.started_at = datetime.now(UTC)
-    session.commit()
-
-    config = next_job.config_json or {}
-    recruiter_profile_id = config.get("recruiter_profile_id")
-    if not recruiter_profile_id or not next_job.source_file_path:
-        next_job.status = "failed"
-        next_job.error_log = [{"error": "Missing config for queued job", "fatal": True}]
-        session.commit()
-        return
-
-    try:
-        from app.services.queue import get_queue
-
-        queue = get_queue("low")
-        queue.enqueue(
-            expand_zip_batch_job,
-            user_id=next_job.user_id,
-            owner_profile_id=recruiter_profile_id,
-            zip_stored_path=next_job.source_file_path,
-            migration_job_id=next_job.id,
-            job_timeout="30m",
-        )
-        logger.info("Auto-started queued import job %d", next_job.id)
-    except Exception:
-        logger.exception("Failed to enqueue queued import job %d", next_job.id)
-        next_job.status = "failed"
-        next_job.error_log = [
-            {"error": "Failed to enqueue job from queue", "fatal": True}
-        ]
-        session.commit()
-
-
-def reconcile_stale_batches() -> None:
-    """Find batches stuck in 'processing' where all files are done, and mark
-    them completed. Safety net for missed finalize calls.
-    """
-    session = get_session_factory()()
-    try:
-        stuck = (
-            session.execute(
-                select(UploadBatch).where(
-                    UploadBatch.status == "processing",
-                    UploadBatch.files_completed >= UploadBatch.total_files,
-                    UploadBatch.total_files > 0,
-                )
-            )
-            .scalars()
-            .all()
-        )
-        for batch in stuck:
-            batch.status = "completed"
-            batch.completed_at = datetime.now(UTC)
-            logger.warning(
-                "Reconciled stale batch %s: %d/%d completed",
-                batch.batch_id,
-                batch.files_completed,
-                batch.total_files,
-            )
-
-        if stuck:
-            session.commit()
-            # Trigger next queued import in case one was waiting
-            _maybe_start_next_queued_import(session)
-
-        logger.info("Reconcile stale batches: fixed %d", len(stuck))
-    except Exception:
-        session.rollback()
-        logger.exception("Error reconciling stale batches")
-    finally:
-        session.close()
-
-
-def start_queued_imports() -> None:
-    """Safety-net scheduler job: if no import is active, start the next
-    queued one. Catches missed triggers from worker crashes.
-    """
-    session = get_session_factory()()
-    try:
-        _maybe_start_next_queued_import(session)
-    except Exception:
-        session.rollback()
-        logger.exception("Error in start_queued_imports scheduler job")
-    finally:
-        session.close()

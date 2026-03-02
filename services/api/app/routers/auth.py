@@ -5,34 +5,19 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import (
-    APIRouter,
-    BackgroundTasks,
-    Depends,
-    Header,
-    HTTPException,
-    Request,
-    Response,
-)
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.middleware.rate_limit import limiter
 from app.models.user import User
-from app.services.abuse_detection import (
-    check_account_locked,
-    check_ip_blocked,
-    handle_login_failure,
-    handle_login_success,
-    record_auth_event,
-)
 from app.services.auth import (
     clear_auth_cookie,
     generate_otp,
     get_current_user,
     hash_password,
+    make_token,
     set_auth_cookie,
     verify_otp,
     verify_password,
@@ -119,11 +104,6 @@ class ResetPasswordRequest(BaseModel):
 # Helpers
 # ---------------------------------------------------------------------------
 def _validate_password(password: str) -> None:
-    if len(password) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail="Password must be at least 8 characters.",
-        )
     # bcrypt only uses first 72 BYTES; passlib raises to prevent silent truncation
     if len(password.encode("utf-8")) > 72:
         raise HTTPException(
@@ -223,9 +203,7 @@ def _do_send_otp(
 # Endpoints
 # ---------------------------------------------------------------------------
 @router.post("/signup", response_model=MeResponse)
-@limiter.limit("5/minute")
 def signup(
-    request: Request,
     payload: AuthRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -251,34 +229,14 @@ def signup(
     session.commit()
     session.refresh(user)
 
-    ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-    if not ip and request.client:
-        ip = request.client.host
-    record_auth_event(
-        session,
-        event_type="signup",
-        email=email,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=request.headers.get("User-Agent", "")[:512],
-    )
-
-    token = set_auth_cookie(
-        response,
-        user_id=user.id,
-        email=user.email,
-        request=request,
-        db_session=session,
-    )
+    set_auth_cookie(response, user_id=user.id, email=user.email)
     resp = _me_response(user)
-    resp.token = token
+    resp.token = make_token(user_id=user.id, email=user.email)
     return resp
 
 
 @router.post("/login", response_model=LoginResponse)
-@limiter.limit("10/minute")
 def login(
-    request: Request,
     payload: AuthRequest,
     response: Response,
     bg: BackgroundTasks,
@@ -287,83 +245,13 @@ def login(
     _validate_password(payload.password)
 
     email = payload.email.lower().strip()
-    ip = request.headers.get("X-Forwarded-For", "").split(",")[0].strip()
-    if not ip and request.client:
-        ip = request.client.host
-    ua = request.headers.get("User-Agent", "")[:512]
-
-    # --- IP-level block ---
-    if check_ip_blocked(session, ip_address=ip):
-        record_auth_event(
-            session,
-            event_type="login_ip_blocked",
-            email=email,
-            ip_address=ip,
-            user_agent=ua,
-        )
-        session.commit()
-        raise HTTPException(
-            status_code=429,
-            detail="Too many failed attempts from this IP. Try again later.",
-        )
 
     user = session.execute(select(User).where(User.email == email)).scalar_one_or_none()
     if user is None:
-        record_auth_event(
-            session,
-            event_type="login_failed",
-            email=email,
-            ip_address=ip,
-            user_agent=ua,
-            failure_reason="unknown_email",
-        )
-        session.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-
-    # --- Account lockout check ---
-    is_locked, lock_reason, minutes_left = check_account_locked(user)
-    if is_locked:
-        record_auth_event(
-            session,
-            event_type="login_locked",
-            email=email,
-            user_id=user.id,
-            ip_address=ip,
-            user_agent=ua,
-            failure_reason=lock_reason,
-        )
-        session.commit()
-        raise HTTPException(
-            status_code=423,
-            detail=(
-                f"Account temporarily locked. Try again in {minutes_left} minutes."
-            ),
-        )
 
     if not verify_password(payload.password, user.password_hash):
-        handle_login_failure(session, user=user)
-        record_auth_event(
-            session,
-            event_type="login_failed",
-            email=email,
-            user_id=user.id,
-            ip_address=ip,
-            user_agent=ua,
-            failure_reason="bad_password",
-        )
-        session.commit()
         raise HTTPException(status_code=401, detail="Invalid email or password.")
-
-    # --- Success path ---
-    handle_login_success(session, user=user)
-    record_auth_event(
-        session,
-        event_type="login_success",
-        email=email,
-        user_id=user.id,
-        ip_address=ip,
-        user_agent=ua,
-    )
 
     # --- MFA gate ---
     if user.mfa_required:
@@ -377,13 +265,8 @@ def login(
         )
 
     # No MFA — normal login
-    token = set_auth_cookie(
-        response,
-        user_id=user.id,
-        email=user.email,
-        request=request,
-        db_session=session,
-    )
+    set_auth_cookie(response, user_id=user.id, email=user.email)
+    token = make_token(user_id=user.id, email=user.email)
     return LoginResponse(
         requires_mfa=False,
         user_id=user.id,
@@ -397,9 +280,7 @@ def login(
 
 
 @router.post("/verify-otp", response_model=MeResponse)
-@limiter.limit("10/minute")
 def verify_otp_endpoint(
-    request: Request,
     payload: VerifyOtpRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -435,22 +316,14 @@ def verify_otp_endpoint(
     user.mfa_otp_attempts = 0
     session.commit()
 
-    token = set_auth_cookie(
-        response,
-        user_id=user.id,
-        email=user.email,
-        request=request,
-        db_session=session,
-    )
+    set_auth_cookie(response, user_id=user.id, email=user.email)
     resp = _me_response(user)
-    resp.token = token
+    resp.token = make_token(user_id=user.id, email=user.email)
     return resp
 
 
 @router.post("/resend-otp")
-@limiter.limit("3/minute")
 def resend_otp(
-    request: Request,
     payload: ResendOtpRequest,
     bg: BackgroundTasks,
     session: Session = Depends(get_session),
@@ -481,9 +354,7 @@ RESET_TOKEN_TTL_MINUTES = 30
 
 
 @router.post("/forgot-password")
-@limiter.limit("5/minute")
 def forgot_password(
-    request: Request,
     payload: ForgotPasswordRequest,
     session: Session = Depends(get_session),
 ) -> dict:
@@ -513,9 +384,7 @@ def forgot_password(
 
 
 @router.post("/reset-password")
-@limiter.limit("5/minute")
 def reset_password(
-    request: Request,
     payload: ResetPasswordRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -544,18 +413,9 @@ def reset_password(
     user.password_hash = hash_password(payload.password)
     user.password_reset_token = None
     user.password_reset_expires_at = None
-    # Increment token_version to invalidate all existing sessions
-    user.token_version = (user.token_version or 0) + 1
     session.commit()
 
-    set_auth_cookie(
-        response,
-        user_id=user.id,
-        email=user.email,
-        request=request,
-        db_session=session,
-        token_version=user.token_version,
-    )
+    set_auth_cookie(response, user_id=user.id, email=user.email)
     return {"status": "ok"}
 
 
@@ -635,7 +495,6 @@ def admin_set_role(
 
 @router.post("/oauth/callback", response_model=MeResponse)
 async def oauth_callback(
-    request: Request,
     payload: OAuthCallbackRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -696,27 +555,15 @@ async def oauth_callback(
             user.oauth_sub = sub
             session.commit()
 
-    token = set_auth_cookie(
-        response,
-        user_id=user.id,
-        email=user.email,
-        request=request,
-        db_session=session,
-    )
+    set_auth_cookie(response, user_id=user.id, email=user.email)
     resp = _me_response(user)
-    resp.token = token
+    resp.token = make_token(user_id=user.id, email=user.email)
     return resp
 
 
 @router.post("/logout")
-def logout(
-    request: Request,
-    response: Response,
-    session: Session = Depends(get_session),
-) -> dict:
-    # Extract current JWT to revoke the session
-    cookie_token = request.cookies.get("rm_session")
-    clear_auth_cookie(response, token=cookie_token, db_session=session)
+def logout(response: Response) -> dict:
+    clear_auth_cookie(response)
     return {"status": "ok"}
 
 

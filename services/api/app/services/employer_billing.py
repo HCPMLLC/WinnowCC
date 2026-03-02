@@ -22,24 +22,14 @@ STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_EMPLOYER_WEBHOOK_SECRET", "") or os.getenv(
     "STRIPE_WEBHOOK_SECRET", ""
 )
-STRIPE_PRICE_EMPLOYER_STARTER_MO = os.getenv("STRIPE_PRICE_EMPLOYER_STARTER_MO", "")
-STRIPE_PRICE_EMPLOYER_STARTER_YR = os.getenv("STRIPE_PRICE_EMPLOYER_STARTER_YR", "")
-STRIPE_PRICE_EMPLOYER_PRO_MO = os.getenv("STRIPE_PRICE_EMPLOYER_PRO_MO", "")
-STRIPE_PRICE_EMPLOYER_PRO_YR = os.getenv("STRIPE_PRICE_EMPLOYER_PRO_YR", "")
+STRIPE_PRICE_EMPLOYER_STARTER = os.getenv("STRIPE_PRICE_EMPLOYER_STARTER_MO", "")
+STRIPE_PRICE_EMPLOYER_PRO = os.getenv("STRIPE_PRICE_EMPLOYER_PRO_MO", "")
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
-TIER_PRICE_MAP: dict[tuple[str, str], str] = {
-    ("starter", "monthly"): STRIPE_PRICE_EMPLOYER_STARTER_MO,
-    ("starter", "annual"): STRIPE_PRICE_EMPLOYER_STARTER_YR,
-    ("pro", "monthly"): STRIPE_PRICE_EMPLOYER_PRO_MO,
-    ("pro", "annual"): STRIPE_PRICE_EMPLOYER_PRO_YR,
+TIER_PRICE_MAP = {
+    "starter": STRIPE_PRICE_EMPLOYER_STARTER,
+    "pro": STRIPE_PRICE_EMPLOYER_PRO,
 }
-
-# Flat lookup used by webhook handler to resolve tier from price ID
-_PRICE_TO_TIER: dict[str, str] = {}
-for (_tier, _interval), _pid in TIER_PRICE_MAP.items():
-    if _pid:
-        _PRICE_TO_TIER[_pid] = _tier
 
 
 def _stripe_client():
@@ -86,10 +76,9 @@ def create_checkout_session(
     employer: EmployerProfile,
     email: str,
     tier: str,
-    interval: str = "monthly",
 ) -> str:
     """Create a Stripe Checkout session for an employer subscription upgrade."""
-    price_id = TIER_PRICE_MAP.get((tier, interval))
+    price_id = TIER_PRICE_MAP.get(tier)
 
     # Dev mode: when Stripe is not configured, directly upgrade the tier and
     # return the success URL.  Without a webhook secret, Stripe checkout would
@@ -97,13 +86,11 @@ def create_checkout_session(
     if not price_id or not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
         employer.subscription_tier = tier
         employer.subscription_status = "active"
-        employer.billing_interval = interval
         session.flush()
         logger.info(
-            "Dev mode: upgraded employer %s to %s/%s (no Stripe configured)",
+            "Dev mode: upgraded employer %s to %s (no Stripe configured)",
             employer.id,
             tier,
-            interval,
         )
         return f"{FRONTEND_URL}/employer/settings?billing=success"
 
@@ -120,11 +107,7 @@ def create_checkout_session(
                 f"?session_id={{CHECKOUT_SESSION_ID}}"
             ),
             "cancel_url": f"{FRONTEND_URL}/employer/settings",
-            "metadata": {
-                "employer_id": str(employer.id),
-                "tier": tier,
-                "interval": interval,
-            },
+            "metadata": {"employer_id": str(employer.id), "tier": tier},
         }
     )
     return checkout.url
@@ -264,9 +247,10 @@ def _handle_checkout_completed(checkout_session: object, session: Session) -> No
                 client = _stripe_client()
                 sub = client.subscriptions.retrieve(subscription_id)
                 price_id = sub.items.data[0].price.id if sub.items.data else None
-                resolved_tier = _PRICE_TO_TIER.get(price_id or "")
-                if resolved_tier:
-                    employer.subscription_tier = resolved_tier
+                if price_id == STRIPE_PRICE_EMPLOYER_STARTER:
+                    employer.subscription_tier = "starter"
+                elif price_id == STRIPE_PRICE_EMPLOYER_PRO:
+                    employer.subscription_tier = "pro"
             except Exception:
                 logger.warning(
                     "Could not determine tier for sub %s",
