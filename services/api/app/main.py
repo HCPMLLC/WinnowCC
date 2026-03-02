@@ -72,6 +72,7 @@ from app.routers.employer_introductions import (  # noqa: E402
 )
 from app.routers.health import router as health_router  # noqa: E402
 from app.routers.hiring_workspace import router as hiring_workspace_router  # noqa: E402
+from app.routers.interview_prep import router as interview_prep_router  # noqa: E402
 from app.routers.job_forms import router as job_forms_router  # noqa: E402
 from app.routers.jobs import router as jobs_router  # noqa: E402
 from app.routers.market_intelligence import (  # noqa: E402
@@ -229,6 +230,7 @@ app.include_router(hiring_workspace_router)
 app.include_router(market_intelligence_router)
 app.include_router(career_intelligence_router)
 app.include_router(candidate_insights_router)
+app.include_router(interview_prep_router)
 app.include_router(migration_router)
 app.include_router(upload_batches_router)
 app.include_router(sms_otp_router)

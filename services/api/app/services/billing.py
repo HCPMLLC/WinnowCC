@@ -65,6 +65,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "match_refreshes": 10,
         "tailor_requests": 1,
         "cover_letters": 1,
+        "interview_preps": 0,
         "semantic_searches_per_day": 0,
         "sieve_messages_per_day": 3,
         "ips_detail": "breakdown",
@@ -79,6 +80,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "match_refreshes": 50,
         "tailor_requests": 10,
         "cover_letters": 10,
+        "interview_preps": 3,
         "semantic_searches_per_day": 5,
         "sieve_messages_per_day": 50,
         "ips_detail": "breakdown",
@@ -93,6 +95,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "match_refreshes": 9999,
         "tailor_requests": 9999,
         "cover_letters": 9999,
+        "interview_preps": 9999,
         "semantic_searches_per_day": 9999,
         "sieve_messages_per_day": 9999,
         "ips_detail": "full_coaching",
@@ -524,6 +527,38 @@ def check_tailor_limit(
 def increment_tailor_requests(session: Session, user_id: int) -> None:
     usage = get_or_create_usage(session, user_id)
     usage.tailor_requests += 1
+    session.flush()
+
+
+def check_interview_prep_limit(
+    session: Session,
+    user: User,
+    candidate: Candidate | None,
+) -> None:
+    """Raise 429 if user has exceeded interview prep limit for their tier."""
+    tier = get_plan_tier(candidate)
+    limit = get_tier_limit(tier, "interview_preps")
+    if isinstance(limit, int) and limit >= 9999:
+        return
+    if isinstance(limit, int) and limit == 0:
+        raise HTTPException(
+            status_code=403,
+            detail="Interview prep requires a Starter or Pro plan.",
+        )
+    usage = get_or_create_usage(session, user.id)
+    if usage.interview_preps >= int(limit):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Plan limit reached: {limit} interview preps per month. "
+                "Upgrade for more."
+            ),
+        )
+
+
+def increment_interview_preps(session: Session, user_id: int) -> None:
+    usage = get_or_create_usage(session, user_id)
+    usage.interview_preps += 1
     session.flush()
 
 

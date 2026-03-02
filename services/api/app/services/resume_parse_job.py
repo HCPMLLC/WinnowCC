@@ -135,6 +135,21 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
         except Exception:
             pass
 
+        # Enqueue profile enhancement suggestions (low priority)
+        try:
+            from app.services.profile_enhancement import (
+                generate_enhancement_suggestions,
+            )
+            from app.services.queue import get_queue
+
+            get_queue("low").enqueue(
+                generate_enhancement_suggestions,
+                resume.user_id,
+                next_version,
+            )
+        except Exception:
+            pass
+
         _set_job_status(session, job_run_id, "succeeded")
     except Exception as exc:
         session.rollback()

@@ -99,6 +99,14 @@ def get_scheduler_status(
                 " (weekly Sunday 4am UTC)"
             ),
         ),
+        ScheduledTask(
+            name="Weekly Job Market Digest",
+            cron="0 7 * * 0",
+            description=(
+                "Send personalized weekly digest emails to candidates"
+                " (Sunday 7am UTC, low queue)"
+            ),
+        ),
     ]
     return SchedulerStatusResponse(
         **config,
@@ -121,6 +129,23 @@ def trigger_ingestion(
 
     return SchedulerTriggerResponse(
         message="Job ingestion triggered",
+        job_id=job.id,
+    )
+
+
+@router.post("/trigger-digest", response_model=SchedulerTriggerResponse)
+def trigger_weekly_digest(
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+) -> SchedulerTriggerResponse:
+    """Manually trigger a weekly digest batch run."""
+    queue = get_queue("low")
+
+    job = queue.enqueue(
+        "app.services.scheduled_jobs.scheduled_send_weekly_digests",
+    )
+
+    return SchedulerTriggerResponse(
+        message="Weekly digest triggered",
         job_id=job.id,
     )
 

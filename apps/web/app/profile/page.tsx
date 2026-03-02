@@ -8,6 +8,9 @@ import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import { useProgress } from "../hooks/useProgress";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
+import EnhancementSuggestions, {
+  type EnhancementData,
+} from "../components/EnhancementSuggestions";
 
 type ExperienceItem = {
   company?: string | null;
@@ -414,6 +417,9 @@ function ProfilePageContent() {
   const [firstNameError, setFirstNameError] = useState<string | null>(null);
   const [lastNameError, setLastNameError] = useState<string | null>(null);
 
+  // Enhancement suggestions state
+  const [enhancement, setEnhancement] = useState<EnhancementData | null>(null);
+
   // Expanded state for sections
   const [expandedExperience, setExpandedExperience] = useState<number | null>(
     null
@@ -466,6 +472,18 @@ function ProfilePageContent() {
       }
 
       try {
+        const ehRes = await fetch(
+          `${API_BASE}/api/profile/enhancement-suggestions`,
+          { credentials: "include" }
+        );
+        if (ehRes.ok) {
+          setEnhancement((await ehRes.json()) as EnhancementData);
+        }
+      } catch {
+        // Non-critical
+      }
+
+      try {
         const response = await fetch(`${API_BASE}/api/trust/me`, {
           credentials: "include",
         });
@@ -485,6 +503,27 @@ function ProfilePageContent() {
 
     void loadData();
   }, [pathname, router, searchParams]);
+
+  // Poll enhancement suggestions while generating
+  useEffect(() => {
+    if (enhancement?.status !== "generating") return;
+    const interval = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/profile/enhancement-suggestions`,
+          { credentials: "include" }
+        );
+        if (res.ok) {
+          const data = (await res.json()) as EnhancementData;
+          setEnhancement(data);
+          if (data.status !== "generating") clearInterval(interval);
+        }
+      } catch {
+        // retry next tick
+      }
+    }, 3000);
+    return () => clearInterval(interval);
+  }, [enhancement?.status]);
 
   const updateBasics = (updates: Partial<Basics>) => {
     setProfile((current) => {
@@ -707,6 +746,8 @@ function ProfilePageContent() {
           } catch {
             // Non-critical
           }
+          // Trigger enhancement suggestions polling
+          setEnhancement({ status: "generating" });
           setParseStatus("Profile updated from resume.");
           return;
         }
@@ -804,12 +845,27 @@ function ProfilePageContent() {
       } catch {
         // Non-critical
       }
+
+      // Enhancement suggestions are cleared on save; show not_generated
+      setEnhancement({ status: "not_generated" });
     } catch (caught) {
       const message =
         caught instanceof Error ? caught.message : "Failed to save profile.";
       setError(message);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const handleRegenerateEnhancement = async () => {
+    setEnhancement({ status: "generating" });
+    try {
+      await fetch(
+        `${API_BASE}/api/profile/enhancement-suggestions/regenerate`,
+        { method: "POST", credentials: "include" }
+      );
+    } catch {
+      setEnhancement({ status: "failed" });
     }
   };
 
@@ -1633,6 +1689,14 @@ function ProfilePageContent() {
             )}
           </section>
         )}
+
+      {/* Enhancement Suggestions */}
+      {enhancement && enhancement.status !== "not_generated" && (
+        <EnhancementSuggestions
+          data={enhancement}
+          onRegenerate={handleRegenerateEnhancement}
+        />
+      )}
 
       {/* Save Button */}
       <div className="flex justify-end">

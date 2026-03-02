@@ -153,6 +153,23 @@ def main():
     )
     logger.info(f"Scheduled hard-delete registered: {hard_delete_job.id}")
 
+    # Schedule weekly job market digest (Sunday at 7am UTC, low queue)
+    for job in scheduler.get_jobs():
+        if (
+            hasattr(job, "meta")
+            and job.meta.get("scheduled_job_type") == "weekly_digest"
+        ):
+            scheduler.cancel(job)
+            logger.info(f"Cancelled existing weekly digest job: {job.id}")
+
+    digest_job = scheduler.cron(
+        cron_string="0 7 * * 0",
+        func="app.services.scheduled_jobs:scheduled_send_weekly_digests",
+        queue_name="low",
+        meta={"scheduled_job_type": "weekly_digest"},
+    )
+    logger.info(f"Scheduled weekly digest registered: {digest_job.id}")
+
     logger.info("Scheduler running. Press Ctrl+C to stop.")
 
     # Run the scheduler
