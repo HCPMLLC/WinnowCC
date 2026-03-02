@@ -253,102 +253,6 @@ export default function SieveWidget({
     }
   }, [isOpen]);
 
-  const handleTriggerAction = useCallback(
-    (trigger: SieveTrigger) => {
-      if (trigger.action_type === "navigate" && trigger.action_target) {
-        window.location.href = trigger.action_target;
-      } else if (trigger.action_type === "chat" && trigger.action_target) {
-        sendMessage(trigger.action_target);
-      }
-      handleDismiss(trigger.id);
-    },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
-
-  const sendMessage = useCallback(
-    async (text: string) => {
-      if (!text.trim()) return;
-
-      const userMessage = text.trim();
-      const userMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "user",
-        content: userMessage,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      setInput("");
-
-      // Build history for context
-      const history = [...conversationHistory, { role: "user" as const, content: userMessage }];
-
-      // If in live agent mode, send via WebSocket
-      if (liveAgentMode && activeTicket) {
-        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: "message", content: userMessage }));
-        } else if (apiBase) {
-          // Fallback to REST API
-          await fetch(`${apiBase}/api/support/ticket/${activeTicket.ticket_id}/message`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            credentials: "include",
-            body: JSON.stringify({ content: userMessage }),
-          });
-        }
-        return;
-      }
-
-      // Check for escalation trigger phrases
-      const shouldEscalate = ESCALATION_PHRASES.some((phrase) =>
-        userMessage.toLowerCase().includes(phrase)
-      );
-
-      if (shouldEscalate) {
-        await escalateToAgent(userMessage, history);
-        return;
-      }
-
-      // Normal Sieve AI flow
-      setIsTyping(true);
-
-      let responseText: string;
-      let newSuggestions: string[] = [];
-      try {
-        if (apiBase) {
-          const data = await callSieveAPI(
-            apiBase,
-            userMessage,
-            conversationHistory
-          );
-          responseText = data.response;
-          newSuggestions = data.suggested_actions || [];
-        } else {
-          responseText = getDemoResponse(userMessage);
-        }
-      } catch {
-        responseText = getDemoResponse(userMessage);
-      }
-
-      setConversationHistory((prev) => [
-        ...prev,
-        { role: "user", content: userMessage },
-        { role: "assistant", content: responseText },
-      ]);
-      setSuggestedActions(newSuggestions);
-
-      const assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: responseText,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      setIsTyping(false);
-    },
-    [apiBase, conversationHistory, liveAgentMode, activeTicket, escalateToAgent]
-  );
-
   // ── Live agent: WebSocket connection ──
   const connectWebSocket = useCallback((ticketId: number) => {
     if (!apiBase) return;
@@ -469,6 +373,102 @@ export default function SieveWidget({
       setIsEscalating(false);
     }
   }, [apiBase, connectWebSocket]);
+
+  const handleTriggerAction = useCallback(
+    (trigger: SieveTrigger) => {
+      if (trigger.action_type === "navigate" && trigger.action_target) {
+        window.location.href = trigger.action_target;
+      } else if (trigger.action_type === "chat" && trigger.action_target) {
+        sendMessage(trigger.action_target);
+      }
+      handleDismiss(trigger.id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    []
+  );
+
+  const sendMessage = useCallback(
+    async (text: string) => {
+      if (!text.trim()) return;
+
+      const userMessage = text.trim();
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: userMessage,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+      setInput("");
+
+      // Build history for context
+      const history = [...conversationHistory, { role: "user" as const, content: userMessage }];
+
+      // If in live agent mode, send via WebSocket
+      if (liveAgentMode && activeTicket) {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "message", content: userMessage }));
+        } else if (apiBase) {
+          // Fallback to REST API
+          await fetch(`${apiBase}/api/support/ticket/${activeTicket.ticket_id}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ content: userMessage }),
+          });
+        }
+        return;
+      }
+
+      // Check for escalation trigger phrases
+      const shouldEscalate = ESCALATION_PHRASES.some((phrase) =>
+        userMessage.toLowerCase().includes(phrase)
+      );
+
+      if (shouldEscalate) {
+        await escalateToAgent(userMessage, history);
+        return;
+      }
+
+      // Normal Sieve AI flow
+      setIsTyping(true);
+
+      let responseText: string;
+      let newSuggestions: string[] = [];
+      try {
+        if (apiBase) {
+          const data = await callSieveAPI(
+            apiBase,
+            userMessage,
+            conversationHistory
+          );
+          responseText = data.response;
+          newSuggestions = data.suggested_actions || [];
+        } else {
+          responseText = getDemoResponse(userMessage);
+        }
+      } catch {
+        responseText = getDemoResponse(userMessage);
+      }
+
+      setConversationHistory((prev) => [
+        ...prev,
+        { role: "user", content: userMessage },
+        { role: "assistant", content: responseText },
+      ]);
+      setSuggestedActions(newSuggestions);
+
+      const assistantMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "assistant",
+        content: responseText,
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
+      setIsTyping(false);
+    },
+    [apiBase, conversationHistory, liveAgentMode, activeTicket, escalateToAgent]
+  );
 
   // ── Check for active ticket on widget open ──
   useEffect(() => {
