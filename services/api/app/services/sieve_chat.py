@@ -189,6 +189,10 @@ def load_user_context(user_id: int, session: Session) -> dict:
     ).scalar_one_or_none()
 
     name = user.email.split("@")[0]
+    if user.first_name:
+        name = user.first_name
+    elif user.full_name:
+        name = user.full_name.split()[0]
     if candidate:
         full = " ".join(p for p in [candidate.first_name, candidate.last_name] if p)
         if full:
@@ -1022,9 +1026,14 @@ def load_employer_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
-    context["name"] = (
-        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
-    )
+    if user.first_name:
+        context["name"] = user.first_name
+    elif user.full_name:
+        context["name"] = user.full_name.split()[0]
+    else:
+        context["name"] = (
+            user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+        )
 
     profile = session.execute(
         select(EmployerProfile).where(EmployerProfile.user_id == user_id)
@@ -1560,9 +1569,14 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
-    context["name"] = (
-        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
-    )
+    if user.first_name:
+        context["name"] = user.first_name
+    elif user.full_name:
+        context["name"] = user.full_name.split()[0]
+    else:
+        context["name"] = (
+            user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+        )
 
     profile = session.execute(
         select(RecruiterProfile).where(RecruiterProfile.user_id == user_id)
