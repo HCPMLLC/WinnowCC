@@ -53,6 +53,10 @@ function OnboardingPageContent() {
   const [dataProcessingConsent, setDataProcessingConsent] = useState(false);
   const [applicationMode, setApplicationMode] = useState<"review_required" | "auto_apply_limited">("review_required");
 
+  // Phone & SMS state
+  const [phone, setPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
+
   const completionPercent = useMemo(() => {
     let pct = 0;
     // Step 1 fields
@@ -195,6 +199,8 @@ function OnboardingPageContent() {
           mjass_consent: true,
           data_processing_consent: true,
           application_mode: applicationMode,
+          phone: phone.trim() || null,
+          sms_consent: smsConsent,
         }),
       });
 
@@ -455,6 +461,51 @@ function OnboardingPageContent() {
               </label>
             </div>
           </div>
+
+          <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
+            <h2 className="text-lg font-semibold text-slate-900">Phone &amp; SMS Notifications</h2>
+            <p className="mt-1 text-sm text-slate-500">
+              Optionally receive text message alerts about job matches and application updates.
+            </p>
+            <div className="mt-4 flex flex-col gap-3">
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Phone Number
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => {
+                    setPhone(e.target.value);
+                    if (!e.target.value.trim()) setSmsConsent(false);
+                  }}
+                  placeholder="(210) 555-1234"
+                  className="rounded-xl border border-slate-200 px-3 py-2 text-sm"
+                />
+              </label>
+              <label className={`flex items-start gap-3 text-sm ${!phone.trim() ? "opacity-50" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  disabled={!phone.trim()}
+                  className="mt-1"
+                />
+                <span>
+                  I agree to receive automated text messages from Winnow about job matches,
+                  application updates, and career alerts at the phone number provided. Message
+                  frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out or HELP
+                  for help. See our{" "}
+                  <Link href="/terms" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link href="/privacy" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Privacy Policy
+                  </Link>
+                  . Consent is not required to use Winnow.
+                </span>
+              </label>
+            </div>
+          </section>
 
           <section className="rounded-2xl border border-slate-200 bg-slate-50 p-6">
             <h2 className="text-lg font-semibold text-slate-900">Consents</h2>

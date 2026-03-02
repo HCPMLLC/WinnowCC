@@ -93,6 +93,14 @@ function SettingsContent() {
   const [openToIntros, setOpenToIntros] = useState(true);
   const [introToggling, setIntroToggling] = useState(false);
 
+  // Phone & SMS state
+  const [smsPhone, setSmsPhone] = useState("");
+  const [smsConsent, setSmsConsent] = useState(false);
+  const [smsPhoneLoaded, setSmsPhoneLoaded] = useState("");
+  const [smsConsentLoaded, setSmsConsentLoaded] = useState(false);
+  const [smsLoading, setSmsLoading] = useState(true);
+  const [smsSaving, setSmsSaving] = useState(false);
+
   const fetchBilling = () =>
     fetch(`${API_BASE}/api/billing/status`, { credentials: "include" })
       .then((r) => {
@@ -155,6 +163,25 @@ function SettingsContent() {
       .then((data) => setPreview(data))
       .catch(() => setPreview(null))
       .finally(() => setPreviewLoading(false));
+  }, []);
+
+  // Load SMS consent status
+  useEffect(() => {
+    fetch(`${API_BASE}/api/onboarding/sms-consent-status`, { credentials: "include" })
+      .then((r) => {
+        if (!r.ok) throw new Error("Failed to load SMS status");
+        return r.json();
+      })
+      .then((data) => {
+        const ph = data.phone || "";
+        const sc = Boolean(data.sms_consent);
+        setSmsPhone(ph);
+        setSmsConsent(sc);
+        setSmsPhoneLoaded(ph);
+        setSmsConsentLoaded(sc);
+      })
+      .catch(() => {})
+      .finally(() => setSmsLoading(false));
   }, []);
 
   const handleCheckout = async (tier: string, interval: string) => {
@@ -625,6 +652,98 @@ function SettingsContent() {
               />
             </button>
           </div>
+        </div>
+
+        {/* Phone & SMS Notifications */}
+        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">
+            Phone &amp; SMS Notifications
+          </h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Receive text message alerts about job matches and application updates.
+          </p>
+
+          {smsLoading ? (
+            <p className="text-sm text-slate-400">Loading SMS preferences...</p>
+          ) : (
+            <div className="flex flex-col gap-4">
+              <label className="flex flex-col gap-2 text-sm font-medium text-slate-700">
+                Phone Number
+                <input
+                  type="tel"
+                  value={smsPhone}
+                  onChange={(e) => {
+                    setSmsPhone(e.target.value);
+                    if (!e.target.value.trim()) setSmsConsent(false);
+                  }}
+                  placeholder="(210) 555-1234"
+                  className="max-w-xs rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+              </label>
+              <label className={`flex items-start gap-3 text-sm ${!smsPhone.trim() ? "opacity-50" : ""}`}>
+                <input
+                  type="checkbox"
+                  checked={smsConsent}
+                  onChange={(e) => setSmsConsent(e.target.checked)}
+                  disabled={!smsPhone.trim()}
+                  className="mt-1"
+                />
+                <span className="text-slate-700">
+                  I agree to receive automated text messages from Winnow about job matches,
+                  application updates, and career alerts at the phone number provided. Message
+                  frequency varies. Msg &amp; data rates may apply. Reply STOP to opt out or HELP
+                  for help. See our{" "}
+                  <a href="/terms" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Terms of Service
+                  </a>{" "}
+                  and{" "}
+                  <a href="/privacy" target="_blank" className="font-semibold underline hover:text-slate-900">
+                    Privacy Policy
+                  </a>
+                  . Consent is not required to use Winnow.
+                </span>
+              </label>
+              {(smsPhone !== smsPhoneLoaded || smsConsent !== smsConsentLoaded) && (
+                <button
+                  disabled={smsSaving}
+                  onClick={async () => {
+                    setSmsSaving(true);
+                    setError(null);
+                    try {
+                      const res = await fetch(`${API_BASE}/api/onboarding/sms-consent`, {
+                        method: "PUT",
+                        credentials: "include",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          phone: smsPhone.trim() || null,
+                          sms_consent: smsConsent,
+                        }),
+                      });
+                      if (!res.ok) {
+                        const data = await res.json().catch(() => null);
+                        throw new Error(data?.detail || "Failed to save SMS preferences");
+                      }
+                      const data = await res.json();
+                      const ph = data.phone || "";
+                      const sc = Boolean(data.sms_consent);
+                      setSmsPhone(ph);
+                      setSmsConsent(sc);
+                      setSmsPhoneLoaded(ph);
+                      setSmsConsentLoaded(sc);
+                      setToast(sc ? "SMS notifications enabled." : "SMS preferences saved.");
+                    } catch (e) {
+                      setError(e instanceof Error ? e.message : "Failed to save SMS preferences");
+                    } finally {
+                      setSmsSaving(false);
+                    }
+                  }}
+                  className="w-fit inline-flex items-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {smsSaving ? "Saving..." : "Save Changes"}
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Divider */}

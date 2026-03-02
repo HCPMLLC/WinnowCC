@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -66,6 +67,7 @@ def _active_consent(session: Session, user_id: int) -> dict[str, Any] | None:
                    mjass_consent, mjass_consent_at,
                    data_processing_consent,
                    data_processing_consent_at,
+                   sms_consent, sms_consent_at,
                    application_mode,
                    active, created_at
             FROM consents
@@ -268,7 +270,9 @@ def put_consent(
       "accept_terms": true,
       "mjass_consent": true,
       "data_processing_consent": true,
-      "application_mode": "review_required"
+      "application_mode": "review_required",
+      "phone": "(210) 555-1234",
+      "sms_consent": false
     }
     """
     _ensure_state(session, user.id)
@@ -285,6 +289,29 @@ def put_consent(
     mjass_consent = payload.get("mjass_consent")
     data_processing_consent = payload.get("data_processing_consent")
     application_mode = payload.get("application_mode")
+
+    # SMS opt-in fields
+    raw_phone = payload.get("phone")
+    sms_consent = bool(payload.get("sms_consent", False))
+    phone_e164: str | None = None
+
+    if raw_phone and str(raw_phone).strip():
+        digits = re.sub(r"\D", "", str(raw_phone).strip())
+        if len(digits) == 10:
+            digits = "1" + digits
+        if len(digits) == 11 and digits.startswith("1"):
+            phone_e164 = "+" + digits
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid phone number. Please enter a valid US phone number.",
+            )
+
+    if sms_consent and not phone_e164:
+        raise HTTPException(
+            status_code=400,
+            detail="A phone number is required to opt in to SMS notifications.",
+        )
 
     if not terms_version or not isinstance(terms_version, str):
         raise HTTPException(status_code=400, detail="terms_version is required")
@@ -319,11 +346,13 @@ def put_consent(
               (user_id, terms_version, terms_accepted_at,
                mjass_consent, mjass_consent_at,
                data_processing_consent, data_processing_consent_at,
+               sms_consent, sms_consent_at,
                application_mode, active)
             VALUES
               (:uid, :terms_version, :terms_accepted_at,
                :mjass_consent, :mjass_consent_at,
                :data_processing_consent, :data_processing_consent_at,
+               :sms_consent, :sms_consent_at,
                :application_mode, true)
             """
         ),
@@ -335,6 +364,8 @@ def put_consent(
             "mjass_consent_at": now,
             "data_processing_consent": True,
             "data_processing_consent_at": now,
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
             "application_mode": application_mode,
         },
     )
@@ -356,8 +387,94 @@ def put_consent(
     if user_record and not user_record.onboarding_completed_at:
         user_record.onboarding_completed_at = now
 
+    # Save phone number if provided
+    if phone_e164 and user_record:
+        user_record.phone = phone_e164
+
     session.commit()
     return {"ok": True}
+
+
+@router.get("/sms-consent-status")
+def sms_consent_status(
+    session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+):
+    """Return current phone and SMS consent state for the authenticated user."""
+    user_record = session.get(User, user.id)
+    consent = _active_consent(session, user.id)
+
+    session.commit()
+    return {
+        "phone": user_record.phone if user_record else None,
+        "sms_consent": bool(consent and consent.get("sms_consent")),
+        "sms_consent_at": consent.get("sms_consent_at") if consent else None,
+    }
+
+
+@router.put("/sms-consent")
+def update_sms_consent(
+    payload: dict[str, Any],
+    session: Session = Depends(get_session),
+    user=Depends(get_current_user),
+):
+    """Update phone + SMS consent from Settings without re-submitting all consents."""
+    raw_phone = payload.get("phone")
+    sms_consent = bool(payload.get("sms_consent", False))
+    phone_e164: str | None = None
+
+    if raw_phone and str(raw_phone).strip():
+        digits = re.sub(r"\D", "", str(raw_phone).strip())
+        if len(digits) == 10:
+            digits = "1" + digits
+        if len(digits) == 11 and digits.startswith("1"):
+            phone_e164 = "+" + digits
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid phone number. Please enter a valid US phone number.",
+            )
+
+    if sms_consent and not phone_e164:
+        raise HTTPException(
+            status_code=400,
+            detail="A phone number is required to opt in to SMS notifications.",
+        )
+
+    # If phone is cleared, force sms_consent off
+    if not phone_e164:
+        sms_consent = False
+
+    now = _utcnow()
+
+    # Update phone on user record
+    user_record = session.get(User, user.id)
+    if user_record:
+        user_record.phone = phone_e164
+
+    # Update sms_consent on active consent row
+    session.execute(
+        text(
+            """
+            UPDATE consents
+            SET sms_consent = :sms_consent,
+                sms_consent_at = :sms_consent_at
+            WHERE user_id = :uid AND active = true
+            """
+        ),
+        {
+            "uid": user.id,
+            "sms_consent": sms_consent,
+            "sms_consent_at": now if sms_consent else None,
+        },
+    )
+
+    session.commit()
+    return {
+        "ok": True,
+        "phone": phone_e164,
+        "sms_consent": sms_consent,
+    }
 
 
 @router.get("/summary")
