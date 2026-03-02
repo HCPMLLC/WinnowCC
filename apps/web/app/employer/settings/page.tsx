@@ -76,6 +76,9 @@ function EmployerSettingsContent() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [billingInterval, setBillingInterval] = useState<
+    "monthly" | "annual"
+  >("monthly");
   const [formData, setFormData] = useState({
     company_name: "",
     company_size: "",
@@ -199,7 +202,7 @@ function EmployerSettingsContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ tier }),
+        body: JSON.stringify({ tier, interval: billingInterval }),
       });
 
       if (!res.ok) {
@@ -313,6 +316,44 @@ function EmployerSettingsContent() {
           </div>
         )}
 
+        {/* Monthly / Annual toggle */}
+        <div className="mb-4 flex items-center justify-center gap-3">
+          <span
+            className={`text-sm font-medium ${billingInterval === "monthly" ? "text-slate-900" : "text-slate-400"}`}
+          >
+            Monthly
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={billingInterval === "annual"}
+            onClick={() =>
+              setBillingInterval((prev) =>
+                prev === "monthly" ? "annual" : "monthly",
+              )
+            }
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
+              billingInterval === "annual" ? "bg-blue-600" : "bg-slate-300"
+            }`}
+          >
+            <span
+              className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                billingInterval === "annual"
+                  ? "translate-x-5"
+                  : "translate-x-0"
+              }`}
+            />
+          </button>
+          <span
+            className={`text-sm font-medium ${billingInterval === "annual" ? "text-slate-900" : "text-slate-400"}`}
+          >
+            Annual{" "}
+            <span className="text-xs font-normal text-emerald-600">
+              Save up to 33%
+            </span>
+          </span>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <PricingCard
             name="Free"
@@ -329,8 +370,8 @@ function EmployerSettingsContent() {
           />
           <PricingCard
             name="Starter"
-            price="$99"
-            period="per month"
+            price={billingInterval === "monthly" ? "$49" : "$399"}
+            period={billingInterval === "monthly" ? "per month" : "per year"}
             features={[
               "5 active job postings",
               "50 candidate views/month",
@@ -350,8 +391,8 @@ function EmployerSettingsContent() {
           />
           <PricingCard
             name="Pro"
-            price="$299"
-            period="per month"
+            price={billingInterval === "monthly" ? "$149" : "$1,199"}
+            period={billingInterval === "monthly" ? "per month" : "per year"}
             features={[
               "Unlimited job postings",
               "200 candidate views/month",
