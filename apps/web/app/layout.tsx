@@ -19,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="en" className="scroll-smooth">
       <head>
         {/* eslint-disable-next-line @next/next/no-page-custom-font -- App Router: layout.tsx is the equivalent of _document.js */}
         <link

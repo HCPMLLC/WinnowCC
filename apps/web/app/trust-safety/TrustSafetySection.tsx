@@ -7,7 +7,7 @@ type StepType = "candidate" | "employer" | "recruiter" | "platform" | "alert";
 
 export function TrustSafetySection({ audience }: { audience: Audience }) {
   return (
-    <section className="bg-gray-50 py-16 px-6">
+    <section id="trust-safety" className="bg-gray-50 py-16 px-6">
       <div className="max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-10">
@@ -245,8 +245,7 @@ function DownloadBlock({ href, label }: { href: string; label: string }) {
     <div className="mt-8 text-center">
       <a
         href={href}
-        target="_blank"
-        rel="noopener noreferrer"
+        download
         className="inline-flex items-center gap-2 px-6 py-3 bg-[#1B3025] text-white rounded-lg font-medium text-sm hover:bg-[#2A3F33] transition"
       >
         📄 {label}

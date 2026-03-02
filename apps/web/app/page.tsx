@@ -387,7 +387,7 @@ function NavBar({ audience }: { audience: Audience }) {
           <a href="#features" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Features</a>
           <a href="#how-it-works" className="text-sm font-medium text-white/80 transition-colors hover:text-white">How It Works</a>
           <a href="#compare" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Compare</a>
-          <Link href="/trust-safety" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Trust &amp; Safety</Link>
+          <a href="#trust-safety" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Trust &amp; Safety</a>
           <a href="#pricing" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Pricing</a>
           <Link href="/login" className="text-sm font-medium text-white/80 transition-colors hover:text-white">Sign In</Link>
           <Link
@@ -419,7 +419,7 @@ function NavBar({ audience }: { audience: Audience }) {
             <a href="#features" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Features</a>
             <a href="#how-it-works" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">How It Works</a>
             <a href="#compare" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Compare</a>
-            <Link href="/trust-safety" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Trust &amp; Safety</Link>
+            <a href="#trust-safety" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Trust &amp; Safety</a>
             <a href="#pricing" onClick={() => setMenuOpen(false)} className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Pricing</a>
             <Link href="/login" className="rounded-lg px-3 py-2 text-sm font-medium text-white/80 hover:bg-white/10 hover:text-white">Sign In</Link>
             <Link
