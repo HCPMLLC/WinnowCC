@@ -1,7 +1,7 @@
 """add ip_allowlist to employer_profiles
 
-Revision ID: c3d4e5f6a7b8
-Revises: b2c3d4e5f6a7
+Revision ID: 161370905dc9
+Revises: fcf1c15ad2be
 Create Date: 2026-03-02 14:20:00.000000
 
 """
@@ -13,8 +13,8 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 # revision identifiers, used by Alembic.
-revision: str = "c3d4e5f6a7b8"
-down_revision: Union[str, None] = "b2c3d4e5f6a7"
+revision: str = "161370905dc9"
+down_revision: Union[str, None] = "fcf1c15ad2be"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
