@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { parseApiError } from "../lib/api-error";
 
 import { fetchAuthMe } from "../lib/auth";
 import { ProgressRing } from "../components/ProgressRing";
@@ -161,7 +162,7 @@ function OnboardingPageContent() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to save preferences");
+        throw new Error(parseApiError(data, "Failed to save preferences"));
       }
 
       setStep("consent");
@@ -199,7 +200,7 @@ function OnboardingPageContent() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to save consent");
+        throw new Error(parseApiError(data, "Failed to save consent"));
       }
 
       router.push(redirectTarget);

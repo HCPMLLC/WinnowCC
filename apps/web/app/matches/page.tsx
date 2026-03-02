@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
+import { parseApiError } from "../lib/api-error";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import { useProgress } from "../hooks/useProgress";
 import CandidateLayout from "../components/CandidateLayout";
@@ -369,7 +370,7 @@ function MatchesPageContent() {
 
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to create draft");
+        throw new Error(parseApiError(data, "Failed to create draft"));
       }
 
       const result = (await response.json()) as { id: number };

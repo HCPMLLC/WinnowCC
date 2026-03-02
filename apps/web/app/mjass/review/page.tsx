@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { parseApiError } from "../../lib/api-error";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
@@ -105,7 +106,7 @@ export default function MJASSReviewPage() {
       );
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));
-        throw new Error(data.detail || "Failed to submit decision");
+        throw new Error(parseApiError(data, "Failed to submit decision"));
       }
       // Reload drafts and close detail
       await loadDrafts();

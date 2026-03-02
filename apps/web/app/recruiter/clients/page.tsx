@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { parseApiError } from "../../lib/api-error";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
 
@@ -166,7 +167,7 @@ export default function RecruiterClientsPage() {
         fetchClients();
       } else {
         const data = await res.json();
-        setError(data.detail || "Failed to create client");
+        setError(parseApiError(data, "Failed to create client"));
       }
     } catch {
       setError("Network error");
