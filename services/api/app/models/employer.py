@@ -55,9 +55,6 @@ class EmployerProfile(Base):
     stripe_subscription_id: Mapped[str | None] = mapped_column(
         String(255), nullable=True
     )
-    billing_interval: Mapped[str | None] = mapped_column(
-        String(20), nullable=True, server_default="monthly"
-    )
     trial_ends_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -74,9 +71,6 @@ class EmployerProfile(Base):
     usage_reset_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-
-    # IP allowlist (Pro only) — list of CIDRs/IPs
-    ip_allowlist: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Hierarchy & contract vehicle
     parent_employer_id: Mapped[int | None] = mapped_column(

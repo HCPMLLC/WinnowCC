@@ -76,9 +76,6 @@ function EmployerSettingsContent() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  const [billingInterval, setBillingInterval] = useState<
-    "monthly" | "annual"
-  >("monthly");
   const [formData, setFormData] = useState({
     company_name: "",
     company_size: "",
@@ -87,9 +84,6 @@ function EmployerSettingsContent() {
     company_description: "",
     billing_email: "",
   });
-  const [ipAllowlist, setIpAllowlist] = useState("");
-  const [ipSaving, setIpSaving] = useState(false);
-  const [ipSuccess, setIpSuccess] = useState<string | null>(null);
 
   const fetchSubscription = () =>
     fetch(`${API_BASE}/api/employer/billing/subscription`, {
@@ -115,7 +109,7 @@ function EmployerSettingsContent() {
         ]);
 
         if (profileRes.ok) {
-          const data = await profileRes.json();
+          const data: EmployerProfile = await profileRes.json();
           setProfile(data);
           setFormData({
             company_name: data.company_name || "",
@@ -125,9 +119,6 @@ function EmployerSettingsContent() {
             company_description: data.company_description || "",
             billing_email: data.billing_email || "",
           });
-          if (data.ip_allowlist) {
-            setIpAllowlist(data.ip_allowlist.join("\n"));
-          }
         }
 
         if (subRes.ok) {
@@ -208,7 +199,7 @@ function EmployerSettingsContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ tier, interval: billingInterval }),
+        body: JSON.stringify({ tier }),
       });
 
       if (!res.ok) {
@@ -322,44 +313,6 @@ function EmployerSettingsContent() {
           </div>
         )}
 
-        {/* Monthly / Annual toggle */}
-        <div className="mb-4 flex items-center justify-center gap-3">
-          <span
-            className={`text-sm font-medium ${billingInterval === "monthly" ? "text-slate-900" : "text-slate-400"}`}
-          >
-            Monthly
-          </span>
-          <button
-            type="button"
-            role="switch"
-            aria-checked={billingInterval === "annual"}
-            onClick={() =>
-              setBillingInterval((prev) =>
-                prev === "monthly" ? "annual" : "monthly",
-              )
-            }
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors ${
-              billingInterval === "annual" ? "bg-blue-600" : "bg-slate-300"
-            }`}
-          >
-            <span
-              className={`pointer-events-none inline-block h-5 w-5 rounded-full bg-white shadow transition-transform ${
-                billingInterval === "annual"
-                  ? "translate-x-5"
-                  : "translate-x-0"
-              }`}
-            />
-          </button>
-          <span
-            className={`text-sm font-medium ${billingInterval === "annual" ? "text-slate-900" : "text-slate-400"}`}
-          >
-            Annual{" "}
-            <span className="text-xs font-normal text-emerald-600">
-              Save up to 33%
-            </span>
-          </span>
-        </div>
-
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <PricingCard
             name="Free"
@@ -376,8 +329,8 @@ function EmployerSettingsContent() {
           />
           <PricingCard
             name="Starter"
-            price={billingInterval === "monthly" ? "$49" : "$399"}
-            period={billingInterval === "monthly" ? "per month" : "per year"}
+            price="$99"
+            period="per month"
             features={[
               "5 active job postings",
               "50 candidate views/month",
@@ -397,8 +350,8 @@ function EmployerSettingsContent() {
           />
           <PricingCard
             name="Pro"
-            price={billingInterval === "monthly" ? "$149" : "$1,199"}
-            period={billingInterval === "monthly" ? "per month" : "per year"}
+            price="$299"
+            period="per month"
             features={[
               "Unlimited job postings",
               "200 candidate views/month",
@@ -428,76 +381,6 @@ function EmployerSettingsContent() {
           </a>
         </div>
       </div>
-
-      {/* IP Allowlist (Pro only) */}
-      {currentTier === "pro" && (
-        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-slate-900">
-            IP Allowlist
-          </h2>
-          <p className="mt-1 mb-4 text-sm text-slate-500">
-            Restrict access to your employer workspace to specific IP addresses
-            or CIDR ranges. Leave empty to allow all IPs.
-          </p>
-          {ipSuccess && (
-            <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
-              {ipSuccess}
-            </div>
-          )}
-          <textarea
-            value={ipAllowlist}
-            onChange={(e) => setIpAllowlist(e.target.value)}
-            rows={4}
-            placeholder={"192.168.1.0/24\n10.0.0.1\n2001:db8::/32"}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 font-mono text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-          />
-          <p className="mt-1 text-xs text-slate-400">
-            One IP or CIDR per line. IPv4 and IPv6 supported.
-          </p>
-          <button
-            disabled={ipSaving}
-            onClick={async () => {
-              setIpSaving(true);
-              setIpSuccess(null);
-              setError(null);
-              try {
-                const entries = ipAllowlist
-                  .split("\n")
-                  .map((s) => s.trim())
-                  .filter(Boolean);
-                const res = await fetch(`${API_BASE}/api/employer/profile`, {
-                  method: "PATCH",
-                  headers: { "Content-Type": "application/json" },
-                  credentials: "include",
-                  body: JSON.stringify({
-                    ip_allowlist: entries.length > 0 ? entries : null,
-                  }),
-                });
-                if (!res.ok) {
-                  const data = await res.json().catch(() => null);
-                  throw new Error(
-                    data?.detail || "Failed to update IP allowlist",
-                  );
-                }
-                setIpSuccess(
-                  entries.length > 0
-                    ? `IP allowlist updated (${entries.length} entries).`
-                    : "IP allowlist cleared — all IPs allowed.",
-                );
-              } catch (err) {
-                setError(
-                  err instanceof Error ? err.message : "Update failed",
-                );
-              } finally {
-                setIpSaving(false);
-              }
-            }}
-            className="mt-3 rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-          >
-            {ipSaving ? "Saving..." : "Save IP Allowlist"}
-          </button>
-        </div>
-      )}
 
       {/* Company Profile Form */}
       <form
