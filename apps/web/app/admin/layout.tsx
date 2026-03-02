@@ -26,6 +26,7 @@ const SUPPORT_NAV = [
   { href: "/admin/support/scheduler", label: "Scheduler" },
   { href: "/admin/support/usage", label: "Usage" },
   { href: "/admin/support/audit", label: "Audit Log" },
+  { href: "/admin/support/tickets", label: "Tickets" },
 ];
 
 export default function AdminLayout({
