@@ -92,6 +92,18 @@ function SettingsContent() {
   const [error, setError] = useState<string | null>(null);
   const [openToIntros, setOpenToIntros] = useState(true);
   const [introToggling, setIntroToggling] = useState(false);
+  const [sessions, setSessions] = useState<
+    {
+      id: number;
+      device_info: string | null;
+      ip_address: string | null;
+      created_at: string;
+      last_active_at: string | null;
+      is_current: boolean;
+    }[]
+  >([]);
+  const [sessionsLoading, setSessionsLoading] = useState(true);
+  const [revoking, setRevoking] = useState<number | "all" | null>(null);
 
   const fetchBilling = () =>
     fetch(`${API_BASE}/api/billing/status`, { credentials: "include" })
@@ -143,6 +155,18 @@ function SettingsContent() {
         // and let the PATCH endpoint update it
       })
       .catch(() => {});
+  }, []);
+
+  // Load active sessions
+  const fetchSessions = () =>
+    fetch(`${API_BASE}/api/auth/sessions`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => setSessions(data))
+      .catch(() => setSessions([]))
+      .finally(() => setSessionsLoading(false));
+
+  useEffect(() => {
+    fetchSessions();
   }, []);
 
   // Load export preview
@@ -625,6 +649,125 @@ function SettingsContent() {
               />
             </button>
           </div>
+        </div>
+
+        {/* Active Sessions Section */}
+        <div className="mb-8 rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-1 text-lg font-semibold text-slate-900">
+            Active Sessions
+          </h2>
+          <p className="mb-4 text-sm text-slate-500">
+            Devices and browsers where you are currently logged in.
+          </p>
+
+          {sessionsLoading ? (
+            <p className="text-sm text-slate-400">Loading sessions...</p>
+          ) : sessions.length === 0 ? (
+            <p className="text-sm text-slate-400">No active sessions found.</p>
+          ) : (
+            <>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left text-sm">
+                  <thead>
+                    <tr className="border-b border-slate-200 text-xs font-medium uppercase text-slate-500">
+                      <th className="pb-2 pr-4">Device</th>
+                      <th className="pb-2 pr-4">IP Address</th>
+                      <th className="pb-2 pr-4">Last Active</th>
+                      <th className="pb-2 pr-4">Created</th>
+                      <th className="pb-2" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sessions.map((s) => (
+                      <tr key={s.id} className="border-b border-slate-100">
+                        <td className="py-3 pr-4 text-slate-700">
+                          {s.device_info
+                            ? s.device_info.length > 60
+                              ? s.device_info.slice(0, 60) + "..."
+                              : s.device_info
+                            : "Unknown device"}
+                          {s.is_current && (
+                            <span className="ml-2 inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                              Current
+                            </span>
+                          )}
+                        </td>
+                        <td className="py-3 pr-4 font-mono text-xs text-slate-500">
+                          {s.ip_address || "—"}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-500">
+                          {s.last_active_at
+                            ? new Date(s.last_active_at).toLocaleString()
+                            : "—"}
+                        </td>
+                        <td className="py-3 pr-4 text-slate-500">
+                          {new Date(s.created_at).toLocaleString()}
+                        </td>
+                        <td className="py-3">
+                          {!s.is_current && (
+                            <button
+                              disabled={revoking !== null}
+                              onClick={async () => {
+                                setRevoking(s.id);
+                                try {
+                                  const res = await fetch(
+                                    `${API_BASE}/api/auth/sessions/${s.id}`,
+                                    {
+                                      method: "DELETE",
+                                      credentials: "include",
+                                    },
+                                  );
+                                  if (res.ok) {
+                                    setToast("Session revoked.");
+                                    fetchSessions();
+                                  }
+                                } catch {
+                                  /* ignore */
+                                } finally {
+                                  setRevoking(null);
+                                }
+                              }}
+                              className="text-xs font-medium text-red-600 hover:text-red-700 disabled:opacity-50"
+                            >
+                              Revoke
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {sessions.filter((s) => !s.is_current).length > 0 && (
+                <button
+                  disabled={revoking !== null}
+                  onClick={async () => {
+                    setRevoking("all");
+                    try {
+                      const res = await fetch(
+                        `${API_BASE}/api/auth/sessions`,
+                        { method: "DELETE", credentials: "include" },
+                      );
+                      if (res.ok) {
+                        setToast("All other sessions have been logged out.");
+                        fetchSessions();
+                      }
+                    } catch {
+                      /* ignore */
+                    } finally {
+                      setRevoking(null);
+                    }
+                  }}
+                  className="mt-4 inline-flex items-center gap-2 rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-50 disabled:opacity-50"
+                >
+                  {revoking === "all"
+                    ? "Logging out..."
+                    : "Log Out All Other Devices"}
+                </button>
+              )}
+            </>
+          )}
         </div>
 
         {/* Divider */}

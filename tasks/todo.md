@@ -1,84 +1,61 @@
-# Data Protection Hardening
+# PROMPT67 — Advanced Security & IP Protection
 
-## Fixes Implemented
+## Status: COMPLETE
 
-- [x] **Fix 1**: Add `GCS_BUCKET=winnow-resumes-prod` to deploy workflow (API + Worker)
-- [x] **Fix 2**: Fix `cascade_delete.py` to use `storage.delete_file` instead of `Path.unlink()`
-- [x] **Fix 3**: Add destructive migration safety guard in `alembic/env.py`
-- [x] **Fix 4**: Add FK constraint on `candidate_profiles.resume_document_id` with migration
-- [x] **Fix 5**: Add soft-delete (`deleted_at`) to `ResumeDocument` with filtering across 16+ query sites
-- [ ] **Fix 6**: Run `gsutil versioning set on gs://winnow-resumes-prod` after deployment (ops task)
+### Group 1: Rate-limit auth endpoints
+- [x] Add `@limiter.limit()` + `request: Request` to signup (5/min), login (10/min), verify-otp (10/min), resend-otp (3/min), forgot-password (5/min), reset-password (5/min)
 
-## Files Modified
+### Group 2: Critical Fixes B–E
+- [x] Delete broken SMS OTP service (`sms_service.py`, `sms_otp.py`, remove from `main.py`)
+- [x] Add CSP header to API security middleware (`default-src 'none'; frame-ancestors 'none'`)
+- [x] Add CSP + security headers to Next.js frontend (`next.config.js` `headers()`)
+- [x] Add server-side min password length (8 chars) in `_validate_password()`
+- [x] Add CORS Chrome extension TODO comment for specific extension ID
 
-### Fix 1
-- `.github/workflows/deploy.yml` — Added `GCS_BUCKET=winnow-resumes-prod` to both API (line 58) and Worker (line 123) deploy steps
+### Group 3: Session Management — DB + Model
+- [x] Migration `a1b2c3d4e5f6` — `user_sessions` table + `last_login_at`, `last_login_ip`, `token_version` on users
+- [x] `models/session.py` — `UserSession` model
+- [x] `models/user.py` — session + lockout columns added
 
-### Fix 2
-- `services/api/app/services/cascade_delete.py` — Replaced `from pathlib import Path` with `from app.services.storage import delete_file`, updated file deletion for tailored resumes and resume documents
+### Group 4: Session Management — Auth Service
+- [x] `make_token()` — now returns `(token, jti)` tuple with `jti` + `ver` claims
+- [x] `create_session()` — inserts UserSession row
+- [x] `set_auth_cookie()` — accepts `request` + `db_session`, creates DB session, updates last login
+- [x] `get_current_user()` — validates session via `_validate_session()` (Redis cache + DB lookup)
+- [x] `revoke_session()` / `revoke_all_sessions()` — session revocation
+- [x] `clear_auth_cookie()` — revokes session on logout
+- [x] Updated all callers: signup, login, verify-otp, reset-password, oauth-callback, logout
 
-### Fix 3
-- `services/api/alembic/env.py` — Added `_guard_destructive_migrations()` that blocks `DROP SCHEMA`, `DROP TABLE`, `TRUNCATE` when database has production data. Override with `ALEMBIC_ALLOW_DESTRUCTIVE=1`.
+### Group 5: Sessions Router + Frontend + Cleanup
+- [x] `routers/sessions.py` — GET/DELETE /api/auth/sessions
+- [x] Registered in `main.py`
+- [x] Scheduled jobs: `scheduled_cleanup_expired_sessions()` (3:30 AM), `scheduled_purge_old_auth_events()` (4:30 AM)
+- [x] Registered in `scheduler.py`
+- [x] Active Sessions UI in `apps/web/app/settings/page.tsx`
 
-### Fix 4
-- `services/api/app/models/candidate_profile.py` — Added `ForeignKey("resume_documents.id", ondelete="SET NULL")`
-- `services/api/alembic/versions/20260225_02_add_fk_resume_document_id.py` — New migration: clean orphans + add FK
+### Group 6: Abuse Detection
+- [x] Migration `b2c3d4e5f6a7` — `auth_events` table + lockout columns on users
+- [x] `models/auth_event.py` — `AuthEvent` model
+- [x] `services/abuse_detection.py` — full service (record, check_locked, check_ip, handle failure/success, unlock, summary)
+- [x] Login endpoint: IP block check, account lockout check, failure tracking, success reset
+- [x] Signup endpoint: records auth event
+- [x] Admin endpoints in `security_check.py`: GET auth-events, GET locked-accounts, POST unlock/{user_id}
 
-### Fix 5
-- `services/api/app/models/resume_document.py` — Added `deleted_at` column + `active()` classmethod
-- `services/api/alembic/versions/20260225_03_add_soft_delete_resume_documents.py` — New migration: add column + partial index
-- `services/api/app/services/cascade_delete.py` — Changed hard-delete to soft-delete (SET deleted_at)
-- `services/api/app/routers/resume.py` — 4 query sites filtered
-- `services/api/app/routers/account.py` — 1 query site filtered
-- `services/api/app/routers/admin_candidates.py` — 5 query sites filtered
-- `services/api/app/routers/admin_trust.py` — 1 query site filtered (outerjoin condition)
-- `services/api/app/routers/admin_support.py` — 5 query sites filtered (includes join conditions)
-- `services/api/app/services/data_export.py` — 1 query site filtered
-- `services/api/app/services/trust_scoring.py` — 3 query sites filtered
-- `services/api/app/services/sieve_chat.py` — 1 query site filtered
-- `services/api/app/services/recruiter_llm_reparse.py` — 1 post-fetch check
-- `services/api/app/services/resume_parse_job.py` — 1 post-fetch check
+### Group 7: IP Protection
+- [x] `services/ip_protection.py` — get_client_ip, check_admin_ip (CIDR), check_geo_allowed (ipinfo.io + Redis), check_employer_ip_allowed
+- [x] `middleware/geo_block.py` — GeoBlockMiddleware (skips /api/auth/, /health, /ready)
+- [x] Registered in `main.py`
+- [x] Admin IP check integrated in `require_admin_user()`
+- [x] Employer IP allowlist check in `get_employer_profile()`
+- [x] Migration `c3d4e5f6a7b8` — `ip_allowlist` JSONB column on `employer_profiles`
+- [x] `models/employer.py` — `ip_allowlist` column
+- [x] IP Allowlist UI in `apps/web/app/employer/settings/page.tsx` (Pro only)
 
----
+### Group 8: WAF — Cloud Armor
+- [x] `infra/cloud-armor/setup.sh` — OWASP rules, edge rate limiting, backend attachment
+- [x] `infra/cloud-armor/alerts.sh` — monitoring alerts for WAF blocks + auth abuse
 
-# MFA OTP Verification — Mobile App
-
-## Summary
-
-Added MFA (OTP verification) support to the Expo mobile app. Previously, MFA-enabled accounts (employers, recruiters, "both" roles) could not log in on mobile — the app threw a generic error. Now the app presents a 6-digit OTP verification screen matching the web app's existing flow.
-
-## Implementation
-
-- [x] Extend `AuthContextType` with `verifyOtp`, `resendOtp`, `mfaPendingEmail`, `cancelMfa`
-- [x] Modify `login()` to return `{ requiresMfa: boolean }` instead of throwing on MFA
-- [x] Add MFA state (`mfaPendingEmail`, `mfaPendingPassword`) and callbacks to root layout
-- [x] Register `verify-otp` screen in auth stack layout
-- [x] Update login screen to navigate to OTP screen when MFA required
-- [x] Create `verify-otp.tsx` screen (6-digit input, verify, resend, back to sign in)
-
-## Files Modified
-
-| File | Change |
-|------|--------|
-| `apps/mobile/lib/auth.ts` | Extended `AuthContextType` interface with MFA methods and fields |
-| `apps/mobile/app/_layout.tsx` | Added MFA state, `verifyOtp`/`resendOtp`/`cancelMfa` callbacks, updated provider |
-| `apps/mobile/app/(auth)/_layout.tsx` | Registered `verify-otp` screen in auth stack |
-| `apps/mobile/app/(auth)/login.tsx` | Added `useRouter`, check `login()` return for MFA navigation |
-| `apps/mobile/app/(auth)/verify-otp.tsx` | **New file** — OTP verification screen |
-
-## Test Results (2026-02-25)
-
-| Test | Result |
-|------|--------|
-| Metro bundle — root layout (701 modules) | Pass |
-| Metro bundle — login screen (630 modules) | Pass |
-| Metro bundle — verify-otp screen (672 modules) | Pass |
-| MFA login (`rlevi@hcpm.llc`) returns `requires_mfa: true` | Pass |
-| verify-otp with wrong code → 401 "Invalid code." | Pass |
-| resend-otp → 200 `{"status":"sent"}` | Pass |
-| resend-otp with wrong password → 401 "Invalid email or password." | Pass |
-| TypeScript `tsc --noEmit` — no new errors (4 pre-existing unrelated) | Pass |
-
-## Commit
-
-- `5cf4b4c` — Add MFA OTP verification flow to mobile app
+## Verification
+- [x] `ruff check .` — Python lint passes
+- [x] `npm run lint` — Frontend lint passes
+- [x] All Python files parse without syntax errors

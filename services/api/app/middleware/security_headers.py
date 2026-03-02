@@ -52,6 +52,11 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
                 "max-age=31536000; includeSubDomains"
             )
 
+        # Content Security Policy — API only serves JSON, block everything else
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'none'; frame-ancestors 'none'"
+        )
+
         # Cache control for API responses — no caching of user data
         if request.url.path.startswith("/api/"):
             response.headers["Cache-Control"] = (

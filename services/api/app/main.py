@@ -99,8 +99,8 @@ from app.routers.references import router as references_router  # noqa: E402
 from app.routers.resume import router as resume_router  # noqa: E402
 from app.routers.scheduler import router as scheduler_router  # noqa: E402
 from app.routers.security_check import router as security_check_router  # noqa: E402
+from app.routers.sessions import router as sessions_router  # noqa: E402
 from app.routers.sieve import router as sieve_router  # noqa: E402
-from app.routers.sms_otp import router as sms_otp_router  # noqa: E402
 from app.routers.support import router as support_router  # noqa: E402
 from app.routers.support_ws import router as support_ws_router  # noqa: E402
 from app.routers.tailor import router as tailor_router  # noqa: E402
@@ -138,6 +138,11 @@ async def _unhandled_exception_handler(request, exc):  # noqa: ARG001
     )
 
 
+# Geo-blocking middleware (skips /api/auth/, /health, /ready)
+from app.middleware.geo_block import GeoBlockMiddleware  # noqa: E402
+
+app.add_middleware(GeoBlockMiddleware)
+
 # Security headers middleware (applied BEFORE CORS so headers are added after CORS)
 app.add_middleware(SecurityHeadersMiddleware)
 
@@ -168,6 +173,8 @@ if PROD_WEB_URL and PROD_WEB_URL not in ALLOWED_ORIGINS:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    # TODO: Replace broad regex with specific extension ID once published
+    # e.g., r"^chrome-extension://YOUR_EXTENSION_ID_HERE$"
     allow_origin_regex=r"^chrome-extension://.*",
     allow_credentials=True,
     allow_methods=["*"],
@@ -214,6 +221,7 @@ app.include_router(support_router)
 app.include_router(support_ws_router)
 app.include_router(account_router)
 app.include_router(security_check_router)
+app.include_router(sessions_router)
 app.include_router(observability_router)
 app.include_router(webhooks_router)
 app.include_router(employer_analytics_router)
@@ -231,7 +239,7 @@ app.include_router(career_intelligence_router)
 app.include_router(candidate_insights_router)
 app.include_router(migration_router)
 app.include_router(upload_batches_router)
-app.include_router(sms_otp_router)
+
 
 
 @app.on_event("startup")

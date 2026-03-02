@@ -75,6 +75,9 @@ class EmployerProfile(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # IP allowlist (Pro only) — list of CIDRs/IPs
+    ip_allowlist: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     # Hierarchy & contract vehicle
     parent_employer_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("employer_profiles.id", ondelete="SET NULL"), nullable=True
