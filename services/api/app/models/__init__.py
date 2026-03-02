@@ -57,6 +57,7 @@ from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
 from app.models.stage_rule import StageRule
+from app.models.support_ticket import SupportMessage, SupportTicket
 from app.models.tailored_resume import TailoredResume
 from app.models.talent_pipeline import TalentPipeline
 from app.models.trust_audit_log import TrustAuditLog
@@ -114,6 +115,8 @@ __all__ = [
     "RecruiterProfile",
     "RecruiterTeamMember",
     "StageRule",
+    "SupportMessage",
+    "SupportTicket",
     "ResumeDocument",
     "SieveConversation",
     "TailoredResume",

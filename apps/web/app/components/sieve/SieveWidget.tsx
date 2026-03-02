@@ -19,6 +19,9 @@ interface Message {
   content: string;
   timestamp: Date;
   trigger?: SieveTrigger;
+  isAgent?: boolean;
+  isSystem?: boolean;
+  senderName?: string;
 }
 
 interface SieveWidgetProps {
@@ -44,6 +47,22 @@ const DEMO_RESPONSES: Record<string, string> = {
   default:
     "That's a great question. I'm still learning — in the meantime, check your dashboard for the latest updates.",
 };
+
+// ─── Escalation trigger phrases ──────────────────────────────────────────────
+const ESCALATION_PHRASES = [
+  "talk to a person",
+  "talk to someone",
+  "speak to a human",
+  "human help",
+  "live agent",
+  "representative",
+  "customer support",
+  "real person",
+  "not a bot",
+  "get a human",
+  "transfer me",
+  "escalate",
+];
 
 // ─── Demo response logic (fallback when API is unavailable) ──────────────────
 function getDemoResponse(input: string): string {
@@ -164,6 +183,17 @@ export default function SieveWidget({
   >([]);
   const [suggestedActions, setSuggestedActions] = useState<string[]>([]);
   const [historyLoaded, setHistoryLoaded] = useState(false);
+
+  // Live agent state
+  const [liveAgentMode, setLiveAgentMode] = useState(false);
+  const [activeTicket, setActiveTicket] = useState<{
+    ticket_id: number;
+    status: string;
+    agent_joined: boolean;
+  } | null>(null);
+  const [isEscalating, setIsEscalating] = useState(false);
+  const wsRef = useRef<WebSocket | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -249,6 +279,37 @@ export default function SieveWidget({
       };
       setMessages((prev) => [...prev, userMsg]);
       setInput("");
+
+      // Build history for context
+      const history = [...conversationHistory, { role: "user" as const, content: userMessage }];
+
+      // If in live agent mode, send via WebSocket
+      if (liveAgentMode && activeTicket) {
+        if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: "message", content: userMessage }));
+        } else if (apiBase) {
+          // Fallback to REST API
+          await fetch(`${apiBase}/api/support/ticket/${activeTicket.ticket_id}/message`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ content: userMessage }),
+          });
+        }
+        return;
+      }
+
+      // Check for escalation trigger phrases
+      const shouldEscalate = ESCALATION_PHRASES.some((phrase) =>
+        userMessage.toLowerCase().includes(phrase)
+      );
+
+      if (shouldEscalate) {
+        await escalateToAgent(userMessage, history);
+        return;
+      }
+
+      // Normal Sieve AI flow
       setIsTyping(true);
 
       let responseText: string;
@@ -285,8 +346,171 @@ export default function SieveWidget({
       setMessages((prev) => [...prev, assistantMsg]);
       setIsTyping(false);
     },
-    [apiBase, conversationHistory]
+    [apiBase, conversationHistory, liveAgentMode, activeTicket, escalateToAgent]
   );
+
+  // ── Live agent: WebSocket connection ──
+  const connectWebSocket = useCallback((ticketId: number) => {
+    if (!apiBase) return;
+    if (wsRef.current) wsRef.current.close();
+
+    const wsUrl = `${apiBase.replace("http", "ws")}/ws/support/${ticketId}?role=user`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onopen = () => {
+      console.log("WebSocket connected for ticket", ticketId);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+
+        if (data.type === "connected") {
+          if (data.status === "active") {
+            setActiveTicket((prev) => prev ? { ...prev, agent_joined: true } : null);
+          }
+        } else if (data.type === "message") {
+          if (data.sender_type === "agent") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: data.content,
+                timestamp: new Date(),
+                senderName: data.sender_name,
+                isAgent: true,
+              },
+            ]);
+            setActiveTicket((prev) => prev ? { ...prev, agent_joined: true } : null);
+          }
+          if (data.sender_type === "system") {
+            setMessages((prev) => [
+              ...prev,
+              {
+                id: crypto.randomUUID(),
+                role: "assistant",
+                content: data.content,
+                timestamp: new Date(),
+                isSystem: true,
+              },
+            ]);
+          }
+        } else if (data.type === "typing") {
+          if (data.sender_type === "agent") {
+            setIsTyping(true);
+            setTimeout(() => setIsTyping(false), 3000);
+          }
+        }
+      } catch (e) {
+        console.error("WebSocket message parse error:", e);
+      }
+    };
+
+    ws.onclose = () => {
+      console.log("WebSocket closed");
+    };
+
+    ws.onerror = (error) => {
+      console.error("WebSocket error:", error);
+    };
+
+    wsRef.current = ws;
+  }, [apiBase]);
+
+  // ── Live agent: escalate to agent ──
+  const escalateToAgent = useCallback(async (message: string, history: { role: string; content: string }[]) => {
+    if (!apiBase) return;
+    setIsEscalating(true);
+
+    try {
+      const res = await fetch(`${apiBase}/api/support/escalate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ message, conversation_history: history }),
+      });
+
+      if (!res.ok) throw new Error("Failed to escalate");
+
+      const data = await res.json();
+
+      setActiveTicket({
+        ticket_id: data.ticket_id,
+        status: data.status,
+        agent_joined: false,
+      });
+      setLiveAgentMode(true);
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: data.message,
+          timestamp: new Date(),
+          isSystem: true,
+        },
+      ]);
+
+      connectWebSocket(data.ticket_id);
+    } catch (error) {
+      console.error("Escalation error:", error);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          role: "assistant",
+          content: "I'm having trouble connecting you to support. Please try again or email support@winnowcc.com.",
+          timestamp: new Date(),
+        },
+      ]);
+    } finally {
+      setIsEscalating(false);
+    }
+  }, [apiBase, connectWebSocket]);
+
+  // ── Check for active ticket on widget open ──
+  useEffect(() => {
+    if (!isOpen || !apiBase) return;
+
+    fetch(`${apiBase}/api/support/ticket/active`, { credentials: "include" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) {
+          setActiveTicket({
+            ticket_id: data.ticket_id,
+            status: data.status,
+            agent_joined: data.agent_joined,
+          });
+          setLiveAgentMode(true);
+          connectWebSocket(data.ticket_id);
+
+          // Load existing messages from the ticket
+          if (data.messages && data.messages.length > 0) {
+            setMessages(
+              data.messages.map((m: { sender_type: string; content: string; sender_name?: string }, i: number) => ({
+                id: `ticket-msg-${i}`,
+                role: m.sender_type === "user" ? "user" as const : "assistant" as const,
+                content: m.content,
+                timestamp: new Date(),
+                senderName: m.sender_name,
+                isAgent: m.sender_type === "agent",
+                isSystem: m.sender_type === "system",
+              }))
+            );
+          }
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, apiBase, connectWebSocket]);
+
+  // ── Cleanup WebSocket on unmount ──
+  useEffect(() => {
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+    };
+  }, []);
 
   const handleClearHistory = useCallback(async () => {
     if (apiBase) {
@@ -359,6 +583,10 @@ export default function SieveWidget({
           60% { transform: translateX(-2px) rotate(-1deg); }
           75% { transform: translateX(1px) rotate(0.5deg); }
           90% { transform: translateX(0) rotate(0deg); }
+        }
+        @keyframes sieve-agent-pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
         }
         .sieve-fab-logo {
           animation: sieve-sift 2.5s ease-in-out infinite;
@@ -541,27 +769,56 @@ export default function SieveWidget({
                       ✕
                     </button>
                   </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 5,
-                      fontSize: 11,
-                      color: "#FFFFFF",
-                    }}
-                  >
-                    <span
+                  {liveAgentMode ? (
+                    <div
                       style={{
-                        display: "inline-block",
-                        width: 7,
-                        height: 7,
-                        borderRadius: "50%",
-                        background: "#5CB87A",
-                        boxShadow: "0 0 4px rgba(92,184,122,0.5)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        padding: "3px 8px",
+                        backgroundColor: "#E8C84A",
+                        borderRadius: 12,
+                        fontSize: 9,
+                        fontWeight: 700,
+                        color: "#1B3025",
+                        letterSpacing: "0.03em",
                       }}
-                    />
-                    Online
-                  </div>
+                    >
+                      <span
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: "50%",
+                          backgroundColor: activeTicket?.agent_joined ? "#5CB87A" : "#ff9800",
+                          display: "inline-block",
+                          animation: activeTicket?.agent_joined ? "none" : "sieve-agent-pulse 1.5s infinite",
+                        }}
+                      />
+                      {activeTicket?.agent_joined ? "LIVE AGENT" : "WAITING..."}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        fontSize: 11,
+                        color: "#FFFFFF",
+                      }}
+                    >
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: 7,
+                          height: 7,
+                          borderRadius: "50%",
+                          background: "#5CB87A",
+                          boxShadow: "0 0 4px rgba(92,184,122,0.5)",
+                        }}
+                      />
+                      Online
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -667,75 +924,133 @@ export default function SieveWidget({
               )}
 
               {/* Messages */}
-              {messages.map((msg) => (
-                <div
-                  key={msg.id}
-                  style={{
-                    display: "flex",
-                    justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
-                    marginBottom: 10,
-                  }}
-                >
+              {messages.map((msg) => {
+                // System messages render centered
+                if (msg.isSystem) {
+                  return (
+                    <div key={msg.id} style={{ textAlign: "center", marginBottom: 10 }}>
+                      <span
+                        style={{
+                          display: "inline-block",
+                          padding: "6px 14px",
+                          fontSize: 12,
+                          fontStyle: "italic",
+                          color: "#8B7355",
+                          background: "rgba(232, 200, 74, 0.1)",
+                          borderRadius: 12,
+                          fontFamily: "system-ui, -apple-system, sans-serif",
+                        }}
+                      >
+                        {msg.content}
+                      </span>
+                    </div>
+                  );
+                }
+
+                // Determine bubble style
+                const isAgent = msg.isAgent;
+
+                return (
                   <div
+                    key={msg.id}
                     style={{
-                      maxWidth: "82%",
-                      padding: "10px 14px",
-                      fontSize: 14,
-                      lineHeight: 1.5,
-                      fontFamily: "system-ui, -apple-system, sans-serif",
-                      borderRadius:
-                        msg.role === "user"
-                          ? "16px 16px 4px 16px"
-                          : "4px 16px 16px 16px",
-                      ...(msg.role === "user"
-                        ? {
-                            background:
-                              "linear-gradient(135deg, #2A5038, #1B3025)",
-                            color: "#F0E8D0",
-                            boxShadow: "0 1px 3px rgba(27, 48, 37, 0.15)",
-                          }
-                        : {
-                            background: "white",
-                            color: "#3E3525",
-                            border: "1px solid rgba(196, 149, 40, 0.12)",
-                            boxShadow: "0 1px 3px rgba(139, 99, 24, 0.06)",
-                          }),
+                      display: "flex",
+                      justifyContent: msg.role === "user" ? "flex-end" : "flex-start",
+                      marginBottom: 10,
                     }}
                   >
-                    {msg.role === "assistant" ? (
-                      <span
-                        dangerouslySetInnerHTML={{
-                          __html: renderMarkdown(msg.content),
-                        }}
-                      />
-                    ) : (
-                      msg.content
-                    )}
-
-                    {/* Trigger action buttons on assistant messages */}
-                    {msg.trigger && msg.trigger.action_label && (
-                      <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
-                        <button
-                          onClick={() => handleTriggerAction(msg.trigger!)}
+                    <div
+                      style={{
+                        maxWidth: "82%",
+                        padding: "10px 14px",
+                        fontSize: 14,
+                        lineHeight: 1.5,
+                        fontFamily: "system-ui, -apple-system, sans-serif",
+                        borderRadius:
+                          msg.role === "user"
+                            ? "16px 16px 4px 16px"
+                            : "4px 16px 16px 16px",
+                        ...(msg.role === "user"
+                          ? {
+                              background:
+                                "linear-gradient(135deg, #2A5038, #1B3025)",
+                              color: "#F0E8D0",
+                              boxShadow: "0 1px 3px rgba(27, 48, 37, 0.15)",
+                            }
+                          : isAgent
+                            ? {
+                                background: "#E8C84A",
+                                color: "#1B3025",
+                                boxShadow: "0 1px 4px rgba(232, 200, 74, 0.3)",
+                              }
+                            : {
+                                background: "white",
+                                color: "#3E3525",
+                                border: "1px solid rgba(196, 149, 40, 0.12)",
+                                boxShadow: "0 1px 3px rgba(139, 99, 24, 0.06)",
+                              }),
+                      }}
+                    >
+                      {/* Agent badge */}
+                      {isAgent && (
+                        <div
                           style={{
-                            background: "linear-gradient(135deg, #E8C84A, #C49528)",
-                            color: "#1B3025",
-                            border: "none",
-                            borderRadius: 8,
-                            padding: "6px 14px",
-                            fontSize: 12,
-                            fontWeight: 600,
-                            cursor: "pointer",
-                            fontFamily: "system-ui, -apple-system, sans-serif",
+                            fontSize: 10,
+                            fontWeight: 700,
+                            marginBottom: 4,
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 4,
                           }}
                         >
-                          {msg.trigger.action_label}
-                        </button>
-                      </div>
-                    )}
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: "50%",
+                              backgroundColor: "#5CB87A",
+                              display: "inline-block",
+                            }}
+                          />
+                          LIVE AGENT: {msg.senderName || "Support"}
+                        </div>
+                      )}
+
+                      {msg.role === "assistant" ? (
+                        <span
+                          dangerouslySetInnerHTML={{
+                            __html: renderMarkdown(msg.content),
+                          }}
+                        />
+                      ) : (
+                        msg.content
+                      )}
+
+                      {/* Trigger action buttons on assistant messages */}
+                      {msg.trigger && msg.trigger.action_label && (
+                        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+                          <button
+                            onClick={() => handleTriggerAction(msg.trigger!)}
+                            style={{
+                              background: "linear-gradient(135deg, #E8C84A, #C49528)",
+                              color: "#1B3025",
+                              border: "none",
+                              borderRadius: 8,
+                              padding: "6px 14px",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              cursor: "pointer",
+                              fontFamily: "system-ui, -apple-system, sans-serif",
+                            }}
+                          >
+                            {msg.trigger.action_label}
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
 
               {/* Typing indicator */}
               {isTyping && (

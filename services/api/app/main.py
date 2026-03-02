@@ -101,6 +101,8 @@ from app.routers.scheduler import router as scheduler_router  # noqa: E402
 from app.routers.security_check import router as security_check_router  # noqa: E402
 from app.routers.sieve import router as sieve_router  # noqa: E402
 from app.routers.sms_otp import router as sms_otp_router  # noqa: E402
+from app.routers.support import router as support_router  # noqa: E402
+from app.routers.support_ws import router as support_ws_router  # noqa: E402
 from app.routers.tailor import router as tailor_router  # noqa: E402
 from app.routers.talent_pipeline import router as talent_pipeline_router  # noqa: E402
 from app.routers.trust import router as trust_router  # noqa: E402
@@ -208,6 +210,8 @@ app.include_router(job_forms_router)
 app.include_router(jobs_router)
 app.include_router(billing_router)
 app.include_router(sieve_router)
+app.include_router(support_router)
+app.include_router(support_ws_router)
 app.include_router(account_router)
 app.include_router(security_check_router)
 app.include_router(observability_router)
