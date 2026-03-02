@@ -7,7 +7,7 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -152,7 +152,7 @@ def get_recruiter_migration_status(
     if not job:
         raise HTTPException(status_code=404, detail="Migration job not found")
 
-    return {
+    result = {
         "id": job.id,
         "source_platform": job.source_platform,
         "source_platform_detected": job.source_platform_detected,
@@ -163,6 +163,44 @@ def get_recruiter_migration_status(
         "completed_at": job.completed_at,
         "created_at": job.created_at,
     }
+
+    # Enrich with queue position / ETA for queued jobs
+    if job.status == "queued":
+        from app.services.batch_upload import get_import_queue_info
+
+        queue_info = get_import_queue_info(db)
+        # Calculate this job's position in queue (by queued_at order)
+        ahead = (
+            db.execute(
+                select(func.count(MigrationJob.id)).where(
+                    MigrationJob.status == "queued",
+                    MigrationJob.queued_at < job.queued_at,
+                )
+            ).scalar()
+            or 0
+        )
+        result["queue_position"] = ahead + 1
+        result["estimated_wait_minutes"] = queue_info["estimated_wait_minutes"]
+
+    # Enrich with batch progress for active imports
+    if job.status == "importing" and job.stats_json:
+        batch_id = job.stats_json.get("batch_id")
+        if batch_id:
+            from app.models.upload_batch import UploadBatch
+
+            batch = db.execute(
+                select(UploadBatch).where(UploadBatch.batch_id == batch_id)
+            ).scalar_one_or_none()
+            if batch:
+                result["batch_progress"] = {
+                    "batch_id": batch.batch_id,
+                    "total_files": batch.total_files,
+                    "files_completed": batch.files_completed,
+                    "files_succeeded": batch.files_succeeded,
+                    "files_failed": batch.files_failed,
+                }
+
+    return result
 
 
 @router.post("/{job_id}/start")
@@ -199,6 +237,31 @@ def start_recruiter_migration(
                 detail="Bulk resume archive import is available on the Agency plan. "
                 "Upgrade at /recruiter/pricing to unlock this feature.",
             )
+
+        # System-wide import gate: only one import runs at a time
+        active_import = db.execute(
+            select(MigrationJob).where(MigrationJob.status == "importing")
+        ).scalar_one_or_none()
+
+        if active_import is not None:
+            # Queue this job instead of starting immediately
+            job.status = "queued"
+            job.queued_at = datetime.now(UTC)
+            db.commit()
+
+            from app.services.batch_upload import get_import_queue_info
+
+            queue_info = get_import_queue_info(db)
+            queue_position = queue_info["queue_depth"]
+
+            return {
+                "job_id": job_id,
+                "status": "queued",
+                "queue_position": queue_position,
+                "estimated_wait_minutes": queue_info["estimated_wait_minutes"],
+                "message": f"Your import is #{queue_position} in queue. "
+                "It will start automatically when the current import finishes.",
+            }
 
         from app.services.batch_upload import expand_zip_batch_job
         from app.services.queue import get_queue

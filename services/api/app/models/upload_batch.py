@@ -51,3 +51,5 @@ class UploadBatchFile(Base):
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+
+    __table_args__ = (Index("ix_upload_batch_files_sha256", "sha256"),)

@@ -33,6 +33,24 @@ interface BatchStatusResponse {
   files_succeeded: number;
   files_failed: number;
   files: BatchFileResult[];
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+interface MigrationStatusResponse {
+  id: number;
+  status: string; // pending | queued | importing | completed | failed
+  queue_position?: number;
+  estimated_wait_minutes?: number;
+  batch_progress?: {
+    batch_id: string;
+    total_files: number;
+    files_completed: number;
+    files_succeeded: number;
+    files_failed: number;
+  };
+  stats?: { batch_id?: string };
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -52,20 +70,25 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
 };
 
 const POLL_INTERVAL = 2000;
+const QUEUE_POLL_INTERVAL = 5000;
 
 export default function ResumeUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [batchStatus, setBatchStatus] = useState<BatchStatusResponse | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const migrationPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Poll for batch status
+  // Clean up polls on unmount
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (migrationPollRef.current) clearInterval(migrationPollRef.current);
     };
   }, []);
 
@@ -78,6 +101,7 @@ export default function ResumeUploadPage() {
     });
     setError(null);
     setBatchStatus(null);
+    setMigrationStatus(null);
   }, []);
 
   function removeFile(index: number) {
@@ -92,12 +116,45 @@ export default function ResumeUploadPage() {
     }
   }
 
-  function startPolling(batchId: string) {
+  // Poll migration status (for queued/importing states)
+  function startMigrationPolling(jobId: number) {
+    if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+    migrationPollRef.current = setInterval(async () => {
+      try {
+        const res = await fetch(
+          `${API_BASE}/api/recruiter/migration/${jobId}`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data: MigrationStatusResponse = await res.json();
+        setMigrationStatus(data);
+
+        if (data.status === "importing" && data.batch_progress) {
+          // Switch to batch polling for detailed progress
+          if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+          migrationPollRef.current = null;
+          startProcessingPolling(data.batch_progress.batch_id);
+        } else if (data.status === "completed" || data.status === "failed") {
+          if (migrationPollRef.current) clearInterval(migrationPollRef.current);
+          migrationPollRef.current = null;
+          setUploading(false);
+          if (data.stats?.batch_id) {
+            loadResultsPage(data.stats.batch_id, 1);
+          }
+        }
+      } catch {
+        // Keep polling on network errors
+      }
+    }, QUEUE_POLL_INTERVAL);
+  }
+
+  // Poll batch status during processing (summary-only, no file details)
+  function startProcessingPolling(batchId: string) {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
       try {
         const res = await fetch(
-          `${API_BASE}/api/upload-batches/${batchId}/status`,
+          `${API_BASE}/api/upload-batches/${batchId}/status?include_files=false`,
           { credentials: "include" }
         );
         if (!res.ok) return;
@@ -107,6 +164,8 @@ export default function ResumeUploadPage() {
           if (pollRef.current) clearInterval(pollRef.current);
           pollRef.current = null;
           setUploading(false);
+          // Fetch first page of results
+          loadResultsPage(batchId, 1);
         }
       } catch {
         // Keep polling on network errors
@@ -114,11 +173,32 @@ export default function ResumeUploadPage() {
     }, POLL_INTERVAL);
   }
 
+  // Legacy polling for HTTP uploads (non-migration path)
+  function startPolling(batchId: string) {
+    startProcessingPolling(batchId);
+  }
+
+  async function loadResultsPage(batchId: string, page: number) {
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/upload-batches/${batchId}/status?include_files=true&page=${page}&page_size=100`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return;
+      const data: BatchStatusResponse = await res.json();
+      setBatchStatus(data);
+      setCurrentPage(page);
+    } catch {
+      // Ignore
+    }
+  }
+
   async function handleUpload() {
     if (files.length === 0) return;
     setUploading(true);
     setError(null);
     setBatchStatus(null);
+    setMigrationStatus(null);
 
     const formData = new FormData();
     for (const file of files) {
@@ -153,12 +233,10 @@ export default function ResumeUploadPage() {
         files_completed: 0,
         files_succeeded: 0,
         files_failed: 0,
-        files: files.map((f) => ({
-          filename: f.name,
-          status: "pending",
-          error: null,
-          result: null,
-        })),
+        files: [],
+        page: 1,
+        page_size: 100,
+        total_pages: 1,
       });
 
       setFiles([]);
@@ -174,6 +252,8 @@ export default function ResumeUploadPage() {
     : 0;
 
   const isComplete = batchStatus?.status === "completed";
+  const isQueued = migrationStatus?.status === "queued";
+  const isImporting = migrationStatus?.status === "importing" || (batchStatus && !isComplete && !isQueued);
 
   return (
     <div className="space-y-6">
@@ -192,13 +272,42 @@ export default function ResumeUploadPage() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Upload resume files to parse and link to your pipeline contacts by
-            email.
+            email. Supports up to 10,000 files via ZIP.
           </p>
         </div>
       </div>
 
+      {/* Queued state */}
+      {isQueued && migrationStatus && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 text-center">
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+            <svg className="h-6 w-6 text-amber-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-semibold text-amber-900">
+            Your import is #{migrationStatus.queue_position} in queue
+          </h3>
+          <p className="mt-1 text-sm text-amber-700">
+            Another import is currently running. Yours will start automatically
+            when it finishes.
+          </p>
+          {migrationStatus.estimated_wait_minutes != null && migrationStatus.estimated_wait_minutes > 0 && (
+            <p className="mt-2 text-sm font-medium text-amber-800">
+              Estimated wait: ~{Math.round(migrationStatus.estimated_wait_minutes)} minutes
+            </p>
+          )}
+          <div className="mt-4">
+            <div className="inline-flex items-center gap-2 rounded-full bg-amber-100 px-3 py-1 text-xs font-medium text-amber-800">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              Waiting in queue
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Drop zone */}
-      {!uploading && !isComplete && (
+      {!uploading && !isComplete && !isQueued && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
@@ -293,12 +402,13 @@ export default function ResumeUploadPage() {
         </div>
       )}
 
-      {/* Progress bar (during upload/processing) */}
-      {batchStatus && !isComplete && (
+      {/* Progress bar (during processing) */}
+      {batchStatus && !isComplete && !isQueued && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-slate-700">
-              Processing {batchStatus.files_completed} of {batchStatus.total_files} files...
+              Processing {batchStatus.files_completed.toLocaleString()} of{" "}
+              {batchStatus.total_files.toLocaleString()} files...
             </span>
             <span className="text-slate-500">{pct}%</span>
           </div>
@@ -308,6 +418,16 @@ export default function ResumeUploadPage() {
               style={{ width: `${Math.max(2, pct)}%` }}
             />
           </div>
+          {batchStatus.files_succeeded > 0 || batchStatus.files_failed > 0 ? (
+            <div className="flex gap-4 text-xs text-slate-500">
+              <span>{batchStatus.files_succeeded.toLocaleString()} succeeded</span>
+              {batchStatus.files_failed > 0 && (
+                <span className="text-red-500">
+                  {batchStatus.files_failed.toLocaleString()} failed
+                </span>
+              )}
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -325,11 +445,11 @@ export default function ResumeUploadPage() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="font-medium text-slate-900">
-                {batchStatus.files_succeeded}/{batchStatus.total_files} processed
+                {batchStatus.files_succeeded.toLocaleString()}/{batchStatus.total_files.toLocaleString()} processed
               </span>
               {batchStatus.files_failed > 0 && (
                 <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                  {batchStatus.files_failed} failed
+                  {batchStatus.files_failed.toLocaleString()} failed
                 </span>
               )}
             </div>
@@ -399,8 +519,33 @@ export default function ResumeUploadPage() {
             </table>
           </div>
 
+          {/* Pagination controls */}
+          {batchStatus.total_pages > 1 && (
+            <div className="flex items-center justify-between">
+              <span className="text-sm text-slate-500">
+                Page {currentPage} of {batchStatus.total_pages}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => loadResultsPage(batchStatus.batch_id, currentPage - 1)}
+                  disabled={currentPage <= 1}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => loadResultsPage(batchStatus.batch_id, currentPage + 1)}
+                  disabled={currentPage >= batchStatus.total_pages}
+                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
+
           <button
-            onClick={() => { setBatchStatus(null); setError(null); }}
+            onClick={() => { setBatchStatus(null); setMigrationStatus(null); setError(null); setCurrentPage(1); }}
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
           >
             Upload More

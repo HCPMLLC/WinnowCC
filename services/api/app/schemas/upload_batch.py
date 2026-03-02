@@ -22,6 +22,9 @@ class UploadBatchStatusResponse(BaseModel):
     files_succeeded: int
     files_failed: int
     files: list[UploadBatchFileStatus]
+    page: int = 1
+    page_size: int = 100
+    total_pages: int = 1
 
 
 class UploadBatchCreatedResponse(BaseModel):
