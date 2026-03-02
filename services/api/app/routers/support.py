@@ -27,7 +27,6 @@ from app.services.live_agent import (
     detect_escalation_trigger,
     get_ticket_with_messages,
     is_within_business_hours,
-    get_next_business_hours,
 )
 from app.services.support_notifications import notify_new_ticket, notify_ticket_resolved
 
@@ -111,9 +110,8 @@ async def escalate_to_agent(
         response_message = "I'm connecting you with a live agent. Someone will be with you shortly."
         expected = "within a few minutes"
     else:
-        next_hours = get_next_business_hours()
-        response_message = f"I've created a support ticket for you. Our team will respond {next_hours}."
-        expected = next_hours
+        response_message = "I've created a support ticket for you. Our team will respond during normal business hours, 8:00 am to 6:00 pm CST M-F."
+        expected = "during business hours (8:00 AM – 6:00 PM CST, M-F)"
 
     return EscalateResponse(
         ticket_id=ticket.id,
