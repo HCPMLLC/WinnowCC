@@ -46,8 +46,8 @@ export async function middleware(req: NextRequest) {
   const isPublicExact = PUBLIC_EXACT.includes(pathname);
   if (isPublicPrefix || isPublicExact) return NextResponse.next();
 
-  // Read JWT from web-domain cookie
-  const token = req.cookies.get("rm_token")?.value;
+  // Read JWT from httpOnly session cookie (Next.js middleware runs server-side)
+  const token = req.cookies.get("rm_session")?.value;
   if (!token) {
     const url = req.nextUrl.clone();
     url.pathname = "/";
@@ -65,7 +65,7 @@ export async function middleware(req: NextRequest) {
     url.pathname = "/";
     url.searchParams.set("redirect", pathname);
     const resp = NextResponse.redirect(url);
-    resp.cookies.delete("rm_token");
+    resp.cookies.delete("rm_session");
     return resp;
   }
 

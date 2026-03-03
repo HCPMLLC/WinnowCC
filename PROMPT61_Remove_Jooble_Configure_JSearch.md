@@ -44,7 +44,7 @@ The file might be hidden. In Cursor, click **File** in the top menu → **Prefer
 
 **What you're looking for:** A line that says:
 ```
-JOOBLE_API_KEY=da4b95c5-7380-4b27-ab2e-5f32eacc9cdd
+JOOBLE_API_KEY=<your-jooble-api-key>
 ```
 
 **How to delete it:**
@@ -58,14 +58,14 @@ JOOBLE_API_KEY=da4b95c5-7380-4b27-ab2e-5f32eacc9cdd
 **What it should look like BEFORE:**
 ```
 USAJOBS_EMAIL=rlevi@hcpm.llc
-JOOBLE_API_KEY=da4b95c5-7380-4b27-ab2e-5f32eacc9cdd
-RAPIDAPI_KEY=152fd34dbemsh3ee4e4e0f2ba666p139a9bjsna9dda5024e25
+JOOBLE_API_KEY=<your-jooble-api-key>
+RAPIDAPI_KEY=<your-rapidapi-key>
 ```
 
 **What it should look like AFTER:**
 ```
 USAJOBS_EMAIL=rlevi@hcpm.llc
-RAPIDAPI_KEY=152fd34dbemsh3ee4e4e0f2ba666p139a9bjsna9dda5024e25
+RAPIDAPI_KEY=<your-rapidapi-key>
 ```
 
 ---
@@ -100,7 +100,7 @@ JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,adzuna,usajobs,jobicy,him
 
 **Look for this line** (it should be right after the `USAJOBS_EMAIL` line):
 ```
-RAPIDAPI_KEY=152fd34dbemsh3ee4e4e0f2ba666p139a9bjsna9dda5024e25
+RAPIDAPI_KEY=<your-rapidapi-key>
 ```
 
 **Also confirm:** that `jsearch` appears at the end of your `JOB_SOURCES` line. Look at the line you edited in Step 3 — it should end with `...manual,jsearch`.

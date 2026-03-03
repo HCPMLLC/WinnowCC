@@ -25,6 +25,9 @@ services/api/data/staging/
 services/api/data/*.sqlite*
 **/*.log
 
+# Prompt/spec docs (may contain API keys or sensitive config examples)
+PROMPT*.md
+
 # Temporary debug/check scripts
 services/api/_check_profiles.py
 

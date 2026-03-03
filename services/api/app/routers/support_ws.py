@@ -6,12 +6,13 @@ Enables instant message delivery between users and agents.
 import json
 import logging
 import os
-from typing import Dict, Set
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query
+from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
 from app.db.session import get_session_factory
-from app.models.support_ticket import SupportTicket, TicketStatus
+from app.models.support_ticket import SupportTicket
+from app.models.user import User
 from app.services.live_agent import add_message_to_ticket
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ router = APIRouter(tags=["support-ws"])
 class ConnectionManager:
     def __init__(self):
         # ticket_id -> set of WebSocket connections
-        self.active_connections: Dict[int, Set[WebSocket]] = {}
+        self.active_connections: dict[int, set[WebSocket]] = {}
 
     async def connect(self, ticket_id: int, websocket: WebSocket):
         await websocket.accept()
@@ -87,12 +88,28 @@ async def websocket_support_chat(
 
         # Verify authorization
         if role == "admin":
-            admin_token = os.environ.get("ADMIN_TOKEN", "")
-            if token != admin_token:
-                await websocket.close(code=4001, reason="Invalid admin token")
+            # Authenticate via session cookie (sent automatically by browser)
+            cookie_name = os.environ.get("AUTH_COOKIE_NAME", "rm_session")
+            session_token = websocket.cookies.get(cookie_name)
+            if not session_token:
+                await websocket.close(code=4001, reason="Not authenticated")
+                return
+            try:
+                from app.services.auth import decode_token
+
+                payload = decode_token(session_token)
+                user_id = int(payload["sub"])
+                user = session.execute(
+                    select(User).where(User.id == user_id)
+                ).scalar_one_or_none()
+                if not user or not user.is_admin:
+                    await websocket.close(code=4003, reason="Not authorized")
+                    return
+                sender_name = user.first_name or "Admin"
+            except Exception:
+                await websocket.close(code=4001, reason="Invalid session")
                 return
             sender_type = "agent"
-            sender_name = "Ron"
         else:
             # For user role, verify via JWT token if provided
             if token:

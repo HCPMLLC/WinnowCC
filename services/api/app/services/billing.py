@@ -32,7 +32,7 @@ FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 # Founder accounts — bypass all billing gates at highest tier, no Stripe.
 # ---------------------------------------------------------------------------
 
-_FOUNDER_EMAILS_DEFAULT = "rlevi@hcpm.llc"
+_FOUNDER_EMAILS_DEFAULT = ""
 FOUNDER_EMAILS: set[str] = {
     e.strip().lower()
     for e in os.getenv("FOUNDER_EMAILS", _FOUNDER_EMAILS_DEFAULT).split(",")

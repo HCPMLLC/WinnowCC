@@ -136,9 +136,14 @@ async def _unhandled_exception_handler(request, exc):  # noqa: ARG001
     )
     from starlette.responses import JSONResponse
 
+    env = os.environ.get("ENV", "dev")
+    if env == "dev":
+        detail = f"{type(exc).__name__}: {exc}"
+    else:
+        detail = "Internal server error"
     return JSONResponse(
         status_code=500,
-        content={"detail": f"{type(exc).__name__}: {exc}"},
+        content={"detail": detail},
     )
 
 
@@ -172,10 +177,21 @@ if PROD_WEB_URL and PROD_WEB_URL not in ALLOWED_ORIGINS:
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ALLOWED_ORIGINS,
+    # TODO: Restrict to published extension ID once Chrome extension is in the store
     allow_origin_regex=r"^chrome-extension://.*",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Authorization",
+        "Content-Type",
+        "Accept",
+        "Origin",
+        "X-Requested-With",
+        "X-Admin-Token",
+        "X-CSRF-Token",
+        "Sentry-Trace",
+        "Baggage",
+    ],
 )
 
 # Founder email context propagation (sets ContextVar in async context so

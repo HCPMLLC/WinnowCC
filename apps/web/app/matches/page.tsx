@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 
 import { fetchAuthMe } from "../lib/auth";
@@ -92,7 +93,7 @@ function JobDescription({ text, html }: { text: string; html?: string }) {
     return (
       <div
         className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-900 prose-a:text-green-600 prose-strong:text-gray-900 prose-ul:list-disc prose-ol:list-decimal"
-        dangerouslySetInnerHTML={{ __html: html }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(html) }}
       />
     );
   }
@@ -102,7 +103,7 @@ function JobDescription({ text, html }: { text: string; html?: string }) {
     return (
       <div
         className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-900 prose-a:text-green-600 prose-strong:text-gray-900 prose-ul:list-disc prose-ol:list-decimal"
-        dangerouslySetInnerHTML={{ __html: text }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
       />
     );
   }
