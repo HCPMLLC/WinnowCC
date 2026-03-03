@@ -47,6 +47,7 @@ from app.routers.admin_employers import router as admin_employers_router  # noqa
 from app.routers.admin_jobs import router as admin_jobs_router  # noqa: E402
 from app.routers.admin_profile import router as admin_profile_router  # noqa: E402
 from app.routers.admin_recruiters import router as admin_recruiters_router  # noqa: E402
+from app.routers.admin_settings import router as admin_settings_router  # noqa: E402
 from app.routers.admin_support import router as admin_support_router  # noqa: E402
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
@@ -107,9 +108,9 @@ from app.routers.support import router as support_router  # noqa: E402
 from app.routers.support_ws import router as support_ws_router  # noqa: E402
 from app.routers.tailor import router as tailor_router  # noqa: E402
 from app.routers.talent_pipeline import router as talent_pipeline_router  # noqa: E402
+from app.routers.telnyx_webhook import router as telnyx_webhook_router  # noqa: E402
 from app.routers.trust import router as trust_router  # noqa: E402
 from app.routers.upload_batches import router as upload_batches_router  # noqa: E402
-from app.routers.telnyx_webhook import router as telnyx_webhook_router  # noqa: E402
 from app.routers.webhooks import router as webhooks_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
@@ -196,6 +197,7 @@ app.include_router(trust_router)
 app.include_router(admin_trust_router)
 app.include_router(admin_profile_router)
 app.include_router(admin_candidates_router)
+app.include_router(admin_settings_router)
 app.include_router(admin_support_router)
 app.include_router(admin_employers_router)
 app.include_router(admin_recruiters_router)
@@ -264,6 +266,21 @@ async def _validate_security_config():
             )
 
     logger.info("Security config validated (env=%s)", env)
+
+
+@app.on_event("startup")
+async def _load_admin_test_emails():
+    """Load dynamic admin test emails from DB into the in-memory set."""
+    from app.db.session import get_session_factory
+    from app.services.billing import reload_admin_test_emails
+
+    session = get_session_factory()()
+    try:
+        reload_admin_test_emails(session)
+    except Exception:
+        logger.exception("Failed to load admin test emails from DB")
+    finally:
+        session.close()
 
 
 @app.on_event("startup")
