@@ -4,6 +4,7 @@ import logging
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from sqlalchemy import or_, select, text
 from sqlalchemy.orm import Session
 
@@ -1004,3 +1005,49 @@ def retry_rejection_feedback(
     session.commit()
 
     return {"status": "pending", "analysis": None}
+
+
+# ---------------------------------------------------------------------------
+# Salary Negotiation Coach
+# ---------------------------------------------------------------------------
+
+
+class OfferDetails(BaseModel):
+    salary: int
+    bonus: int | None = None
+    equity: str | None = None
+
+
+@router.post(
+    "/{match_id}/salary-coaching",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def get_salary_negotiation_coaching(
+    match_id: int,
+    offer: OfferDetails,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Get AI-powered salary negotiation coaching for a job offer.
+
+    Pro tier feature.
+    """
+    from app.services.salary_coach import get_salary_coaching
+
+    result = get_salary_coaching(
+        match_id=match_id,
+        offer_details=offer.model_dump(),
+        user_id=user.id,
+        db=session,
+    )
+
+    if result.get("error") == "upgrade_required":
+        raise HTTPException(
+            status_code=402,
+            detail=result["message"],
+        )
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    return result
