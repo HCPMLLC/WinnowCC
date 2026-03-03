@@ -56,6 +56,7 @@ from app.models.recruiter_job import RecruiterJob
 from app.models.recruiter_job_candidate import RecruiterJobCandidate
 from app.models.recruiter_notification import RecruiterNotification
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+from app.models.rejection_feedback import RejectionFeedback
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
 from app.models.stage_rule import StageRule
@@ -119,6 +120,7 @@ __all__ = [
     "RecruiterPipelineCandidate",
     "RecruiterProfile",
     "RecruiterTeamMember",
+    "RejectionFeedback",
     "StageRule",
     "SupportMessage",
     "SupportTicket",

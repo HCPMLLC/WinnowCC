@@ -755,3 +755,179 @@ def retry_gap_recommendations(
     session.commit()
 
     return {"status": "pending", "recommendations": None}
+
+
+# ---------------------------------------------------------------------------
+# Rejection Feedback Interpreter
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/{match_id}/rejection-feedback",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def create_rejection_feedback(
+    match_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+    body: dict | None = None,
+) -> dict:
+    """Create or return existing rejection feedback analysis for a match.
+
+    Accepts optional ``{"rejection_email": "..."}`` JSON body.
+    """
+    from app.models.rejection_feedback import RejectionFeedback
+    from app.services.rejection_feedback import filter_for_free_tier
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    # Return existing if present
+    feedback = session.execute(
+        select(RejectionFeedback).where(RejectionFeedback.match_id == match_id)
+    ).scalar_one_or_none()
+
+    if feedback is not None:
+        if feedback.status in ("pending", "processing"):
+            return {"status": "pending", "analysis": None}
+        if feedback.status == "failed":
+            return {
+                "status": "failed",
+                "error_message": feedback.error_message,
+                "analysis": None,
+            }
+        candidate = session.execute(
+            select(Candidate).where(Candidate.user_id == user.id)
+        ).scalar_one_or_none()
+        tier = get_plan_tier(candidate)
+        analysis = feedback.analysis or {}
+        if tier == "free":
+            analysis = filter_for_free_tier(analysis)
+        return {"status": "completed", "analysis": analysis}
+
+    # Check billing limit
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    check_daily_limit(
+        session,
+        user.id,
+        tier,
+        "rejection_feedbacks",
+        "rejection_feedbacks_per_day",
+        request=request,
+    )
+
+    rejection_email = (body or {}).get("rejection_email")
+
+    feedback = RejectionFeedback(
+        user_id=user.id,
+        match_id=match_id,
+        job_id=match.job_id,
+        rejection_email=rejection_email,
+        status="pending",
+    )
+    session.add(feedback)
+    session.flush()
+
+    increment_daily_counter(session, user.id, "rejection_feedbacks")
+
+    from app.services.rejection_feedback import generate_rejection_feedback_job
+
+    queue = get_queue("default")
+    queue.enqueue(generate_rejection_feedback_job, feedback.id)
+    session.commit()
+
+    return {"status": "pending", "analysis": None}
+
+
+@router.get(
+    "/{match_id}/rejection-feedback",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def get_rejection_feedback(
+    match_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Poll rejection feedback status / results."""
+    from app.models.rejection_feedback import RejectionFeedback
+    from app.services.rejection_feedback import filter_for_free_tier
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    feedback = session.execute(
+        select(RejectionFeedback).where(RejectionFeedback.match_id == match_id)
+    ).scalar_one_or_none()
+    if feedback is None:
+        raise HTTPException(status_code=404, detail="No rejection feedback found.")
+
+    if feedback.status in ("pending", "processing"):
+        return {"status": "pending", "analysis": None}
+
+    if feedback.status == "failed":
+        return {
+            "status": "failed",
+            "error_message": feedback.error_message,
+            "analysis": None,
+        }
+
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    analysis = feedback.analysis or {}
+    if tier == "free":
+        analysis = filter_for_free_tier(analysis)
+
+    return {"status": "completed", "analysis": analysis}
+
+
+@router.post(
+    "/{match_id}/rejection-feedback/retry",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def retry_rejection_feedback(
+    match_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Retry a failed rejection feedback generation (no billing re-check)."""
+    from app.models.rejection_feedback import RejectionFeedback
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    feedback = session.execute(
+        select(RejectionFeedback).where(RejectionFeedback.match_id == match_id)
+    ).scalar_one_or_none()
+    if feedback is None:
+        raise HTTPException(status_code=404, detail="No rejection feedback found.")
+    if feedback.status != "failed":
+        raise HTTPException(
+            status_code=400, detail="Only failed analyses can be retried."
+        )
+
+    feedback.status = "pending"
+    feedback.error_message = None
+    session.flush()
+
+    from app.services.rejection_feedback import generate_rejection_feedback_job
+
+    queue = get_queue("default")
+    queue.enqueue(generate_rejection_feedback_job, feedback.id)
+    session.commit()
+
+    return {"status": "pending", "analysis": None}
