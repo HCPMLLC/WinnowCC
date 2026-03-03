@@ -17,6 +17,7 @@ import RejectionFeedbackCard from "../components/RejectionFeedbackCard";
 import StatusPrediction from "../components/StatusPrediction";
 import CultureSummary from "../components/CultureSummary";
 import EmailDraftModal from "../components/EmailDraftModal";
+import SalaryCoachModal from "../components/SalaryCoachModal";
 
 type Job = {
   id: number;
@@ -232,6 +233,7 @@ function MatchesPageContent() {
   const [searchError, setSearchError] = useState<string | null>(null);
   const [planTier, setPlanTier] = useState<string>("free");
   const [showEmailDraft, setShowEmailDraft] = useState(false);
+  const [showSalaryCoach, setShowSalaryCoach] = useState(false);
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
   const now = Date.now();
@@ -1040,6 +1042,15 @@ function MatchesPageContent() {
                   >
                     Draft Intro Email
                   </button>
+                  {selectedMatch.application_status === "offer" && (
+                    <button
+                      type="button"
+                      onClick={() => setShowSalaryCoach(true)}
+                      className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700"
+                    >
+                      Get Negotiation Help
+                    </button>
+                  )}
 
                   {statusByJob[selectedMatch.job.id] && (
                     <span className="text-sm text-gray-600">
@@ -1085,6 +1096,14 @@ function MatchesPageContent() {
                   jobTitle={selectedMatch.job.title}
                   company={selectedMatch.job.company}
                   onClose={() => setShowEmailDraft(false)}
+                />
+              )}
+              {showSalaryCoach && (
+                <SalaryCoachModal
+                  matchId={selectedMatch.id}
+                  jobTitle={selectedMatch.job.title}
+                  company={selectedMatch.job.company}
+                  onClose={() => setShowSalaryCoach(false)}
                 />
               )}
             </>
