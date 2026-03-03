@@ -1,10 +1,21 @@
-"""Senior Recruiter Job Parser — structured extraction from job postings."""
+"""Unified Job Parser — single source of truth for all job parsing.
+
+Contains:
+  1. JobParserService (regex-based, for bulk ingestion pipeline)
+  2. Unified Claude-powered parser with three entry points:
+     - parse_job_from_file()  — for .docx/.pdf/.doc/.txt uploads
+     - parse_job_from_text()  — for raw text from API feeds
+     - estimate_parse_confidence() — quick heuristic check
+"""
 
 from __future__ import annotations
 
+import json
 import logging
+import os
 import re
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -910,3 +921,966 @@ class JobParserService:
             score += 2
 
         return max(0, min(100, score))
+
+
+# ===========================================================================
+# UNIFIED CLAUDE-POWERED PARSER (PROMPT77)
+# ===========================================================================
+# Everything below is the unified parser that consolidates PROMPT10, 14, and
+# 43 into one service.  Three public entry points, one Claude prompt, one
+# fraud/quality scorer.
+# ===========================================================================
+
+import anthropic  # noqa: E402 — intentional late import
+
+_claude_client: anthropic.Anthropic | None = None
+
+UNIFIED_PARSE_VERSION = 2
+
+
+def _get_claude_client() -> anthropic.Anthropic:
+    """Lazy-init singleton for the Anthropic API client."""
+    global _claude_client
+    if _claude_client is None:
+        _claude_client = anthropic.Anthropic(
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
+        )
+    return _claude_client
+
+
+# ---------------------------------------------------------------------------
+# Text extraction helpers
+# ---------------------------------------------------------------------------
+
+
+def _detect_file_type(file_path: str) -> str:
+    """Return 'docx', 'pdf', 'doc', 'txt', or 'unknown' based on extension."""
+    ext = os.path.splitext(file_path)[1].lower()
+    return {
+        ".docx": "docx",
+        ".pdf": "pdf",
+        ".doc": "doc",
+        ".txt": "txt",
+    }.get(ext, "unknown")
+
+
+def _extract_text_from_docx(file_path: str) -> str:
+    """Extract text from .docx file including table content."""
+    from docx import Document
+
+    doc = Document(file_path)
+    ns = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
+    parts: list[str] = []
+
+    for child in doc.element.body:
+        tag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+        if tag == "p":
+            t_elems = child.findall(".//w:t", ns)
+            text = "".join(t.text or "" for t in t_elems).strip()
+            if text:
+                parts.append(text)
+        elif tag == "tbl":
+            for tr in child.findall(".//w:tr", ns):
+                cells: list[str] = []
+                for tc in tr.findall("w:tc", ns):
+                    cell_texts = tc.findall(".//w:t", ns)
+                    cell_text = "".join(t.text or "" for t in cell_texts).strip()
+                    if cell_text:
+                        cells.append(cell_text)
+                if cells:
+                    parts.append(" | ".join(cells))
+
+    if not parts:
+        parts = [p.text for p in doc.paragraphs if p.text.strip()]
+
+    return "\n".join(parts)
+
+
+def _extract_text_from_pdf(file_path: str) -> str:
+    """Extract text from .pdf file using pypdf."""
+    try:
+        from pypdf import PdfReader
+
+        reader = PdfReader(file_path)
+        parts: list[str] = []
+        for page in reader.pages:
+            text = page.extract_text()
+            if text:
+                parts.append(text.strip())
+        return "\n".join(parts)
+    except Exception as e:
+        logger.error("PDF text extraction failed: %s", e)
+        return ""
+
+
+def _extract_text_from_doc(file_path: str) -> str:
+    """Extract text from .doc via Win32 COM or LibreOffice fallback."""
+    abs_path = os.path.abspath(file_path)
+
+    # Try Word COM automation (Windows)
+    try:
+        import win32com.client
+
+        word = win32com.client.Dispatch("Word.Application")
+        word.Visible = False
+        try:
+            doc = word.Documents.Open(abs_path, ReadOnly=True)
+            text = doc.Content.Text
+            doc.Close(False)
+            return text
+        finally:
+            word.Quit()
+    except Exception as e:
+        logger.debug("Word COM extraction failed, trying LibreOffice: %s", e)
+
+    # Fall back to LibreOffice conversion
+    try:
+        import shutil
+        from pathlib import Path as _Path
+
+        from app.services.doc_converter import convert_doc_to_docx
+
+        docx_path = convert_doc_to_docx(_Path(file_path))
+        try:
+            return _extract_text_from_docx(str(docx_path))
+        finally:
+            shutil.rmtree(docx_path.parent, ignore_errors=True)
+    except Exception as e:
+        logger.error(".doc extraction failed (no Word or LibreOffice): %s", e)
+        return ""
+
+
+def _extract_text_from_file(file_path: str) -> str:
+    """Dispatch to the appropriate text extractor based on file type."""
+    ftype = _detect_file_type(file_path)
+    if ftype == "txt":
+        from pathlib import Path as _Path
+
+        return _Path(file_path).read_text(encoding="utf-8", errors="replace")
+    elif ftype == "pdf":
+        return _extract_text_from_pdf(file_path)
+    elif ftype == "doc":
+        return _extract_text_from_doc(file_path)
+    elif ftype == "docx":
+        return _extract_text_from_docx(file_path)
+    else:
+        logger.warning("Unknown file type for %s, trying as docx", file_path)
+        try:
+            return _extract_text_from_docx(file_path)
+        except Exception:
+            return ""
+
+
+# ---------------------------------------------------------------------------
+# Claude parsing — THE SINGLE SOURCE OF TRUTH
+# ---------------------------------------------------------------------------
+
+_CLAUDE_PARSE_PROMPT = """\
+You are an expert recruiter-grade job posting parser. Extract structured \
+information from this job description with maximum precision.
+
+Job Description:
+{text}
+
+Extract the following fields and return ONLY valid JSON:
+
+{{
+  "title": "Exact job title",
+  "normalized_title": "Title with abbreviations expanded (Sr. -> Senior, etc.)",
+  "seniority_level": "executive|director|principal|senior|manager|mid|junior or null",
+  "department": "Department or team if mentioned, null otherwise",
+  "job_category": "The EXACT category/labor category/functional area as written in \
+the document. Do NOT map to a standard list. null if not mentioned",
+  "job_id_external": "Job ID, requisition number, solicitation number, posting \
+number, or vacancy number if mentioned, null otherwise",
+  "company_name": "Company name if mentioned, null otherwise",
+  "client_company_name": "The client, customer, end-client, hiring agency, or \
+organization the work is performed for. For government contracts this is the agency \
+name. null if not mentioned",
+
+  "location": "Full location string if mentioned, null otherwise",
+  "city": "City if mentioned, null otherwise",
+  "state": "State/province if mentioned, null otherwise",
+  "country": "Country if mentioned, null otherwise",
+  "remote_policy": "on-site|hybrid|remote if mentioned, null otherwise",
+  "travel_requirements": "Travel percentage or description \
+if mentioned, null otherwise",
+  "relocation_offered": true or false or null,
+
+  "employment_type": "full-time|part-time|contract|internship|freelance|temporary \
+if mentioned, null otherwise",
+  "job_type": "permanent|contract|temporary|seasonal if mentioned, null otherwise",
+  "duration_months": null or integer (for contracts),
+
+  "start_date": "YYYY-MM-DD format if mentioned, null otherwise",
+  "close_date": "YYYY-MM-DD format if mentioned, null otherwise",
+
+  "salary_min": null or integer,
+  "salary_max": null or integer,
+  "salary_currency": "USD or other currency code, null if no salary",
+  "salary_type": "annual|hourly|monthly, null if no salary",
+  "equity_offered": true or false,
+  "benefits_mentioned": ["list", "of", "benefits"] or [],
+
+  "required_skills": [
+    {{"skill": "Python", "years_needed": 3, "is_must_have": true}},
+    {{"skill": "AWS", "years_needed": null, "is_must_have": true}}
+  ],
+  "preferred_skills": [
+    {{"skill": "Kubernetes", "years_needed": null}}
+  ],
+  "certifications_required": ["PMP", "AWS Certified"] or [],
+  "certifications_preferred": [] or null,
+  "education_minimum": "Bachelor's in CS or equivalent, null if not mentioned",
+  "years_experience_minimum": null or integer,
+  "years_experience_preferred": null or integer,
+  "clearance_required": "Secret|Top Secret|Public Trust or null",
+
+  "description": "COMPLETE job description with ALL duties and scope. No truncation.",
+  "requirements": "ALL required qualifications/skills. Include table content. \
+null if not separable",
+  "nice_to_haves": "ALL preferred qualifications. null if not distinguishable",
+  "responsibilities": "Key responsibilities if a separate \
+section exists, null otherwise",
+  "benefits_text": "Benefits section text if exists, null otherwise",
+
+  "application_email": "email if mentioned, null otherwise",
+  "application_url": "URL to apply if mentioned, null otherwise",
+  "company_industry": "Inferred industry \
+(e.g. 'Technology', 'Finance'), null if unclear",
+  "is_likely_recruiter_posting": true or false,
+  "posting_quality_score": 0-100,
+
+  "vague_language_score": 0-10,
+  "excessive_urgency": true or false,
+  "unrealistic_salary": true or false,
+  "missing_company_details": true or false,
+  "suspicious_contact_info": true or false
+}}
+
+Rules:
+1. Extract ONLY information explicitly stated in the text
+2. Do not infer or fabricate information
+3. Use null for missing fields, [] for empty lists
+4. Parse dates carefully - look for all date-related labels
+5. Return ONLY the JSON object, no other text
+6. For description and requirements, include ALL content - do NOT summarize or truncate
+7. Content from tables is separated by " | " - include it in the appropriate field
+8. For job_id_external: use any identifying number for the position
+9. For title: use the actual position title, NOT the labor category
+10. For required_skills: extract as structured objects with skill name and years
+11. READ THE ENTIRE DOCUMENT before deciding on salary. For government contracts: \
+use the official agency MAX NTE rate, NOT the vendor proposed rate
+12. For certifications_required: extract ALL certifications mentioned as required
+13. For posting_quality_score: rate 0-100 based on completeness, clarity, and detail
+14. For client_company_name: in government contracts this is the agency name
+"""
+
+
+def _parse_with_claude(text: str) -> dict[str, Any]:
+    """THE unified Claude prompt. All entry points call this same function."""
+    # Truncate very long text to avoid token limits
+    if len(text) > 100_000:
+        text = text[:100_000] + "\n\n[Document truncated at 100,000 characters]"
+
+    prompt = _CLAUDE_PARSE_PROMPT.format(text=text)
+
+    try:
+        client = _get_claude_client()
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=8000,
+            messages=[{"role": "user", "content": prompt}],
+        )
+
+        response_text = message.content[0].text.strip()
+
+        # Strip markdown code fences
+        if response_text.startswith("```json"):
+            response_text = response_text[7:]
+        if response_text.startswith("```"):
+            response_text = response_text[3:]
+        if response_text.endswith("```"):
+            response_text = response_text[:-3]
+
+        return json.loads(response_text.strip())
+
+    except json.JSONDecodeError as e:
+        logger.error("Failed to parse Claude JSON response: %s", e)
+        return {}
+    except anthropic.BadRequestError as e:
+        msg = str(e)
+        if "credit balance" in msg or "billing" in msg.lower():
+            raise RuntimeError(
+                "AI service temporarily unavailable (billing). Please try again later."
+            ) from e
+        logger.error("Claude API call failed: %s", e)
+        raise RuntimeError(f"AI parsing failed: {msg}") from e
+    except anthropic.APIError as e:
+        logger.error("Claude API call failed: %s", e)
+        raise RuntimeError(
+            "AI service temporarily unavailable. Please try again later."
+        ) from e
+    except Exception as e:
+        logger.error("Claude API call failed unexpectedly: %s", e)
+        return {}
+
+
+def _regex_fallback_parse(text: str) -> dict[str, Any]:
+    """Fallback parser when Claude API is unavailable.
+
+    Uses the regex patterns from this module to extract basic fields.
+    Returns a dict with confidence=0.1 so the job enters as a draft.
+    """
+    lines = [ln.strip() for ln in text.split("\n") if ln.strip()]
+    title = lines[0][:200] if lines else "Untitled"
+
+    # Detect seniority from title
+    seniority = "mid"
+    for pattern, level in _SENIORITY_PATTERNS:
+        if pattern.search(title):
+            seniority = level
+            break
+
+    # Employment type
+    employment_type = None
+    for pattern, emp_type in _EMPLOYMENT_PATTERNS:
+        if pattern.search(text):
+            employment_type = emp_type
+            break
+
+    # Work mode
+    remote_policy = None
+    for pattern, mode in _WORK_MODE_PATTERNS:
+        if pattern.search(text):
+            remote_policy = mode
+            break
+
+    return {
+        "title": title,
+        "normalized_title": title,
+        "seniority_level": seniority,
+        "description": text[:10000],
+        "employment_type": employment_type,
+        "remote_policy": remote_policy,
+        "parsing_confidence": 0.1,
+        "_fallback": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Post-processing
+# ---------------------------------------------------------------------------
+
+
+def _post_process(parsed: dict[str, Any]) -> dict[str, Any]:
+    """Clean and validate Claude output."""
+    if not parsed:
+        return parsed
+
+    # Normalize title abbreviations
+    title = parsed.get("title") or ""
+    if title and not parsed.get("normalized_title"):
+        normalized = title
+        lower = normalized.lower()
+        for abbr, expansion in sorted(
+            _TITLE_ABBREVIATIONS.items(), key=lambda x: len(x[0]), reverse=True
+        ):
+            if abbr in lower:
+                if abbr.endswith("."):
+                    pat = re.compile(r"(?<!\w)" + re.escape(abbr) + r"(?!\w)", re.I)
+                elif abbr.endswith(" "):
+                    pat = re.compile(r"\b" + re.escape(abbr.rstrip()), re.I)
+                else:
+                    pat = re.compile(r"\b" + re.escape(abbr) + r"\b", re.I)
+                normalized = pat.sub(expansion, normalized)
+                lower = normalized.lower()
+        parsed["normalized_title"] = re.sub(r"\s+", " ", normalized).strip()
+
+    # Detect seniority if not already set
+    if not parsed.get("seniority_level") and title:
+        for pattern, level in _SENIORITY_PATTERNS:
+            if pattern.search(title):
+                parsed["seniority_level"] = level
+                break
+
+    # Parse date strings to date objects
+    for field in ("start_date", "close_date"):
+        val = parsed.get(field)
+        if val and isinstance(val, str):
+            try:
+                parsed[field] = datetime.strptime(val, "%Y-%m-%d").date()
+            except ValueError:
+                parsed[field] = None
+
+    # Ensure list fields are lists
+    for field in (
+        "certifications_required",
+        "certifications_preferred",
+        "required_skills",
+        "preferred_skills",
+        "benefits_mentioned",
+    ):
+        val = parsed.get(field)
+        if val and not isinstance(val, list):
+            parsed[field] = [val]
+        elif val is None:
+            parsed[field] = []
+
+    # Validate salary ranges
+    sal_min = parsed.get("salary_min")
+    sal_max = parsed.get("salary_max")
+    if sal_min is not None and sal_max is not None:
+        if isinstance(sal_min, (int, float)) and isinstance(sal_max, (int, float)):
+            if sal_min > sal_max:
+                parsed["salary_min"], parsed["salary_max"] = sal_max, sal_min
+
+    # Calculate confidence score per PROMPT77 formula
+    description = parsed.get("description") or ""
+    required_skills = parsed.get("required_skills") or []
+    location = parsed.get("location")
+    confidence = (
+        0.25 * (1.0 if title else 0.0)
+        + 0.20
+        * (
+            1.0
+            if description and len(description) > 100
+            else 0.5
+            if description
+            else 0.0
+        )
+        + 0.20 * (1.0 if required_skills and len(required_skills) > 0 else 0.0)
+        + 0.15 * (1.0 if location else 0.0)
+        + 0.10 * (1.0 if sal_min or sal_max else 0.0)
+        + 0.10 * (1.0 if parsed.get("employment_type") else 0.0)
+    )
+    parsed["parsing_confidence"] = round(confidence, 2)
+
+    return parsed
+
+
+# ---------------------------------------------------------------------------
+# Fraud & quality scoring (dict-based)
+# ---------------------------------------------------------------------------
+
+
+def _score_quality_and_fraud(parsed: dict[str, Any], raw_text: str) -> dict[str, Any]:
+    """Run fraud detection and quality scoring on a parsed dict.
+
+    Imports phrase lists from job_fraud_detector.py to avoid duplication.
+    Operates on raw dicts — no DB session needed.
+    """
+    from app.services.job_fraud_detector import (
+        _CRYPTO_PHRASES,
+        _FEE_PHRASES,
+        _FREE_EMAIL_DOMAINS,
+        _PERSONAL_INFO_PHRASES,
+        _SCAM_PHRASES,
+        _URGENCY_PHRASES,
+        _VAGUE_TITLES,
+        FRAUD_THRESHOLD,
+    )
+
+    red_flags: list[dict] = []
+    total_score = 0
+    text_lower = raw_text.lower()
+    title_lower = (parsed.get("title") or "").lower()
+
+    # 1. Scam phrases
+    for phrase in _SCAM_PHRASES:
+        if phrase in text_lower:
+            total_score += 20
+            red_flags.append(
+                {
+                    "code": "SCAM_PHRASE",
+                    "severity": "high",
+                    "description": f"Contains scam phrase: '{phrase}'",
+                    "points": 20,
+                }
+            )
+            break
+
+    # 2. No company
+    company = (
+        parsed.get("company_name") or parsed.get("client_company_name") or ""
+    ).strip()
+    if not company or company.lower() in ("n/a", "unknown", "confidential", "company"):
+        total_score += 15
+        red_flags.append(
+            {
+                "code": "NO_COMPANY",
+                "severity": "high",
+                "description": "Company name is missing or generic",
+                "points": 15,
+            }
+        )
+
+    # 3. Short description
+    if len(text_lower) < 100:
+        total_score += 15
+        red_flags.append(
+            {
+                "code": "SHORT_DESCRIPTION",
+                "severity": "medium",
+                "description": f"Description is only {len(text_lower)} characters",
+                "points": 15,
+            }
+        )
+
+    # 4. Salary anomaly
+    sal_min = parsed.get("salary_min")
+    sal_max = parsed.get("salary_max")
+    if sal_min is not None and isinstance(sal_min, (int, float)):
+        if sal_min > 500_000:
+            total_score += 10
+            red_flags.append(
+                {
+                    "code": "SALARY_ANOMALY",
+                    "severity": "medium",
+                    "description": f"Salary min ${sal_min:,.0f} is suspiciously high",
+                    "points": 10,
+                }
+            )
+    if sal_max is not None and isinstance(sal_max, (int, float)):
+        if 0 < sal_max < 15_000:
+            total_score += 10
+            red_flags.append(
+                {
+                    "code": "SALARY_ANOMALY",
+                    "severity": "medium",
+                    "description": f"Salary max ${sal_max:,.0f} is suspiciously low",
+                    "points": 10,
+                }
+            )
+
+    # 5. No requirements
+    req_skills = parsed.get("required_skills") or []
+    certs = parsed.get("certifications_required") or []
+    years_min = parsed.get("years_experience_minimum")
+    if not req_skills and not certs and years_min is None:
+        total_score += 10
+        red_flags.append(
+            {
+                "code": "NO_REQUIREMENTS",
+                "severity": "medium",
+                "description": "No skills, certifications, or experience requirements",
+                "points": 10,
+            }
+        )
+
+    # 6. Urgency language
+    for phrase in _URGENCY_PHRASES:
+        if phrase in text_lower:
+            total_score += 8
+            red_flags.append(
+                {
+                    "code": "URGENCY_LANGUAGE",
+                    "severity": "low",
+                    "description": f"Urgency phrase: '{phrase}'",
+                    "points": 8,
+                }
+            )
+            break
+
+    # 7. Personal info request
+    for phrase in _PERSONAL_INFO_PHRASES:
+        if phrase in text_lower:
+            total_score += 20
+            red_flags.append(
+                {
+                    "code": "PERSONAL_INFO_REQUEST",
+                    "severity": "high",
+                    "description": f"Requests personal information: '{phrase}'",
+                    "points": 20,
+                }
+            )
+            break
+
+    # 8. Fee required
+    for phrase in _FEE_PHRASES:
+        if phrase in text_lower:
+            total_score += 25
+            red_flags.append(
+                {
+                    "code": "FEE_REQUIRED",
+                    "severity": "high",
+                    "description": f"Requires fee: '{phrase}'",
+                    "points": 25,
+                }
+            )
+            break
+
+    # 9. Vague title
+    if any(vt in title_lower for vt in _VAGUE_TITLES):
+        total_score += 8
+        red_flags.append(
+            {
+                "code": "VAGUE_TITLE",
+                "severity": "low",
+                "description": "Job title is vague or generic",
+                "points": 8,
+            }
+        )
+
+    # 10. Excessive caps
+    title = parsed.get("title") or ""
+    if title and sum(1 for c in title if c.isupper()) > len(title) * 0.6:
+        total_score += 5
+        red_flags.append(
+            {
+                "code": "EXCESSIVE_CAPS",
+                "severity": "low",
+                "description": "Excessive use of ALL CAPS in title",
+                "points": 5,
+            }
+        )
+
+    # 11. No location
+    location = parsed.get("location") or ""
+    remote = parsed.get("remote_policy") or ""
+    if not location.strip() or location.strip().lower() in (
+        "n/a",
+        "unknown",
+        "anywhere",
+    ):
+        if remote.lower() != "remote":
+            total_score += 5
+            red_flags.append(
+                {
+                    "code": "NO_LOCATION",
+                    "severity": "low",
+                    "description": "No meaningful location provided",
+                    "points": 5,
+                }
+            )
+
+    # 12. Crypto scam
+    for phrase in _CRYPTO_PHRASES:
+        if phrase in text_lower:
+            total_score += 15
+            red_flags.append(
+                {
+                    "code": "CRYPTO_SCAM",
+                    "severity": "high",
+                    "description": f"Crypto/forex signal: '{phrase}'",
+                    "points": 15,
+                }
+            )
+            break
+
+    # 13. Free email for business
+    app_email = (parsed.get("application_email") or "").lower()
+    if app_email:
+        for domain in _FREE_EMAIL_DOMAINS:
+            if domain in app_email:
+                total_score += 8
+                red_flags.append(
+                    {
+                        "code": "GMAIL_CONTACT",
+                        "severity": "medium",
+                        "description": f"Business contact uses free email: {domain}",
+                        "points": 8,
+                    }
+                )
+                break
+
+    # Combine Claude-reported fraud signals
+    if parsed.get("excessive_urgency"):
+        if not any(f["code"] == "URGENCY_LANGUAGE" for f in red_flags):
+            total_score += 8
+            red_flags.append(
+                {
+                    "code": "URGENCY_LANGUAGE",
+                    "severity": "low",
+                    "description": "Claude detected excessive urgency",
+                    "points": 8,
+                }
+            )
+    if parsed.get("unrealistic_salary"):
+        if not any(f["code"] == "SALARY_ANOMALY" for f in red_flags):
+            total_score += 10
+            red_flags.append(
+                {
+                    "code": "SALARY_ANOMALY",
+                    "severity": "medium",
+                    "description": "Claude flagged salary as unrealistic",
+                    "points": 10,
+                }
+            )
+
+    parsed["fraud_score"] = total_score
+    parsed["red_flags"] = red_flags
+    parsed["is_likely_fraudulent"] = total_score >= FRAUD_THRESHOLD
+
+    # Quality score
+    quality = 50
+    if parsed.get("normalized_title") and len(parsed["normalized_title"]) > 10:
+        quality += 5
+    if parsed.get("seniority_level") and parsed["seniority_level"] != "mid":
+        quality += 3
+    if sal_min is not None:
+        quality += 10
+    if req_skills and len(req_skills) >= 3:
+        quality += 8
+    if parsed.get("education_minimum"):
+        quality += 3
+    if parsed.get("years_experience_minimum") is not None:
+        quality += 3
+    desc = parsed.get("description") or ""
+    if len(desc) > 2000:
+        quality += 5
+    elif len(desc) > 1000:
+        quality += 3
+    elif len(desc) < 200:
+        quality -= 15
+    if parsed.get("company_industry"):
+        quality += 3
+    if parsed.get("department"):
+        quality += 2
+    benefits = parsed.get("benefits_mentioned") or []
+    if len(benefits) >= 3:
+        quality += 5
+    if parsed.get("employment_type"):
+        quality += 3
+    if parsed.get("remote_policy"):
+        quality += 2
+    parsed["quality_score"] = max(0, min(100, quality))
+
+    return parsed
+
+
+# ---------------------------------------------------------------------------
+# Public Entry Points
+# ---------------------------------------------------------------------------
+
+
+def parse_job_from_file(
+    file_path: str,
+    source: str = "web_upload",
+    employer_id: str | None = None,
+    user_id: str | None = None,
+) -> dict[str, Any]:
+    """Parse a .docx/.pdf/.doc/.txt job description file into structured data.
+
+    Used by:
+      - Employer web upload (POST /api/employer/jobs/upload-document)
+      - Recruiter email ingest (email_ingest.py)
+    """
+    ftype = _detect_file_type(file_path)
+    if ftype == "unknown":
+        logger.warning("Unknown file type for %s", file_path)
+
+    raw_text = _extract_text_from_file(file_path)
+    if not raw_text.strip():
+        return {}
+
+    # Parse with Claude, fall back to regex if unavailable
+    try:
+        parsed = _parse_with_claude(raw_text)
+    except RuntimeError:
+        raise  # Billing errors should propagate
+    except Exception:
+        parsed = {}
+
+    if not parsed:
+        parsed = _regex_fallback_parse(raw_text)
+
+    # Post-process and score
+    parsed = _post_process(parsed)
+    parsed = _score_quality_and_fraud(parsed, raw_text)
+
+    # Add metadata
+    parsed["source"] = source
+    parsed["source_type"] = "file"
+    if employer_id:
+        parsed["employer_id"] = employer_id
+    if user_id:
+        parsed["user_id"] = user_id
+
+    return parsed
+
+
+def parse_job_from_text(
+    raw_text: str,
+    source: str = "api_feed",
+    source_url: str | None = None,
+    company_name: str | None = None,
+) -> dict[str, Any]:
+    """Parse raw job description text (already extracted from an API feed).
+
+    Used by:
+      - Job ingestion pipeline (job_ingestion.py / job_pipeline.py)
+      - Admin re-parse endpoints
+    """
+    if not raw_text or not raw_text.strip():
+        return {}
+
+    # Parse with Claude, fall back to regex if unavailable
+    try:
+        parsed = _parse_with_claude(raw_text)
+    except RuntimeError:
+        raise
+    except Exception:
+        parsed = {}
+
+    if not parsed:
+        parsed = _regex_fallback_parse(raw_text)
+
+    # Override company name if provided externally
+    if company_name and not parsed.get("company_name"):
+        parsed["company_name"] = company_name
+
+    # Post-process and score
+    parsed = _post_process(parsed)
+    parsed = _score_quality_and_fraud(parsed, raw_text)
+
+    # Add metadata
+    parsed["source"] = source
+    parsed["source_type"] = "text"
+    if source_url:
+        parsed["source_url"] = source_url
+
+    return parsed
+
+
+def estimate_parse_confidence(raw_text: str) -> float:
+    """Quick heuristic confidence score without calling Claude.
+
+    Checks text length, presence of key sections, formatting quality.
+    Useful for pre-filtering before committing to an API call.
+    """
+    if not raw_text:
+        return 0.0
+
+    score = 0.0
+    text_lower = raw_text.lower()
+
+    # Text length (longer = more likely a real job posting)
+    length = len(raw_text)
+    if length > 2000:
+        score += 0.25
+    elif length > 500:
+        score += 0.15
+    elif length > 100:
+        score += 0.05
+
+    # Key section headers present
+    section_keywords = [
+        "requirements",
+        "qualifications",
+        "responsibilities",
+        "about",
+        "description",
+        "skills",
+        "experience",
+        "benefits",
+        "compensation",
+        "salary",
+    ]
+    found_sections = sum(1 for kw in section_keywords if kw in text_lower)
+    score += min(0.30, found_sections * 0.06)
+
+    # Has a title-like first line (not too long, not empty)
+    first_line = raw_text.strip().split("\n")[0].strip()
+    if 5 < len(first_line) < 150:
+        score += 0.15
+
+    # Contains job-related terms
+    job_terms = [
+        "position",
+        "role",
+        "hiring",
+        "apply",
+        "candidate",
+        "team",
+        "company",
+    ]
+    found_terms = sum(1 for t in job_terms if t in text_lower)
+    score += min(0.20, found_terms * 0.05)
+
+    # Formatting quality (bullet points, structured content)
+    bullet_count = raw_text.count("•") + raw_text.count("- ") + raw_text.count("* ")
+    if bullet_count > 5:
+        score += 0.10
+    elif bullet_count > 0:
+        score += 0.05
+
+    return min(1.0, round(score, 2))
+
+
+# ---------------------------------------------------------------------------
+# DB storage helper
+# ---------------------------------------------------------------------------
+
+
+def store_parsed_details(
+    job_id: int, parsed_data: dict[str, Any], session: Session
+) -> JobParsedDetail:
+    """Store unified parser output in the job_parsed_details table."""
+    existing = session.execute(
+        select(JobParsedDetail).where(JobParsedDetail.job_id == job_id)
+    ).scalar_one_or_none()
+
+    if existing:
+        detail = existing
+    else:
+        detail = JobParsedDetail(job_id=job_id)
+
+    # Map unified dict keys to JobParsedDetail columns
+    field_map = {
+        "normalized_title": "normalized_title",
+        "seniority_level": "seniority_level",
+        "employment_type": "employment_type",
+        "duration_months": "estimated_duration_months",
+        "city": "parsed_city",
+        "state": "parsed_state",
+        "country": "parsed_country",
+        "remote_policy": "work_mode",
+        "salary_min": "parsed_salary_min",
+        "salary_max": "parsed_salary_max",
+        "salary_currency": "parsed_salary_currency",
+        "salary_type": "parsed_salary_type",
+        "benefits_mentioned": "benefits_mentioned",
+        "required_skills": "required_skills",
+        "preferred_skills": "preferred_skills",
+        "certifications_required": "required_certifications",
+        "education_minimum": "required_education",
+        "years_experience_minimum": "years_experience_min",
+        "years_experience_preferred": "years_experience_max",
+        "company_industry": "inferred_industry",
+        "department": "department",
+        "quality_score": "posting_quality_score",
+        "fraud_score": "fraud_score",
+        "is_likely_fraudulent": "is_likely_fraudulent",
+        "red_flags": "red_flags",
+    }
+
+    for src_key, dst_attr in field_map.items():
+        val = parsed_data.get(src_key)
+        if val is not None and hasattr(detail, dst_attr):
+            # Wrap scalar education in a list for JSONB column
+            if dst_attr == "required_education" and isinstance(val, str):
+                val = [val]
+            setattr(detail, dst_attr, val)
+
+    detail.parse_version = UNIFIED_PARSE_VERSION
+    detail.parsed_at = datetime.now(UTC)
+
+    if not existing:
+        session.add(detail)
+    session.flush()
+
+    return detail
+
+
+# ---------------------------------------------------------------------------
+# Backward compatibility
+# ---------------------------------------------------------------------------
+
+
+def parse_job_document(file_path: str) -> dict[str, Any]:
+    """Legacy alias for parse_job_from_file().
+
+    Maintains backward compatibility with PROMPT43 callers.
+    """
+    return parse_job_from_file(file_path, source="web_upload")
