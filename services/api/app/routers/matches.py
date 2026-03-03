@@ -459,6 +459,14 @@ def get_match(
             job_posted_days_ago=days_ago,
         )
 
+    # Gap recommendations status
+    from app.models.gap_recommendation import GapRecommendation
+
+    gap_rec = session.execute(
+        select(GapRecommendation).where(GapRecommendation.match_id == match_id)
+    ).scalar_one_or_none()
+    gap_recs_status = gap_rec.status if gap_rec else None
+
     return MatchResponse(
         id=match.id,
         job=JobResponse.model_validate(job),
@@ -475,6 +483,7 @@ def get_match(
         application_status=match.application_status,
         semantic_similarity=match.semantic_similarity,
         coaching_tips=coaching,
+        gap_recs_status=gap_recs_status,
     )
 
 
@@ -579,3 +588,136 @@ def update_application_status(
         application_status=match.application_status,
         interview_prep_status=interview_prep_status,
     )
+
+
+# ---------------------------------------------------------------------------
+# Gap Closure Recommendations
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{match_id}/gap-recs",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def get_gap_recommendations(
+    match_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Get or trigger gap closure recommendations for a match.
+
+    First call creates the recommendation (checks billing limit), subsequent
+    calls return current status / completed results.
+    """
+    from app.models.gap_recommendation import GapRecommendation
+    from app.services.gap_recommendations import filter_for_free_tier
+
+    # Verify match ownership
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    # Check for existing recommendation
+    gap_rec = session.execute(
+        select(GapRecommendation).where(GapRecommendation.match_id == match_id)
+    ).scalar_one_or_none()
+
+    if gap_rec is None:
+        # Check billing limit
+        candidate = session.execute(
+            select(Candidate).where(Candidate.user_id == user.id)
+        ).scalar_one_or_none()
+        tier = get_plan_tier(candidate)
+        check_daily_limit(
+            session,
+            user.id,
+            tier,
+            "gap_recommendations",
+            "gap_recommendations_per_day",
+            request=request,
+        )
+
+        # Create and enqueue
+        gap_rec = GapRecommendation(
+            user_id=user.id,
+            match_id=match_id,
+            job_id=match.job_id,
+            status="pending",
+        )
+        session.add(gap_rec)
+        session.flush()
+
+        increment_daily_counter(session, user.id, "gap_recommendations")
+
+        from app.services.gap_recommendations import generate_gap_recommendations_job
+
+        queue = get_queue("default")
+        queue.enqueue(generate_gap_recommendations_job, gap_rec.id)
+        session.commit()
+
+        return {"status": "pending", "recommendations": None}
+
+    if gap_rec.status in ("pending", "processing"):
+        return {"status": "pending", "recommendations": None}
+
+    if gap_rec.status == "failed":
+        return {
+            "status": "failed",
+            "error_message": gap_rec.error_message,
+            "recommendations": None,
+        }
+
+    # Completed — apply tier filtering
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    recs = gap_rec.recommendations or {}
+    if tier == "free":
+        recs = filter_for_free_tier(recs)
+
+    return {"status": "completed", "recommendations": recs}
+
+
+@router.post(
+    "/{match_id}/gap-recs/retry",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def retry_gap_recommendations(
+    match_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Retry a failed gap recommendation generation (no billing re-check)."""
+    from app.models.gap_recommendation import GapRecommendation
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    gap_rec = session.execute(
+        select(GapRecommendation).where(GapRecommendation.match_id == match_id)
+    ).scalar_one_or_none()
+    if gap_rec is None:
+        raise HTTPException(status_code=404, detail="No gap recommendations found.")
+    if gap_rec.status != "failed":
+        raise HTTPException(
+            status_code=400, detail="Only failed recommendations can be retried."
+        )
+
+    gap_rec.status = "pending"
+    gap_rec.error_message = None
+    session.flush()
+
+    from app.services.gap_recommendations import generate_gap_recommendations_job
+
+    queue = get_queue("default")
+    queue.enqueue(generate_gap_recommendations_job, gap_rec.id)
+    session.commit()
+
+    return {"status": "pending", "recommendations": None}

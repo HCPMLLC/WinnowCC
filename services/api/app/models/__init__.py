@@ -28,6 +28,7 @@ from app.models.employer_introduction import EmployerIntroductionRequest
 from app.models.employer_job_candidate import EmployerJobCandidate
 from app.models.employer_team import EmployerTeamMember, InterviewFeedback
 from app.models.filled_form import FilledForm
+from app.models.gap_recommendation import GapRecommendation
 from app.models.interview_prep import InterviewPrep
 from app.models.introduction_request import IntroductionRequest
 from app.models.job import Job
@@ -87,6 +88,7 @@ __all__ = [
     "EmployerTeamMember",
     "ExtractedSkill",
     "FilledForm",
+    "GapRecommendation",
     "InterviewFeedback",
     "InterviewPrep",
     "IntroductionRequest",
