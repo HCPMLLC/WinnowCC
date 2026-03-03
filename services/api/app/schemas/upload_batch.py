@@ -22,6 +22,11 @@ class UploadBatchStatusResponse(BaseModel):
     files_succeeded: int
     files_failed: int
     files: list[UploadBatchFileStatus]
+    page: int | None = None
+    total_pages: int | None = None
+    queue_position: int | None = None
+    estimated_start_utc: str | None = None
+    estimated_finish_utc: str | None = None
 
 
 class UploadBatchCreatedResponse(BaseModel):

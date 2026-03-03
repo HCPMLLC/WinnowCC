@@ -30,6 +30,9 @@ class MigrationJob(Base):
     error_log: Mapped[dict | None] = mapped_column(JSONB)
     source_file_path: Mapped[str | None] = mapped_column(String(500), nullable=True)
     api_credentials_encrypted: Mapped[str | None] = mapped_column(Text, nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     started_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

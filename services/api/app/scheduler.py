@@ -170,6 +170,23 @@ def main():
     )
     logger.info(f"Scheduled weekly digest registered: {digest_job.id}")
 
+    # Schedule queued import promotion + stale batch reconciliation (every 2 min)
+    for job in scheduler.get_jobs():
+        if (
+            hasattr(job, "meta")
+            and job.meta.get("scheduled_job_type") == "promote_imports"
+        ):
+            scheduler.cancel(job)
+            logger.info(f"Cancelled existing promote imports job: {job.id}")
+
+    promote_job = scheduler.cron(
+        cron_string="*/2 * * * *",
+        func="app.services.scheduled_jobs:scheduled_promote_queued_imports",
+        queue_name="default",
+        meta={"scheduled_job_type": "promote_imports"},
+    )
+    logger.info(f"Scheduled import promotion registered: {promote_job.id}")
+
     logger.info("Scheduler running. Press Ctrl+C to stop.")
 
     # Run the scheduler
