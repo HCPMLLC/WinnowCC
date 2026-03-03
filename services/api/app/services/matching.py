@@ -145,8 +145,19 @@ def compute_matches(
         )
     )
 
+    from app.services.match_explainer import generate_match_explanation
+
     matches: list[Match] = []
     for job, result in top:
+        matched_skills = result.reasons.get("matched_skills", [])
+        if result.match_score >= 40:
+            explanation = None  # Will be generated after flush
+        else:
+            explanation = (
+                f"Partial match based on your "
+                f"{', '.join(matched_skills[:2]) if matched_skills else 'experience'}."
+            )
+
         match = Match(
             user_id=user_id,
             job_id=job.id,
@@ -161,11 +172,27 @@ def compute_matches(
             referred=False,
             interview_probability=result.interview_probability,
             semantic_similarity=result.semantic_similarity,
+            match_explanation=explanation,
         )
         session.add(match)
-        matches.append(match)
+        matches.append((match, job))
+
+    # Generate LLM explanations for qualifying matches
+    for match, job in matches:
+        if match.match_score >= 40:
+            try:
+                match.match_explanation = generate_match_explanation(
+                    match, job, profile
+                )
+            except Exception:
+                matched_skills = (match.reasons or {}).get("matched_skills", [])
+                skills_text = (
+                    ", ".join(matched_skills[:2]) if matched_skills else "experience"
+                )
+                match.match_explanation = f"Matched based on your {skills_text}."
+
     session.commit()
-    return matches
+    return [m for m, _ in matches]
 
 
 def _get_profile(

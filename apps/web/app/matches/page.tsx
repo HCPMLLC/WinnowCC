@@ -60,6 +60,7 @@ type Match = {
   interview_probability?: number | null;
   semantic_similarity?: number | null;
   application_status?: string | null;
+  match_explanation?: string | null;
 };
 
 type TailorStatus = {
@@ -169,6 +170,11 @@ function MatchCard({
         {salary && (<><span className="text-gray-300">|</span><span className="font-medium text-gray-700">{salary}</span></>)}
         {timeAgo && (<><span className="text-gray-300">|</span><span>{timeAgo}</span></>)}
       </div>
+      {match.match_explanation && (
+        <p className="mt-1.5 text-xs italic text-emerald-700">
+          {match.match_explanation}
+        </p>
+      )}
       {match.application_status && (
         <div className="mt-1.5">
           <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${

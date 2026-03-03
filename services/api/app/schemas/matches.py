@@ -29,6 +29,8 @@ class MatchResponse(BaseModel):
     application_status: str | None = None
     # IPS coaching (Pro only)
     coaching_tips: dict | None = None
+    # Human-readable "why this job" explanation
+    match_explanation: str | None = None
     # Gap closure recommendations status
     gap_recs_status: str | None = None
 
