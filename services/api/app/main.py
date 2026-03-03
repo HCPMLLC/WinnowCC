@@ -59,6 +59,7 @@ from app.routers.career_intelligence import (  # noqa: E402
 )
 from app.routers.dashboard import router as dashboard_router  # noqa: E402
 from app.routers.distribution import router as distribution_router  # noqa: E402
+from app.routers.email_ingest import router as email_ingest_router  # noqa: E402
 from app.routers.employer import router as employer_router  # noqa: E402
 from app.routers.employer_analytics import (  # noqa: E402
     router as employer_analytics_router,
@@ -203,6 +204,7 @@ app.include_router(matches_router)
 app.include_router(tailor_router)
 app.include_router(mjass_router)
 app.include_router(dashboard_router)
+app.include_router(email_ingest_router)
 app.include_router(employer_router)
 app.include_router(employer_billing_router)
 app.include_router(distribution_router)

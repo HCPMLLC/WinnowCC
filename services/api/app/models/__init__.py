@@ -12,6 +12,7 @@ from app.models.career_intelligence import (
     TimeFillPrediction,
 )
 from app.models.daily_usage_counter import DailyUsageCounter
+from app.models.email_ingest_log import EmailIngestLog
 from app.models.distribution import (
     BoardConnection,
     DistributionEvent,
@@ -79,6 +80,7 @@ __all__ = [
     "CandidateTrust",
     "CareerTrajectory",
     "DistributionEvent",
+    "EmailIngestLog",
     "EmployerCandidateView",
     "EmployerComplianceLog",
     "EmployerIntroductionRequest",
