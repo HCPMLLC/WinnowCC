@@ -686,6 +686,36 @@ def get_gap_recommendations(
     return {"status": "completed", "recommendations": recs}
 
 
+@router.get(
+    "/{match_id}/status-prediction",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def get_status_prediction(
+    match_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Get AI-predicted status for an application.
+
+    Only available for matches with application_status = 'applied'.
+    """
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    if match.application_status != "applied":
+        raise HTTPException(
+            status_code=400,
+            detail="Status prediction only available for submitted applications",
+        )
+
+    from app.services.status_predictor import predict_application_status
+
+    return predict_application_status(match_id, session)
+
+
 @router.post(
     "/{match_id}/gap-recs/retry",
     dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
