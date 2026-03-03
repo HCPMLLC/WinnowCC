@@ -13,6 +13,7 @@ import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
 import CollapsibleTip from "../components/CollapsibleTip";
 import InterviewPrepPanel from "../components/InterviewPrepPanel";
 import GapRecommendationsCard from "../components/GapRecommendationsCard";
+import RejectionFeedbackCard from "../components/RejectionFeedbackCard";
 import StatusPrediction from "../components/StatusPrediction";
 
 type Job = {
@@ -952,6 +953,13 @@ function MatchesPageContent() {
                   {selectedMatch.application_status === "applied" && (
                     <StatusPrediction matchId={selectedMatch.id} />
                   )}
+
+                  {/* Rejection Feedback */}
+                  <RejectionFeedbackCard
+                    matchId={selectedMatch.id}
+                    applicationStatus={selectedMatch.application_status ?? null}
+                    planTier={planTier}
+                  />
 
                   {/* Gap Closure Recommendations */}
                   <GapRecommendationsCard
