@@ -586,6 +586,33 @@ def increment_tailor_requests(session: Session, user_id: int) -> None:
     session.flush()
 
 
+def check_cover_letter_limit(
+    session: Session,
+    user: User,
+    candidate: Candidate | None,
+) -> None:
+    """Raise 429 if user has exceeded cover letter limit for their tier."""
+    tier = get_plan_tier(candidate)
+    limit = get_tier_limit(tier, "cover_letters")
+    if isinstance(limit, int) and limit >= 9999:
+        return
+    usage = get_or_create_usage(session, user.id)
+    if usage.cover_letters >= int(limit):
+        raise HTTPException(
+            status_code=429,
+            detail=(
+                f"Plan limit reached: {limit} cover letters per month. "
+                "Upgrade for more."
+            ),
+        )
+
+
+def increment_cover_letters(session: Session, user_id: int) -> None:
+    usage = get_or_create_usage(session, user_id)
+    usage.cover_letters += 1
+    session.flush()
+
+
 def check_interview_prep_limit(
     session: Session,
     user: User,

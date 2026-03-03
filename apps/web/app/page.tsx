@@ -235,12 +235,12 @@ const PRICING_CONTENT: Record<
       },
       {
         name: "Starter", price: "$9", interval: "/mo", annual: "or $79/year (save 27%)", desc: "For active job seekers",
-        features: ["25 job matches", "Interview Probability Score\u2122", "Employer direct-hire jobs", "10 tailored resumes per month", "10 cover letters per month", "50 Sieve AI messages per day", "Full match explainability", "Recruiter submission alerts", "CSV data export"],
+        features: ["25 job matches", "Interview Probability Score\u2122", "Employer direct-hire jobs", "10 tailored resumes per month", "10 cover letters per month", "50 Sieve AI messages per day", "Gap analysis (15/day)", "Recruiter submission alerts", "CSV data export"],
         cta: "Get Started", href: "/login?mode=signup", highlight: false,
       },
       {
         name: "Pro", price: "$29", interval: "/mo", annual: "or $249/year (save 28%)", desc: "For serious job seekers",
-        features: ["Unlimited job matches", "Interview Probability Score\u2122", "All job sources (boards + direct hire + recruiter)", "30 tailored resumes per month", "30 cover letters per month", "Unlimited Sieve AI", "Gap analysis & coaching", "Full representation analytics", "Full data export"],
+        features: ["Unlimited job matches", "Interview Probability Score\u2122 with full coaching", "All job sources (boards + direct hire + recruiter)", "Unlimited tailored resumes", "Unlimited cover letters", "Unlimited Sieve AI", "Unlimited gap analysis & coaching", "Full representation analytics", "Full data export"],
         cta: "Get Started", href: "/login?mode=signup", highlight: true,
       },
     ],
@@ -272,17 +272,17 @@ const PRICING_CONTENT: Record<
     tiers: [
       {
         name: "Solo", price: "$39", interval: "/mo", annual: "or $349/year (save 25%)", desc: "For independent recruiters",
-        features: ["1 seat", "20 candidate briefs per month", "Chrome extension", "5 salary lookups per month", "Candidate submissions", "Full migration toolkit"],
+        features: ["1 seat", "20 candidate briefs per month", "Chrome extension", "5 salary lookups per month", "Candidate submissions", "Full migration toolkit", "10 active job orders", "Up to 100 pipeline candidates", "5 client accounts"],
         cta: "Get Started", href: "/login?mode=signup&role=recruiter", highlight: false,
       },
       {
         name: "Team", price: "$89", interval: "/user/mo", annual: "or $799/user/year (save 25%)", desc: "For recruiting teams",
-        features: ["Up to 10 seats", "100 candidate briefs per month", "Chrome extension", "50 salary lookups per month", "Cross-vendor duplicate alerts", "Contract vehicle management", "Full migration toolkit", "Full client CRM"],
+        features: ["Up to 10 seats", "100 candidate briefs per month", "Chrome extension", "50 salary lookups per month", "Cross-vendor duplicate alerts", "Contract vehicle management", "Email outreach sequences", "Full migration toolkit", "Full client CRM", "50 active job orders", "Up to 500 pipeline candidates", "25 client accounts"],
         cta: "Get Started", href: "/login?mode=signup&role=recruiter", highlight: true,
       },
       {
         name: "Agency", price: "$129", interval: "/user/mo", annual: "or $1,159/user/year (save 25%)", desc: "For staffing agencies",
-        features: ["Unlimited seats", "500 candidate briefs per month", "Chrome extension", "Unlimited salary lookups", "Full cross-segment intelligence", "Full migration toolkit", "Full client CRM"],
+        features: ["Unlimited seats", "500 candidate briefs per month", "Chrome extension", "Unlimited salary lookups", "Full cross-segment intelligence", "Email outreach sequences", "Full migration toolkit", "Full client CRM", "Unlimited job orders", "Unlimited pipeline candidates", "Unlimited client accounts"],
         cta: "Contact Sales", href: "mailto:sales@winnow.careers", highlight: false,
       },
     ],
