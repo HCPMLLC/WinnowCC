@@ -102,6 +102,7 @@ class JobParsedDetailResponse(BaseModel):
     fraud_score: int | None = None
     is_likely_fraudulent: bool | None = False
     red_flags: list | None = None
+    culture_summary: dict | None = None
     is_duplicate_of_job_id: int | None = None
     is_stale: bool | None = False
     parse_version: int = 1

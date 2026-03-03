@@ -12,6 +12,7 @@ from app.models.job_parsed_detail import JobParsedDetail
 from app.models.user import User
 from app.schemas.jobs import JobParsedDetailResponse, JobResponse
 from app.services.auth import get_current_user
+from app.services.culture_analyzer import get_or_create_culture_summary
 from app.services.matching import _get_embedding_list, compute_cosine_similarity
 
 logger = logging.getLogger(__name__)
@@ -100,3 +101,17 @@ def get_parsed_detail(
         )
 
     return parsed
+
+
+@router.get("/{job_id}/culture")
+def get_culture_summary(
+    job_id: int,
+    session: Session = Depends(get_session),
+    user: User = Depends(get_current_user),
+):
+    """Get AI-generated company culture summary for a job posting."""
+    job = session.execute(select(Job).where(Job.id == job_id)).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return get_or_create_culture_summary(job_id, session)

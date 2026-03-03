@@ -15,6 +15,7 @@ import InterviewPrepPanel from "../components/InterviewPrepPanel";
 import GapRecommendationsCard from "../components/GapRecommendationsCard";
 import RejectionFeedbackCard from "../components/RejectionFeedbackCard";
 import StatusPrediction from "../components/StatusPrediction";
+import CultureSummary from "../components/CultureSummary";
 
 type Job = {
   id: number;
@@ -974,6 +975,9 @@ function MatchesPageContent() {
                     applicationStatus={selectedMatch.application_status ?? null}
                     planTier={planTier}
                   />
+
+                  {/* Company Culture Summary */}
+                  <CultureSummary jobId={selectedMatch.job.id} />
 
                   {/* Job description */}
                   <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
