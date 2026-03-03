@@ -16,6 +16,7 @@ const ADMIN_NAV = [
   { href: "/admin/job-quality", label: "Job Quality" },
   { href: "/admin/trust", label: "Trust" },
   { href: "/admin/forms", label: "Forms" },
+  { href: "/admin/settings", label: "Settings" },
 ];
 
 const SUPPORT_NAV = [

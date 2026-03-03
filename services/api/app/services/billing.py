@@ -39,20 +39,64 @@ FOUNDER_EMAILS: set[str] = {
     if e.strip()
 }
 
+# ---------------------------------------------------------------------------
+# Admin Test Mode — extra emails that bypass billing (env-var + DB).
+# ---------------------------------------------------------------------------
+
+_ENV_ADMIN_TEST_EMAILS: set[str] = {
+    e.strip().lower()
+    for e in os.getenv("ADMIN_TEST_EMAILS", "").split(",")
+    if e.strip()
+}
+
+# Live mutable set: union of env-var emails + DB-managed emails.
+# Updated at startup and whenever an admin adds/removes via the UI.
+ADMIN_TEST_EMAILS: set[str] = set(_ENV_ADMIN_TEST_EMAILS)
+
+
+def reload_admin_test_emails(session: Session) -> set[str]:
+    """Re-build ADMIN_TEST_EMAILS from env-var + DB rows. Returns the new set."""
+    from app.models.admin_test_email import AdminTestEmail
+
+    db_emails = {
+        row.email.strip().lower()
+        for row in session.execute(select(AdminTestEmail)).scalars().all()
+    }
+    ADMIN_TEST_EMAILS.clear()
+    ADMIN_TEST_EMAILS.update(_ENV_ADMIN_TEST_EMAILS | db_emails)
+    logger.info(
+        "Reloaded admin test emails: %d env + %d db = %d total",
+        len(_ENV_ADMIN_TEST_EMAILS),
+        len(db_emails),
+        len(ADMIN_TEST_EMAILS),
+    )
+    return ADMIN_TEST_EMAILS
+
 _request_user_email: contextvars.ContextVar[str] = contextvars.ContextVar(
     "_request_user_email", default=""
 )
 
 
 def set_request_user_email(email: str) -> None:
-    """Set the current request's user email for founder-bypass checks."""
+    """Set the current request's user email for founder/admin-bypass checks."""
     _request_user_email.set(email.strip().lower())
 
 
-def is_founder_email(email: str | None = None) -> bool:
-    """Check if the given (or current-request) email belongs to a founder."""
+def is_admin_tester(email: str | None = None) -> bool:
+    """Check if the given (or current-request) email is an admin test account.
+
+    Admin testers bypass ALL billing tier checks, daily limits, and feature
+    gates across all segments.  Controlled by the ADMIN_TEST_EMAILS env var.
+    """
     check = email.strip().lower() if email else _request_user_email.get("")
-    return bool(check and check in FOUNDER_EMAILS)
+    return bool(check and check in ADMIN_TEST_EMAILS)
+
+
+def is_founder_email(email: str | None = None) -> bool:
+    """Check if the given (or current-request) email belongs to a founder
+    or admin test account.  Both bypass all billing gates."""
+    check = email.strip().lower() if email else _request_user_email.get("")
+    return bool(check and (check in FOUNDER_EMAILS or check in ADMIN_TEST_EMAILS))
 
 
 # ---------------------------------------------------------------------------

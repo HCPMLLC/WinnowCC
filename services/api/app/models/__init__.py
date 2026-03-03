@@ -1,5 +1,6 @@
 """ORM models."""
 
+from app.models.admin_test_email import AdminTestEmail
 from app.models.candidate import Candidate
 from app.models.candidate_notification import CandidateNotification
 from app.models.candidate_profile import CandidateProfile
@@ -12,12 +13,12 @@ from app.models.career_intelligence import (
     TimeFillPrediction,
 )
 from app.models.daily_usage_counter import DailyUsageCounter
-from app.models.email_ingest_log import EmailIngestLog
 from app.models.distribution import (
     BoardConnection,
     DistributionEvent,
     JobDistribution,
 )
+from app.models.email_ingest_log import EmailIngestLog
 from app.models.employer import (
     EmployerCandidateView,
     EmployerJob,
@@ -71,6 +72,7 @@ from app.models.user import User
 from app.models.weekly_digest_log import WeeklyDigestLog
 
 __all__ = [
+    "AdminTestEmail",
     "BoardConnection",
     "Candidate",
     "CandidateNotification",
