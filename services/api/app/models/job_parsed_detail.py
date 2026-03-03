@@ -66,6 +66,7 @@ class JobParsedDetail(Base):
         Boolean, nullable=True, default=False
     )
     red_flags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    culture_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     # Dedup
     is_duplicate_of_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
