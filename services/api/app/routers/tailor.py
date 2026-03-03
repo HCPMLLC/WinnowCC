@@ -19,7 +19,15 @@ from app.schemas.tailor import (
     TailorRequestResponse,
     TailorStatusResponse,
 )
+from app.models.candidate import Candidate
 from app.services.auth import get_current_user, require_onboarded_user
+from app.services.billing import (
+    check_cover_letter_limit,
+    check_tailor_limit,
+    get_plan_tier,
+    increment_cover_letters,
+    increment_tailor_requests,
+)
 from app.services.job_pipeline import tailor_job
 from app.services.queue import get_queue, get_redis_connection
 from app.services.storage import file_response_path, is_gcs_path
@@ -92,9 +100,22 @@ def request_tailor(
     user: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> TailorRequestResponse:
+    # Enforce billing limits before enqueueing
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    check_tailor_limit(session, user, candidate)
+    check_cover_letter_limit(session, user, candidate)
+
     profile_version = _latest_profile_version(session, user.id)
     queue = get_queue("critical")
     job = queue.enqueue(tailor_job, user.id, job_id, profile_version)
+
+    # Increment usage counters after successful enqueue
+    increment_tailor_requests(session, user.id)
+    increment_cover_letters(session, user.id)
+    session.commit()
+
     return TailorRequestResponse(status="queued", job_id=job.id)
 
 

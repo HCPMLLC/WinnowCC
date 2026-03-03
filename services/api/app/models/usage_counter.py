@@ -23,6 +23,9 @@ class UsageCounter(Base):
     tailor_requests: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
+    cover_letters: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     interview_preps: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
