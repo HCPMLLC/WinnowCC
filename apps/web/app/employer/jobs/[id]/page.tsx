@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import DOMPurify from "dompurify";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useProgress } from "../../../hooks/useProgress";
@@ -102,7 +103,7 @@ function RichText({ text }: { text: string }) {
     return (
       <div
         className="prose prose-sm max-w-none text-slate-600"
-        dangerouslySetInnerHTML={{ __html: text }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(text) }}
       />
     );
   }

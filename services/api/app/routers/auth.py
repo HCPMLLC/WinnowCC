@@ -5,12 +5,21 @@ import os
 from datetime import UTC, datetime, timedelta
 
 import httpx
-from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Response
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+)
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.middleware.rate_limit import limiter
 from app.models.user import User
 from app.services.auth import (
     clear_auth_cookie,
@@ -203,7 +212,9 @@ def _do_send_otp(
 # Endpoints
 # ---------------------------------------------------------------------------
 @router.post("/signup", response_model=MeResponse)
+@limiter.limit("5/minute")
 def signup(
+    request: Request,
     payload: AuthRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -236,7 +247,9 @@ def signup(
 
 
 @router.post("/login", response_model=LoginResponse)
+@limiter.limit("10/minute")
 def login(
+    request: Request,
     payload: AuthRequest,
     response: Response,
     bg: BackgroundTasks,
@@ -280,7 +293,9 @@ def login(
 
 
 @router.post("/verify-otp", response_model=MeResponse)
+@limiter.limit("10/minute")
 def verify_otp_endpoint(
+    request: Request,
     payload: VerifyOtpRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -323,7 +338,9 @@ def verify_otp_endpoint(
 
 
 @router.post("/resend-otp")
+@limiter.limit("3/minute")
 def resend_otp(
+    request: Request,
     payload: ResendOtpRequest,
     bg: BackgroundTasks,
     session: Session = Depends(get_session),
@@ -354,7 +371,9 @@ RESET_TOKEN_TTL_MINUTES = 30
 
 
 @router.post("/forgot-password")
+@limiter.limit("3/minute")
 def forgot_password(
+    request: Request,
     payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
@@ -378,7 +397,9 @@ def forgot_password(
 
 
 @router.post("/reset-password")
+@limiter.limit("5/minute")
 def reset_password(
+    request: Request,
     payload: ResetPasswordRequest,
     response: Response,
     session: Session = Depends(get_session),
@@ -390,18 +411,17 @@ def reset_password(
         select(User).where(User.password_reset_token == payload.token)
     ).scalar_one_or_none()
 
-    if user is None:
-        raise HTTPException(status_code=400, detail="Invalid or expired reset link.")
-
-    if (
+    if user is None or (
         user.password_reset_expires_at is None
         or datetime.now(UTC) > user.password_reset_expires_at
     ):
-        user.password_reset_token = None
-        user.password_reset_expires_at = None
-        session.commit()
+        # Clear expired token if user was found
+        if user is not None:
+            user.password_reset_token = None
+            user.password_reset_expires_at = None
+            session.commit()
         raise HTTPException(
-            status_code=400, detail="Reset link has expired. Please request a new one."
+            status_code=400, detail="Invalid or expired reset link."
         )
 
     user.password_hash = hash_password(payload.password)

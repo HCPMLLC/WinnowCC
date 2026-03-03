@@ -860,13 +860,13 @@ def main():
         import docx2txt
 
         resume_text = docx2txt.process(
-            "/mnt/project/Resume_of_Ronald_Levi_PMP_CSS2025.docx"
+            "/mnt/project/sample_resume.docx"
         )
     except Exception:
         # Fallback: use a sample text
         resume_text = """
-        Ronald Levi PMP
-        New Braunfels, TX | 512-686-6808 | rlevi@hcpm.llc
+        Jane Doe PMP
+        New Braunfels, TX | 555-555-0100 | test@example.com
         
         Summary
         Certified PMP with over 25 years of experience

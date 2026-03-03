@@ -16,8 +16,10 @@ Endpoints:
   GET  /api/email-ingest/logs     — Admin: view ingest log
 """
 
+import ipaddress
 import json
 import logging
+import os
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -34,6 +36,28 @@ from app.services.email_ingest import (
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/email-ingest", tags=["email-ingest"])
 
+# SendGrid's published IP ranges for Inbound Parse
+# https://docs.sendgrid.com/for-developers/parsing-email/setting-up-the-inbound-parse-webhook#ip-addresses
+_SENDGRID_CIDRS = [
+    "167.89.0.0/17",
+    "198.37.144.0/20",
+    "74.63.192.0/18",
+    "208.117.48.0/20",
+    "50.31.32.0/19",
+    "198.21.0.0/21",
+    "100.24.0.0/16",
+]
+_SENDGRID_NETWORKS = [ipaddress.ip_network(cidr) for cidr in _SENDGRID_CIDRS]
+
+
+def _is_sendgrid_ip(ip_str: str) -> bool:
+    """Check whether an IP address belongs to SendGrid's published ranges."""
+    try:
+        addr = ipaddress.ip_address(ip_str)
+    except ValueError:
+        return False
+    return any(addr in net for net in _SENDGRID_NETWORKS)
+
 
 @router.post("/webhook")
 async def sendgrid_inbound_webhook(
@@ -47,9 +71,12 @@ async def sendgrid_inbound_webhook(
       1. Only processing emails from registered Winnow users
       2. Optional: IP allowlisting for SendGrid's IP ranges
     """
-    # Log source IP for monitoring / future IP allowlisting
+    # Validate source IP against SendGrid's published ranges
     client_ip = request.client.host if request.client else "unknown"
-    logger.debug("Inbound webhook from IP: %s", client_ip)
+    enforce_ip = os.environ.get("SENDGRID_ENFORCE_IP", "true").lower() != "false"
+    if enforce_ip and not _is_sendgrid_ip(client_ip):
+        logger.warning("Rejected inbound webhook from non-SendGrid IP: %s", client_ip)
+        raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
         form = await request.form()

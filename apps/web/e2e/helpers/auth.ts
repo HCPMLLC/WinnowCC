@@ -18,23 +18,13 @@ async function bridgeAuthCookie(page: Page): Promise<void> {
   const session = cookies.find((c) => c.name === "rm_session");
   if (session) {
     await page.context().addCookies([
-      // API session cookie (HttpOnly — sent with fetch credentials)
+      // Session cookie — Next.js middleware reads it server-side (httpOnly is fine)
       {
         name: session.name,
         value: session.value,
         domain: "localhost",
         path: "/",
         httpOnly: session.httpOnly,
-        secure: false,
-        sameSite: "Lax",
-      },
-      // Frontend token cookie (non-HttpOnly — read by Next.js middleware)
-      {
-        name: "rm_token",
-        value: session.value,
-        domain: "localhost",
-        path: "/",
-        httpOnly: false,
         secure: false,
         sameSite: "Lax",
       },

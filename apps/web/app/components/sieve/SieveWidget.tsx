@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import DOMPurify from "dompurify";
 import SieveLogo from "./SieveLogo";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -1097,7 +1098,7 @@ export default function SieveWidget({
                       {msg.role === "assistant" ? (
                         <span
                           dangerouslySetInnerHTML={{
-                            __html: renderMarkdown(msg.content),
+                            __html: DOMPurify.sanitize(renderMarkdown(msg.content)),
                           }}
                         />
                       ) : (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import DOMPurify from "dompurify";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -676,7 +677,7 @@ export default function AdminCandidatesPage() {
                 ) : docxHtml ? (
                   <div
                     className="h-full overflow-auto rounded-lg border border-slate-200 bg-white p-6 prose prose-sm max-w-none"
-                    dangerouslySetInnerHTML={{ __html: docxHtml }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(docxHtml) }}
                   />
                 ) : (
                   <div className="flex h-full flex-col items-center justify-center gap-4 text-slate-500">

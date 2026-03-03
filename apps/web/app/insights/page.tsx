@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import DOMPurify from "dompurify";
 import { useRouter } from "next/navigation";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
@@ -214,7 +215,7 @@ export default function InsightsPage() {
                   {t.career_velocity && velocityLabel[t.career_velocity] && (
                     <div className={`rounded-lg border px-4 py-2.5 ${velocityLabel[t.career_velocity].color}`}>
                       <span className="text-xs font-medium uppercase tracking-wider opacity-70">Momentum</span>
-                      <p className="text-base font-semibold" dangerouslySetInnerHTML={{ __html: `${velocityLabel[t.career_velocity].icon} ${velocityLabel[t.career_velocity].text}` }} />
+                      <p className="text-base font-semibold" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(`${velocityLabel[t.career_velocity].icon} ${velocityLabel[t.career_velocity].text}`) }} />
                     </div>
                   )}
                 </div>

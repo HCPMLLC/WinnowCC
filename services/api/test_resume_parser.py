@@ -2,7 +2,7 @@
 Test Script for Intelligent Resume Parser
 ==========================================
 
-Demonstrates parsing Ronald Levi's resume and categorizing skills
+Demonstrates parsing a sample resume and categorizing skills
 """
 
 import json
@@ -15,13 +15,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 from resume_parser_agent import ResumeParserAgent, SkillCategory
 
 
-def test_ronald_levi_resume():
-    """Test parser with Ronald Levi's actual resume"""
+def test_sample_resume():
+    """Test parser with a sample resume"""
 
-    # Sample text from the resume (would normally extract from DOCX)
+    # Sample text from a resume (would normally extract from DOCX)
     resume_text = """
-    Ronald Levi PMP®
-    New Braunfels, TX | 512-686-6808 | rlevi@hcpm.llc | LinkedIn
+    Jane Doe PMP®
+    New Braunfels, TX | 555-555-0100 | test@example.com | LinkedIn
 
     Summary
     Certified PMP with over 25 years of experience
@@ -246,7 +246,7 @@ def test_ronald_levi_resume():
     print()
     print("✓ Successfully distinguished PRIMARY EXPERTISE from tools/environment")
     print()
-    print("  Ronald Levi is a CERTIFIED PROJECT MANAGER with:")
+    print("  Jane Doe is a CERTIFIED PROJECT MANAGER with:")
     print(
         "    - Core expertise: PM methodologies, stakeholder mgmt, program leadership"
     )
@@ -271,7 +271,7 @@ def test_ronald_levi_resume():
 
 
 if __name__ == "__main__":
-    parsed_resume, ats_output = test_ronald_levi_resume()
+    parsed_resume, ats_output = test_sample_resume()
 
     # Save output
     output_dir = Path(__file__).parent / "test_output"

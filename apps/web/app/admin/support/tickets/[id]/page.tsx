@@ -76,9 +76,8 @@ export default function AdminTicketDetailPage() {
   }, [ticketId]);
 
   const connectWebSocket = useCallback(() => {
-    // Get admin token from localStorage for WS auth
-    const adminToken = localStorage.getItem("winnow_admin_token") || "";
-    const wsUrl = `${API_BASE.replace("http", "ws")}/ws/support/${ticketId}?token=${adminToken}&role=admin`;
+    // Session cookie is sent automatically by the browser for same-origin WS
+    const wsUrl = `${API_BASE.replace("http", "ws")}/ws/support/${ticketId}?role=admin`;
     const ws = new WebSocket(wsUrl);
 
     ws.onmessage = (event) => {

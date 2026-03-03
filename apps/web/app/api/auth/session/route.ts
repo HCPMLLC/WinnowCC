@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
 
   const res = NextResponse.json({ ok: true, redirect: dest });
 
-  res.cookies.set("rm_token", token, {
-    httpOnly: false,       // middleware reads this via req.cookies
+  res.cookies.set("rm_session", token, {
+    httpOnly: true,
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
@@ -33,10 +33,10 @@ export async function POST(req: NextRequest) {
 }
 
 /**
- * DELETE /api/auth/session — clears the rm_token cookie (logout).
+ * DELETE /api/auth/session — clears the rm_session cookie (logout).
  */
 export async function DELETE() {
   const res = NextResponse.json({ ok: true });
-  res.cookies.delete("rm_token");
+  res.cookies.delete("rm_session");
   return res;
 }
