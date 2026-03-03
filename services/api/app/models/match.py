@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, func
+from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -43,3 +43,6 @@ class Match(Base):
 
     # Application tracking status: saved, applied, interviewing, rejected, offer
     application_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+
+    # Human-readable "why this job" explanation
+    match_explanation: Mapped[str | None] = mapped_column(Text, nullable=True)

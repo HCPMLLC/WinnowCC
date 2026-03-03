@@ -147,6 +147,7 @@ def _refresh_skill_analysis(
                 interview_probability=match.interview_probability,
                 application_status=match.application_status,
                 semantic_similarity=match.semantic_similarity,
+                match_explanation=match.match_explanation,
             )
         )
     return results
@@ -341,6 +342,7 @@ def list_matches(
             interview_probability=match.interview_probability,
             application_status=match.application_status,
             semantic_similarity=match.semantic_similarity,
+            match_explanation=match.match_explanation,
         )
         for match, job in rows
     ]
@@ -406,6 +408,7 @@ def list_all_matches(
             interview_probability=match.interview_probability,
             application_status=match.application_status,
             semantic_similarity=match.semantic_similarity,
+            match_explanation=match.match_explanation,
         )
         for match, job in rows
     ]
@@ -482,6 +485,7 @@ def get_match(
         interview_probability=match.interview_probability,
         application_status=match.application_status,
         semantic_similarity=match.semantic_similarity,
+        match_explanation=match.match_explanation,
         coaching_tips=coaching,
         gap_recs_status=gap_recs_status,
     )
