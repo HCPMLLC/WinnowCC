@@ -64,7 +64,7 @@ def optimize_for_board(job: EmployerJob, board_type: str) -> dict:
     try:
         import anthropic
 
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, max_retries=3)
         prompt = _build_prompt(job, board_type, guidelines)
 
         message = client.messages.create(

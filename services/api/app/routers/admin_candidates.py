@@ -128,27 +128,53 @@ def get_all_candidates(
     ).all()
     match_count_map: dict[int, int] = {uid: cnt for uid, cnt in match_count_rows}
 
-    # Get trust statuses and resume info for all users
+    # Batch-fetch resumes and trust statuses for all users (avoids N+1)
+    user_ids = [user.id for _profile, user in results]
     trust_map: dict[int, str] = {}
     resume_map: dict[int, tuple[int, str]] = {}  # user_id -> (doc_id, filename)
-    for _profile, user in results:
-        # Look up resume by user_id (resumes are linked directly via user_id)
-        resume_stmt = (
-            select(ResumeDocument)
-            .where(ResumeDocument.user_id == user.id, ResumeDocument.active())
-            .order_by(ResumeDocument.created_at.desc())
-            .limit(1)
-        )
-        resume_doc = session.execute(resume_stmt).scalar_one_or_none()
-        if resume_doc:
-            resume_map[user.id] = (resume_doc.id, resume_doc.filename)
-            # Get trust status for this resume document
-            trust_stmt = select(CandidateTrust).where(
-                CandidateTrust.resume_document_id == resume_doc.id
+
+    if user_ids:
+        # Get latest active resume per user via window function
+        latest_resume_subq = (
+            select(
+                ResumeDocument.id,
+                ResumeDocument.user_id,
+                ResumeDocument.filename,
+                func.row_number()
+                .over(
+                    partition_by=ResumeDocument.user_id,
+                    order_by=ResumeDocument.created_at.desc(),
+                )
+                .label("rn"),
             )
-            trust = session.execute(trust_stmt).scalar_one_or_none()
-            if trust:
-                trust_map[user.id] = trust.status
+            .where(
+                ResumeDocument.user_id.in_(user_ids),
+                ResumeDocument.active(),
+            )
+            .subquery()
+        )
+        resume_rows = session.execute(
+            select(
+                latest_resume_subq.c.id,
+                latest_resume_subq.c.user_id,
+                latest_resume_subq.c.filename,
+            ).where(latest_resume_subq.c.rn == 1)
+        ).all()
+        for doc_id, uid, fname in resume_rows:
+            resume_map[uid] = (doc_id, fname)
+
+        # Batch-fetch trust statuses for those resume docs
+        doc_ids = [doc_id for doc_id, _fname in resume_map.values()]
+        if doc_ids:
+            trust_rows = session.execute(
+                select(CandidateTrust.resume_document_id, CandidateTrust.status).where(
+                    CandidateTrust.resume_document_id.in_(doc_ids)
+                )
+            ).all()
+            doc_to_trust = {did: st for did, st in trust_rows}
+            for uid, (doc_id, _fname) in resume_map.items():
+                if doc_id in doc_to_trust:
+                    trust_map[uid] = doc_to_trust[doc_id]
 
     candidates = []
     for profile, user in results:

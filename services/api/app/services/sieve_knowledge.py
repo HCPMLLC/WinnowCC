@@ -63,6 +63,7 @@ async def extract_knowledge_from_ticket(ticket_id: int, session: Session) -> dic
     try:
         client = anthropic.Anthropic(
             api_key=os.environ.get("ANTHROPIC_API_KEY", ""),
+            max_retries=3,
         )
 
         response = client.messages.create(

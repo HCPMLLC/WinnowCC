@@ -18,6 +18,7 @@ import StatusPrediction from "../components/StatusPrediction";
 import CultureSummary from "../components/CultureSummary";
 import EmailDraftModal from "../components/EmailDraftModal";
 import SalaryCoachModal from "../components/SalaryCoachModal";
+import { MatchListSkeleton, MatchDetailSkeleton } from "../components/Skeleton";
 
 type Job = {
   id: number;
@@ -213,6 +214,7 @@ function MatchesPageContent() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [matches, setMatches] = useState<Match[]>([]);
+  const [matchesLoading, setMatchesLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedMatchId, setSelectedMatchId] = useState<number | null>(null);
   const [statusByJob, setStatusByJob] = useState<Record<number, string>>({});
@@ -282,6 +284,8 @@ function MatchesPageContent() {
         const message =
           caught instanceof Error ? caught.message : "Failed to load matches.";
         setError(message);
+      } finally {
+        setMatchesLoading(false);
       }
     };
     void loadMatches();
@@ -593,7 +597,9 @@ function MatchesPageContent() {
       <div className="flex min-h-0 flex-1">
         {/* Left column - Job list */}
         <div className="w-[340px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
-          {searchResults !== null ? (
+          {matchesLoading ? (
+            <MatchListSkeleton />
+          ) : searchResults !== null ? (
             <>
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-200 bg-blue-50 px-4 py-2">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-blue-700">
@@ -692,7 +698,9 @@ function MatchesPageContent() {
 
         {/* Right column - Job details */}
         <div className="relative flex min-w-0 flex-1 flex-col">
-          {selectedMatch ? (
+          {matchesLoading ? (
+            <MatchDetailSkeleton />
+          ) : selectedMatch ? (
             <>
               {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto">

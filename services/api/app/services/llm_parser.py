@@ -110,7 +110,7 @@ def parse_resume_with_claude(resume_text: str) -> dict:
 
     system_prompt = _load_prompt9() + "\n\nReturn ONLY valid JSON, no markdown fences."
 
-    client = Anthropic(api_key=api_key, timeout=timeout)
+    client = Anthropic(api_key=api_key, timeout=timeout, max_retries=3)
     response = client.messages.create(
         model=model,
         max_tokens=16384,

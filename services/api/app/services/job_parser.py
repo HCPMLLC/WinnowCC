@@ -944,6 +944,7 @@ def _get_claude_client() -> anthropic.Anthropic:
     if _claude_client is None:
         _claude_client = anthropic.Anthropic(
             api_key=os.getenv("ANTHROPIC_API_KEY"),
+            max_retries=3,
         )
     return _claude_client
 

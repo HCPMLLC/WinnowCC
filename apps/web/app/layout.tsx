@@ -4,6 +4,7 @@ import CookieConsent from "./components/CookieConsent";
 import Navbar from "./components/Navbar";
 import AuthenticatedSieve from "./components/sieve/AuthenticatedSieve";
 import CandidateDisclaimer from "./components/CandidateDisclaimer";
+import QueryProvider from "./providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "Winnow Career Concierge",
@@ -28,11 +29,13 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <Navbar />
-        {children}
-        <CandidateDisclaimer />
-        <CookieConsent />
-        <AuthenticatedSieve />
+        <QueryProvider>
+          <Navbar />
+          {children}
+          <CandidateDisclaimer />
+          <CookieConsent />
+          <AuthenticatedSieve />
+        </QueryProvider>
       </body>
     </html>
   );

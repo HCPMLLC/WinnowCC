@@ -1,12 +1,23 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import CompetitiveComparison from "./competitive/winnow-competitive-comparison";
-import EmployerComparisonPage from "./competitive/employers/page";
-import RecruiterComparisonPage from "./competitive/recruiters/page";
 import { TrustSafetySection } from "./trust-safety/TrustSafetySection";
+
+const CompetitiveComparison = dynamic(
+  () => import("./competitive/winnow-competitive-comparison"),
+  { ssr: false }
+);
+const EmployerComparisonPage = dynamic(
+  () => import("./competitive/employers/page"),
+  { ssr: false }
+);
+const RecruiterComparisonPage = dynamic(
+  () => import("./competitive/recruiters/page"),
+  { ssr: false }
+);
 
 type Audience = "seeker" | "employer" | "recruiter";
 

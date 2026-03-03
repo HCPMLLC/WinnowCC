@@ -356,6 +356,7 @@ RESET_TOKEN_TTL_MINUTES = 30
 @router.post("/forgot-password")
 def forgot_password(
     payload: ForgotPasswordRequest,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
 ) -> dict:
     """Send a password reset link. Always returns 200 to prevent email enumeration."""
@@ -371,14 +372,7 @@ def forgot_password(
             minutes=RESET_TOKEN_TTL_MINUTES
         )
         session.commit()
-        try:
-            send_password_reset_email(user.email, token)
-        except Exception:
-            logger.error(
-                "Failed to send password reset email to %s",
-                user.email,
-                exc_info=True,
-            )
+        background_tasks.add_task(send_password_reset_email, user.email, token)
 
     return {"status": "sent"}
 

@@ -117,7 +117,7 @@ def _call_anthropic(system_prompt: str, user_prompt: str) -> str:
     )
     timeout = int(os.getenv("EMAIL_DRAFTER_TIMEOUT", "30"))
 
-    client = Anthropic(api_key=api_key, timeout=timeout)
+    client = Anthropic(api_key=api_key, timeout=timeout, max_retries=3)
     response = client.messages.create(
         model=model,
         max_tokens=500,

@@ -255,67 +255,97 @@ def user_lookup(
     first_of_month = today.replace(day=1)
     results = []
 
+    # Batch-fetch related data for all users to avoid N+1 queries
+    user_ids = [u.id for u in users]
+
+    from app.models.match import Match
+
+    # Candidates
+    candidate_map: dict[int, Candidate] = {}
+    if user_ids:
+        for c in db.scalars(select(Candidate).where(Candidate.user_id.in_(user_ids))):
+            candidate_map[c.user_id] = c
+
+    # Match counts
+    match_count_map: dict[int, int] = {}
+    if user_ids:
+        for uid, cnt in db.execute(
+            select(Match.user_id, func.count(Match.id))
+            .where(Match.user_id.in_(user_ids))
+            .group_by(Match.user_id)
+        ):
+            match_count_map[uid] = cnt
+
+    # Trust records (via resume docs)
+    trust_map: dict[int, str] = {}
+    if user_ids:
+        for uid, st in db.execute(
+            select(ResumeDocument.user_id, CandidateTrust.status)
+            .join(
+                CandidateTrust, CandidateTrust.resume_document_id == ResumeDocument.id
+            )
+            .where(
+                ResumeDocument.user_id.in_(user_ids),
+                ResumeDocument.deleted_at.is_(None),
+            )
+        ):
+            trust_map[uid] = st
+
+    # Employer profiles
+    employer_map: dict[int, EmployerProfile] = {}
+    if user_ids:
+        for ep in db.scalars(
+            select(EmployerProfile).where(EmployerProfile.user_id.in_(user_ids))
+        ):
+            employer_map[ep.user_id] = ep
+
+    # Active job counts per employer
+    employer_ids = [ep.id for ep in employer_map.values()]
+    active_job_map: dict[int, int] = {}
+    if employer_ids:
+        for eid, cnt in db.execute(
+            select(EmployerJob.employer_id, func.count(EmployerJob.id))
+            .where(
+                EmployerJob.employer_id.in_(employer_ids),
+                EmployerJob.status == "active",
+            )
+            .group_by(EmployerJob.employer_id)
+        ):
+            active_job_map[eid] = cnt
+
+    # Recruiter profiles
+    recruiter_map: dict[int, RecruiterProfile] = {}
+    if user_ids:
+        for rp in db.scalars(
+            select(RecruiterProfile).where(RecruiterProfile.user_id.in_(user_ids))
+        ):
+            recruiter_map[rp.user_id] = rp
+
     for user in users:
         # Candidate info
-        candidate = db.scalar(select(Candidate).where(Candidate.user_id == user.id))
+        candidate = candidate_map.get(user.id)
         candidate_info = None
         if candidate:
-            from app.models.match import Match
-
-            match_count = (
-                db.scalar(
-                    select(func.count())
-                    .select_from(Match)
-                    .where(Match.user_id == user.id)
-                )
-                or 0
-            )
-            trust_record = db.scalar(
-                select(CandidateTrust)
-                .join(
-                    ResumeDocument,
-                    CandidateTrust.resume_document_id == ResumeDocument.id,
-                )
-                .where(
-                    ResumeDocument.user_id == user.id,
-                    ResumeDocument.deleted_at.is_(None),
-                )
-            )
             candidate_info = {
                 "plan_tier": candidate.plan_tier,
                 "subscription_status": candidate.subscription_status,
-                "match_count": match_count,
-                "trust_status": trust_record.status if trust_record else None,
+                "match_count": match_count_map.get(user.id, 0),
+                "trust_status": trust_map.get(user.id),
             }
 
         # Employer info
-        employer = db.scalar(
-            select(EmployerProfile).where(EmployerProfile.user_id == user.id)
-        )
+        employer = employer_map.get(user.id)
         employer_info = None
         if employer:
-            active_jobs = (
-                db.scalar(
-                    select(func.count())
-                    .select_from(EmployerJob)
-                    .where(
-                        EmployerJob.employer_id == employer.id,
-                        EmployerJob.status == "active",
-                    )
-                )
-                or 0
-            )
             employer_info = {
                 "company_name": employer.company_name,
                 "subscription_tier": employer.subscription_tier,
                 "subscription_status": employer.subscription_status,
-                "active_jobs": active_jobs,
+                "active_jobs": active_job_map.get(employer.id, 0),
             }
 
         # Recruiter info
-        recruiter = db.scalar(
-            select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
-        )
+        recruiter = recruiter_map.get(user.id)
         recruiter_info = None
         if recruiter:
             recruiter_info = {

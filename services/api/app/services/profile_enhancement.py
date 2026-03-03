@@ -33,7 +33,7 @@ def _get_client():
     if _client is None:
         import anthropic
 
-        _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
+        _client = anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"), max_retries=3)
     return _client
 
 

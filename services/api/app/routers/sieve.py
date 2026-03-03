@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import logging
 
 from fastapi import APIRouter, Depends, Request
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -39,6 +41,7 @@ from app.services.sieve_chat import (
     load_employer_context,
     load_recruiter_context,
     load_user_context,
+    stream_chat,
 )
 from app.services.sieve_triggers import compute_all_triggers, compute_employer_triggers
 
@@ -188,6 +191,99 @@ def sieve_chat(
         conversation_id=generate_conversation_id(),
         suggested_actions=suggestions,
     )
+
+
+@router.post("/chat/stream")
+def sieve_chat_stream(
+    request: Request,
+    body: SieveChatRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Stream Sieve chat response as Server-Sent Events."""
+    # Billing: enforce daily message limit
+    recruiter_profile = session.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    employer_profile = session.execute(
+        select(EmployerProfile).where(EmployerProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if recruiter_profile:
+        tier = get_recruiter_tier(recruiter_profile)
+    elif employer_profile:
+        tier = get_employer_tier(employer_profile)
+    else:
+        candidate = session.execute(
+            select(Candidate).where(Candidate.user_id == user.id)
+        ).scalar_one_or_none()
+        tier = get_plan_tier(candidate)
+    check_daily_limit(
+        session,
+        user.id,
+        tier,
+        "sieve_messages",
+        "sieve_messages_per_day",
+        request=request,
+    )
+
+    platform = request.headers.get("X-Client-Platform", "web")
+    if not body.message.strip():
+
+        def _empty():
+            msg = json.dumps({"token": "I didn't catch that. Could you try again?"})
+            yield f"data: {msg}\n\n"
+            yield "data: [DONE]\n\n"
+
+        return StreamingResponse(_empty(), media_type="text/event-stream")
+
+    history = [
+        {"role": h.role, "content": h.content} for h in body.conversation_history
+    ]
+
+    def _generate():
+        full_text = ""
+        for token in stream_chat(
+            user_id=user.id,
+            message=body.message,
+            conversation_history=history,
+            session=session,
+            platform=platform,
+        ):
+            full_text += token
+            yield f"data: {json.dumps({'token': token})}\n\n"
+
+        # Persist conversation after streaming completes
+        increment_daily_counter(session, user.id, "sieve_messages")
+        session.add(
+            SieveConversation(user_id=user.id, role="user", content=body.message)
+        )
+        session.add(
+            SieveConversation(user_id=user.id, role="assistant", content=full_text)
+        )
+        session.commit()
+
+        # Send suggested actions as final event
+        try:
+            if user.is_admin:
+                admin_ctx = load_admin_context(session)
+                suggestions = get_admin_suggested_actions(admin_ctx)
+            elif recruiter_profile:
+                rec_ctx = load_recruiter_context(user.id, session)
+                suggestions = get_recruiter_suggested_actions(rec_ctx)
+            elif employer_profile:
+                emp_ctx = load_employer_context(user.id, session)
+                suggestions = get_employer_suggested_actions(emp_ctx)
+            else:
+                user_context = load_user_context(user.id, session)
+                suggestions = get_suggested_actions(user_context)
+        except Exception:
+            suggestions = []
+
+        done_msg = json.dumps({"done": True, "suggested_actions": suggestions})
+        yield f"data: {done_msg}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(_generate(), media_type="text/event-stream")
 
 
 @router.get("/history")
