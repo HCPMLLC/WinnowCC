@@ -12,6 +12,7 @@ import ReferralToggle from "../components/ReferralToggle";
 import ApplicationStatusSelect from "../components/ApplicationStatusSelect";
 import CollapsibleTip from "../components/CollapsibleTip";
 import InterviewPrepPanel from "../components/InterviewPrepPanel";
+import GapRecommendationsCard from "../components/GapRecommendationsCard";
 
 type Job = {
   id: number;
@@ -939,6 +940,13 @@ function MatchesPageContent() {
                       )}
                     </div>
                   )}
+
+                  {/* Gap Closure Recommendations */}
+                  <GapRecommendationsCard
+                    matchId={selectedMatch.id}
+                    missingSkills={selectedMatch.reasons.missing_skills ?? []}
+                    planTier={planTier}
+                  />
 
                   {/* Interview Prep Coach */}
                   <InterviewPrepPanel
