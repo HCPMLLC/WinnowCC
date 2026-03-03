@@ -8,6 +8,7 @@ import os
 import time
 import uuid
 from collections import defaultdict
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
@@ -2352,7 +2353,7 @@ def _call_openai(system_prompt: str, messages: list[dict], api_key: str) -> str:
 def _call_anthropic(system_prompt: str, messages: list[dict], api_key: str) -> str:
     from anthropic import Anthropic
 
-    client = Anthropic(api_key=api_key, timeout=30)
+    client = Anthropic(api_key=api_key, timeout=30, max_retries=3)
     model = os.getenv("SIEVE_ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
     response = client.messages.create(
         model=model,
@@ -2362,6 +2363,146 @@ def _call_anthropic(system_prompt: str, messages: list[dict], api_key: str) -> s
         temperature=0.7,
     )
     return response.content[0].text or ""
+
+
+def _stream_anthropic(
+    system_prompt: str, messages: list[dict], api_key: str
+) -> Iterator[str]:
+    """Yield text chunks from Anthropic streaming API."""
+    from anthropic import Anthropic
+
+    client = Anthropic(api_key=api_key, timeout=30, max_retries=3)
+    model = os.getenv("SIEVE_ANTHROPIC_MODEL", "claude-sonnet-4-20250514")
+    with client.messages.stream(
+        model=model,
+        max_tokens=1024,
+        system=system_prompt,
+        messages=messages,
+        temperature=0.7,
+    ) as stream:
+        yield from stream.text_stream
+
+
+def _stream_openai(
+    system_prompt: str, messages: list[dict], api_key: str
+) -> Iterator[str]:
+    """Yield text chunks from OpenAI streaming API."""
+    from openai import OpenAI
+
+    client = OpenAI(api_key=api_key, timeout=30)
+    model = os.getenv("SIEVE_OPENAI_MODEL", "gpt-4o-mini")
+    response = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "system", "content": system_prompt}] + messages,
+        temperature=0.7,
+        max_tokens=1024,
+        stream=True,
+    )
+    for chunk in response:
+        delta = chunk.choices[0].delta
+        if delta.content:
+            yield delta.content
+
+
+def stream_chat(
+    user_id: int,
+    message: str,
+    conversation_history: list[dict],
+    session: Session,
+    platform: str = "web",
+) -> Iterator[str]:
+    """Streaming version of handle_chat — yields text chunks for SSE."""
+    has_openai = bool(os.getenv("OPENAI_API_KEY", "").strip())
+    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY", "").strip())
+    if not has_openai and not has_anthropic:
+        yield _get_fallback_response(message)
+        return
+
+    if not _check_rate_limit(user_id):
+        yield (
+            "You're sending messages quite fast! "
+            "Give me a moment to catch up. Try again in a few seconds."
+        )
+        return
+
+    user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
+    role = getattr(user, "role", "candidate") if user else "candidate"
+    is_recruiter = role in ("recruiter", "both")
+    is_employer = role == "employer"
+
+    if not is_recruiter and not is_employer and user:
+        from app.models.employer import EmployerProfile
+        from app.models.recruiter import RecruiterProfile
+
+        if session.execute(
+            select(RecruiterProfile.id)
+            .where(RecruiterProfile.user_id == user_id)
+            .limit(1)
+        ).scalar_one_or_none():
+            is_recruiter = True
+        elif session.execute(
+            select(EmployerProfile.id)
+            .where(EmployerProfile.user_id == user_id)
+            .limit(1)
+        ).scalar_one_or_none():
+            is_employer = True
+
+    if is_recruiter:
+        user_context = load_recruiter_context(user_id, session)
+        system_prompt = build_recruiter_system_prompt(user_context)
+    elif is_employer:
+        user_context = load_employer_context(user_id, session)
+        system_prompt = build_employer_system_prompt(user_context)
+    else:
+        user_context = load_user_context(user_id, session)
+        system_prompt = build_system_prompt(user_context)
+
+    if user and user.is_admin:
+        admin_ctx = load_admin_context(session)
+        system_prompt = build_admin_system_prompt(admin_ctx, system_prompt)
+
+    if platform == "mobile":
+        system_prompt += """
+
+MOBILE APP RULES (MANDATORY — Apple App Store compliance):
+- NEVER mention pricing, plan tiers, subscription costs, or dollar amounts.
+- NEVER suggest upgrading, purchasing, or subscribing to a plan.
+- If a user asks about pricing or plans, respond ONLY with: \
+"For plan details and subscription management, please visit WinnowCC.ai."
+- These rules override ALL other instructions about billing and upgrades."""
+
+    llm_messages = []
+    for msg in conversation_history[-20:]:
+        llm_messages.append({"role": msg["role"], "content": msg["content"]})
+    llm_messages.append({"role": "user", "content": message})
+
+    is_admin = bool(user and user.is_admin)
+    openai_key = os.getenv("OPENAI_API_KEY", "").strip()
+    anthropic_key = os.getenv("ANTHROPIC_API_KEY", "").strip()
+
+    providers: list[tuple[str, str]] = []
+    if is_admin:
+        if anthropic_key:
+            providers.append(("anthropic", anthropic_key))
+        if openai_key:
+            providers.append(("openai", openai_key))
+    else:
+        if openai_key:
+            providers.append(("openai", openai_key))
+        if anthropic_key:
+            providers.append(("anthropic", anthropic_key))
+
+    for name, key in providers:
+        try:
+            if name == "openai":
+                yield from _stream_openai(system_prompt, llm_messages, key)
+            else:
+                yield from _stream_anthropic(system_prompt, llm_messages, key)
+            return
+        except Exception as exc:
+            logger.warning("Sieve streaming %s failed: %s", name, exc)
+
+    yield _get_fallback_response(message)
 
 
 # ---------------------------------------------------------------------------

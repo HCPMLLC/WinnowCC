@@ -110,17 +110,74 @@ function renderMarkdown(text: string): string {
   return rendered + (inList ? "</ul>" : "");
 }
 
-// ─── Real API call ───────────────────────────────────────────────────────────
-interface SieveAPIResponse {
+// ─── Streaming API call ──────────────────────────────────────────────────────
+interface SieveStreamResult {
   response: string;
   suggested_actions: string[];
 }
 
+async function callSieveStreamAPI(
+  apiBase: string,
+  message: string,
+  conversationHistory: { role: "user" | "assistant"; content: string }[],
+  onToken: (token: string) => void,
+): Promise<SieveStreamResult> {
+  const res = await fetch(`${apiBase}/api/sieve/chat/stream`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({
+      message,
+      conversation_history: conversationHistory.slice(-20),
+    }),
+  });
+
+  if (!res.ok) throw new Error(`Sieve API error: ${res.status}`);
+
+  const reader = res.body?.getReader();
+  if (!reader) throw new Error("No response body");
+
+  const decoder = new TextDecoder();
+  let fullText = "";
+  let suggestedActions: string[] = [];
+  let buffer = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    const lines = buffer.split("\n");
+    buffer = lines.pop() || "";
+
+    for (const line of lines) {
+      if (!line.startsWith("data: ")) continue;
+      const payload = line.slice(6).trim();
+      if (payload === "[DONE]") continue;
+      try {
+        const data = JSON.parse(payload);
+        if (data.token) {
+          fullText += data.token;
+          onToken(data.token);
+        }
+        if (data.done && data.suggested_actions) {
+          suggestedActions = data.suggested_actions;
+        }
+      } catch {
+        // skip malformed JSON
+      }
+    }
+  }
+
+  return { response: fullText, suggested_actions: suggestedActions };
+}
+
+// Fallback non-streaming call
 async function callSieveAPI(
   apiBase: string,
   message: string,
   conversationHistory: { role: "user" | "assistant"; content: string }[]
-): Promise<SieveAPIResponse> {
+): Promise<SieveStreamResult> {
   const res = await fetch(`${apiBase}/api/sieve/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -430,25 +487,54 @@ export default function SieveWidget({
         return;
       }
 
-      // Normal Sieve AI flow
+      // Normal Sieve AI flow — stream tokens in real time
       setIsTyping(true);
+
+      const assistantMsgId = crypto.randomUUID();
+      const assistantMsg: Message = {
+        id: assistantMsgId,
+        role: "assistant",
+        content: "",
+        timestamp: new Date(),
+      };
+      setMessages((prev) => [...prev, assistantMsg]);
 
       let responseText: string;
       let newSuggestions: string[] = [];
       try {
         if (apiBase) {
-          const data = await callSieveAPI(
+          const data = await callSieveStreamAPI(
             apiBase,
             userMessage,
-            conversationHistory
+            conversationHistory,
+            (token) => {
+              // Progressively update the assistant message with each token
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantMsgId
+                    ? { ...m, content: m.content + token }
+                    : m
+                )
+              );
+            },
           );
           responseText = data.response;
           newSuggestions = data.suggested_actions || [];
         } else {
           responseText = getDemoResponse(userMessage);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantMsgId ? { ...m, content: responseText } : m
+            )
+          );
         }
       } catch {
         responseText = getDemoResponse(userMessage);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId ? { ...m, content: responseText } : m
+          )
+        );
       }
 
       setConversationHistory((prev) => [
@@ -457,14 +543,6 @@ export default function SieveWidget({
         { role: "assistant", content: responseText },
       ]);
       setSuggestedActions(newSuggestions);
-
-      const assistantMsg: Message = {
-        id: crypto.randomUUID(),
-        role: "assistant",
-        content: responseText,
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
       setIsTyping(false);
     },
     [apiBase, conversationHistory, liveAgentMode, activeTicket, escalateToAgent]

@@ -2,6 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useQuery } from "@tanstack/react-query";
 
 import { fetchAuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
@@ -32,11 +33,6 @@ function DashboardPageContent() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [submissions, setSubmissions] = useState<RecruiterSubmission[]>([]);
-
   useEffect(() => {
     const guard = async () => {
       const me = await fetchAuthMe();
@@ -45,7 +41,6 @@ function DashboardPageContent() {
         router.replace(withRedirectParam("/login", redirectValue));
         return;
       }
-      // Redirect non-candidate roles to their own dashboard
       if (me.role === "employer") {
         router.replace("/employer/dashboard");
         return;
@@ -62,35 +57,33 @@ function DashboardPageContent() {
     void guard();
   }, [pathname, router, searchParams]);
 
-  useEffect(() => {
-    const fetchMetrics = async () => {
-      try {
-        const response = await fetch(`${API_BASE}/api/dashboard/metrics`, {
-          credentials: "include",
-        });
-        if (!response.ok) {
-          throw new Error("Failed to load dashboard metrics.");
-        }
-        const data = (await response.json()) as DashboardMetrics;
-        setMetrics(data);
-      } catch (caught) {
-        const message =
-          caught instanceof Error
-            ? caught.message
-            : "Failed to load dashboard metrics.";
-        setError(message);
-      } finally {
-        setLoading(false);
-      }
-    };
-    void fetchMetrics();
+  const {
+    data: metrics = null,
+    isLoading: loading,
+    error: metricsError,
+  } = useQuery<DashboardMetrics>({
+    queryKey: ["dashboard", "metrics"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/dashboard/metrics`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load dashboard metrics.");
+      return res.json();
+    },
+  });
 
-    // Fetch recruiter submissions for this candidate
-    fetch(`${API_BASE}/api/dashboard/submissions`, { credentials: "include" })
-      .then((r) => (r.ok ? r.json() : []))
-      .then((data) => setSubmissions(data))
-      .catch(() => {});
-  }, []);
+  const { data: submissions = [] } = useQuery<RecruiterSubmission[]>({
+    queryKey: ["dashboard", "submissions"],
+    queryFn: async () => {
+      const res = await fetch(`${API_BASE}/api/dashboard/submissions`, {
+        credentials: "include",
+      });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const error = metricsError?.message ?? null;
 
   const getCompletenessColor = (score: number) => {
     if (score >= 80) return "text-green-600";

@@ -8,6 +8,7 @@ import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import { useProgress } from "../hooks/useProgress";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
+import { ProfileSkeleton } from "../components/Skeleton";
 import EnhancementSuggestions, {
   type EnhancementData,
 } from "../components/EnhancementSuggestions";
@@ -905,10 +906,7 @@ function ProfilePageContent() {
   if (!profile) {
     return (
       <CandidateLayout>
-        <div className="flex flex-col gap-6">
-          <h1 className="text-3xl font-semibold">Profile</h1>
-          <p className="text-sm text-slate-600">Loading profile...</p>
-        </div>
+        <ProfileSkeleton />
       </CandidateLayout>
     );
   }

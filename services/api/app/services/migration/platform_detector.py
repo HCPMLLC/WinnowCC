@@ -518,7 +518,7 @@ def ai_assisted_mapping(headers: list[str], sample_rows: list[dict]) -> dict:
     )
 
     try:
-        client = anthropic.Anthropic(api_key=api_key)
+        client = anthropic.Anthropic(api_key=api_key, max_retries=3)
         response = client.messages.create(
             model="claude-sonnet-4-5-20250514",
             max_tokens=500,

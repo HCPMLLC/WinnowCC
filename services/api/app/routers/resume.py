@@ -20,6 +20,7 @@ from app.schemas.resume import (
     ResumeUploadResponse,
 )
 from app.services.auth import get_current_user, require_onboarded_user
+from app.services.queue import get_queue
 from app.services.resume_parse_job import parse_resume_job
 from app.services.storage import upload_file
 from app.services.trust_scoring import evaluate_trust_for_resume
@@ -158,12 +159,11 @@ def parse_resume(
     session.commit()
     session.refresh(job_run)
 
-    # Run parse synchronously — parse_profile_from_text is regex-based and
-    # fast, and on Cloud Run the worker can't access the API's local files.
-    parse_resume_job(resume_id, job_run.id)
-    session.refresh(job_run)
+    # Queue parse as background job — file is in GCS so the worker can access it
+    queue = get_queue("critical")
+    rq_job = queue.enqueue(parse_resume_job, resume_id, job_run.id)
 
-    return ParseJobResponse(job_id="sync", job_run_id=job_run.id, status=job_run.status)
+    return ParseJobResponse(job_id=rq_job.id, job_run_id=job_run.id, status="queued")
 
 
 @router.get("/parse/{job_run_id}", response_model=ParseJobStatusResponse)
