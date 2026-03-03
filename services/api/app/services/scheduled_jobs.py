@@ -414,6 +414,32 @@ def scheduled_send_weekly_digests() -> dict:
         return {"status": "failed", "error": str(e)}
 
 
+def scheduled_promote_queued_imports() -> dict:
+    """Auto-start the next queued ZIP import if no large import is active.
+
+    Runs every 2 minutes. Also reconciles stale batches stuck in 'processing'.
+    """
+    from app.services.batch_upload import (
+        _start_next_queued_import,
+        reconcile_stale_batches,
+    )
+
+    try:
+        # First reconcile any stale batches
+        reconcile_stale_batches()
+
+        # Then try to promote a queued import
+        session = get_session_factory()()
+        try:
+            _start_next_queued_import(session)
+            return {"status": "completed"}
+        finally:
+            session.close()
+    except Exception as e:
+        logger.exception("Queued import promotion failed: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
 def scheduled_sync_distribution_metrics() -> dict:
     """Sync metrics for all live job distributions across all employers.
 

@@ -142,7 +142,7 @@ def get_recruiter_migration_status(
     user: User = Depends(require_recruiter),
     db: Session = Depends(get_session),
 ):
-    """Get recruiter migration job status and stats."""
+    """Get recruiter migration job status and stats, including queue info."""
     job = db.execute(
         select(MigrationJob).where(
             MigrationJob.id == job_id,
@@ -152,7 +152,7 @@ def get_recruiter_migration_status(
     if not job:
         raise HTTPException(status_code=404, detail="Migration job not found")
 
-    return {
+    result = {
         "id": job.id,
         "source_platform": job.source_platform,
         "source_platform_detected": job.source_platform_detected,
@@ -163,6 +163,17 @@ def get_recruiter_migration_status(
         "completed_at": job.completed_at,
         "created_at": job.created_at,
     }
+
+    # Add queue info for resume archive imports
+    if job.source_platform == "resume_archive" and job.status in (
+        "queued",
+        "importing",
+    ):
+        from app.services.batch_upload import get_import_queue_info
+
+        result.update(get_import_queue_info(db, job.id))
+
+    return result
 
 
 @router.post("/{job_id}/start")
@@ -200,9 +211,47 @@ def start_recruiter_migration(
                 "Upgrade at /recruiter/pricing to unlock this feature.",
             )
 
-        from app.services.batch_upload import expand_zip_batch_job
+        from app.models.upload_batch import UploadBatch
+        from app.services.batch_upload import (
+            expand_zip_batch_job,
+            get_import_queue_info,
+        )
         from app.services.queue import get_queue
 
+        # System-wide gate: only 1 large ZIP import at a time
+        active_import = db.execute(
+            select(MigrationJob).where(
+                MigrationJob.status == "importing",
+                MigrationJob.source_platform == "resume_archive",
+                MigrationJob.id != job.id,
+            )
+        ).scalar_one_or_none()
+
+        active_batch = None
+        if not active_import:
+            active_batch = db.execute(
+                select(UploadBatch).where(
+                    UploadBatch.batch_type == "recruiter_resume_zip",
+                    UploadBatch.status.in_(["pending", "processing"]),
+                )
+            ).scalar_one_or_none()
+
+        if active_import or active_batch:
+            # Another large import is active — queue this one
+            job.status = "queued"
+            job.queued_at = datetime.now(UTC)
+            db.commit()
+
+            queue_info = get_import_queue_info(db, job.id)
+            return {
+                "job_id": job_id,
+                "status": "queued",
+                "message": "Another import is in progress. "
+                "Your import has been queued.",
+                **queue_info,
+            }
+
+        # No active import — start immediately
         job.status = "importing"
         job.started_at = datetime.now(UTC)
         db.commit()

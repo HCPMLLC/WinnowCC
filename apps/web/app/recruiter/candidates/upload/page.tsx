@@ -33,6 +33,26 @@ interface BatchStatusResponse {
   files_succeeded: number;
   files_failed: number;
   files: BatchFileResult[];
+  page: number | null;
+  total_pages: number | null;
+  queue_position: number | null;
+  estimated_start_utc: string | null;
+  estimated_finish_utc: string | null;
+}
+
+interface MigrationStatusResponse {
+  id: number;
+  status: string; // pending | queued | importing | completed | failed
+  queue_position: number | null;
+  estimated_start_utc: string | null;
+  estimated_finish_utc: string | null;
+  active_batch_progress: {
+    total_files: number;
+    files_completed: number;
+    files_succeeded: number;
+    files_failed: number;
+  } | null;
+  stats: { batch_id?: string } | null;
 }
 
 function isAcceptedFile(file: File): boolean {
@@ -51,14 +71,29 @@ const STATUS_BADGE: Record<string, { bg: string; text: string; label: string }> 
   processing: { bg: "bg-amber-50", text: "text-amber-700", label: "Processing" },
 };
 
-const POLL_INTERVAL = 2000;
+const POLL_PROCESSING = 5000;
+const POLL_QUEUED = 10000;
+
+function formatTime(isoString: string | null): string {
+  if (!isoString) return "";
+  try {
+    const d = new Date(isoString);
+    return d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  } catch {
+    return "";
+  }
+}
 
 export default function ResumeUploadPage() {
   const [files, setFiles] = useState<File[]>([]);
   const [uploading, setUploading] = useState(false);
   const [batchStatus, setBatchStatus] = useState<BatchStatusResponse | null>(null);
+  const [migrationStatus, setMigrationStatus] = useState<MigrationStatusResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allFiles, setAllFiles] = useState<BatchFileResult[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -78,6 +113,7 @@ export default function ResumeUploadPage() {
     });
     setError(null);
     setBatchStatus(null);
+    setMigrationStatus(null);
   }, []);
 
   function removeFile(index: number) {
@@ -107,11 +143,36 @@ export default function ResumeUploadPage() {
           if (pollRef.current) clearInterval(pollRef.current);
           pollRef.current = null;
           setUploading(false);
+          // Load first page of results
+          loadFilePage(batchId, 1);
         }
       } catch {
         // Keep polling on network errors
       }
-    }, POLL_INTERVAL);
+    }, POLL_PROCESSING);
+  }
+
+  async function loadFilePage(batchId: string, page: number) {
+    setLoadingMore(true);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/upload-batches/${batchId}/status?include_files=true&page=${page}&page_size=100`,
+        { credentials: "include" }
+      );
+      if (!res.ok) return;
+      const data: BatchStatusResponse = await res.json();
+      setBatchStatus(data);
+      if (page === 1) {
+        setAllFiles(data.files);
+      } else {
+        setAllFiles((prev) => [...prev, ...data.files]);
+      }
+      setCurrentPage(page);
+    } catch {
+      // ignore
+    } finally {
+      setLoadingMore(false);
+    }
   }
 
   async function handleUpload() {
@@ -119,6 +180,9 @@ export default function ResumeUploadPage() {
     setUploading(true);
     setError(null);
     setBatchStatus(null);
+    setMigrationStatus(null);
+    setAllFiles([]);
+    setCurrentPage(1);
 
     const formData = new FormData();
     for (const file of files) {
@@ -153,12 +217,12 @@ export default function ResumeUploadPage() {
         files_completed: 0,
         files_succeeded: 0,
         files_failed: 0,
-        files: files.map((f) => ({
-          filename: f.name,
-          status: "pending",
-          error: null,
-          result: null,
-        })),
+        files: [],
+        page: null,
+        total_pages: null,
+        queue_position: null,
+        estimated_start_utc: null,
+        estimated_finish_utc: null,
       });
 
       setFiles([]);
@@ -174,6 +238,8 @@ export default function ResumeUploadPage() {
     : 0;
 
   const isComplete = batchStatus?.status === "completed";
+  const isQueued = migrationStatus?.status === "queued";
+  const isProcessing = batchStatus && !isComplete && !isQueued;
 
   return (
     <div className="space-y-6">
@@ -192,13 +258,13 @@ export default function ResumeUploadPage() {
           </h1>
           <p className="mt-1 text-sm text-slate-500">
             Upload resume files to parse and link to your pipeline contacts by
-            email.
+            email. Supports up to 10,000 files per batch.
           </p>
         </div>
       </div>
 
       {/* Drop zone */}
-      {!uploading && !isComplete && (
+      {!uploading && !isComplete && !isQueued && (
         <div
           onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
           onDragLeave={() => setDragActive(false)}
@@ -293,20 +359,57 @@ export default function ResumeUploadPage() {
         </div>
       )}
 
+      {/* Queued state */}
+      {isQueued && migrationStatus && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 p-6 space-y-3">
+          <div className="flex items-center gap-2">
+            <svg className="h-5 w-5 text-amber-600 animate-pulse" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span className="text-sm font-semibold text-amber-800">
+              Your import is #{migrationStatus.queue_position} in queue
+            </span>
+          </div>
+          {migrationStatus.estimated_start_utc && (
+            <p className="text-sm text-amber-700">
+              Estimated start: <span className="font-medium">~{formatTime(migrationStatus.estimated_start_utc)}</span>
+            </p>
+          )}
+          {migrationStatus.estimated_finish_utc && (
+            <p className="text-sm text-amber-700">
+              Estimated finish: <span className="font-medium">~{formatTime(migrationStatus.estimated_finish_utc)}</span>
+            </p>
+          )}
+          <p className="text-xs text-amber-600">
+            Polling every 10 seconds. You can leave this page — you&apos;ll receive an email when it&apos;s complete.
+          </p>
+        </div>
+      )}
+
       {/* Progress bar (during upload/processing) */}
-      {batchStatus && !isComplete && (
-        <div className="space-y-2">
+      {isProcessing && batchStatus && (
+        <div className="space-y-3">
           <div className="flex items-center justify-between text-sm">
             <span className="font-medium text-slate-700">
-              Processing {batchStatus.files_completed} of {batchStatus.total_files} files...
+              Processing <span className="font-bold">{batchStatus.files_completed.toLocaleString()}</span> of{" "}
+              <span className="font-bold">{batchStatus.total_files.toLocaleString()}</span> files...
             </span>
-            <span className="text-slate-500">{pct}%</span>
+            <span className="text-slate-500 font-medium">{pct}%</span>
           </div>
           <div className="w-full rounded-full bg-slate-200 h-2.5 overflow-hidden">
             <div
               className="h-full bg-slate-900 transition-all duration-500 ease-out"
               style={{ width: `${Math.max(2, pct)}%` }}
             />
+          </div>
+          <div className="flex items-center gap-4 text-xs text-slate-500">
+            <span className="text-green-600">{batchStatus.files_succeeded.toLocaleString()} succeeded</span>
+            {batchStatus.files_failed > 0 && (
+              <span className="text-red-600">{batchStatus.files_failed.toLocaleString()} failed</span>
+            )}
+            {batchStatus.estimated_finish_utc && (
+              <span>Est. finish: ~{formatTime(batchStatus.estimated_finish_utc)}</span>
+            )}
           </div>
         </div>
       )}
@@ -325,82 +428,106 @@ export default function ResumeUploadPage() {
           <div className="rounded-lg border border-slate-200 bg-white p-4">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="font-medium text-slate-900">
-                {batchStatus.files_succeeded}/{batchStatus.total_files} processed
+                {batchStatus.total_files.toLocaleString()} files processed
+              </span>
+              <span className="rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                {batchStatus.files_succeeded.toLocaleString()} succeeded
               </span>
               {batchStatus.files_failed > 0 && (
                 <span className="rounded-full bg-red-50 px-2.5 py-0.5 text-xs font-medium text-red-700">
-                  {batchStatus.files_failed} failed
+                  {batchStatus.files_failed.toLocaleString()} failed
                 </span>
               )}
             </div>
           </div>
 
           {/* Results table */}
-          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-            <table className="min-w-full divide-y divide-slate-200">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
-                    File
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
-                    Name
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
-                    Email
-                  </th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
-                    Status
-                  </th>
-                  <th className="px-4 py-2.5 text-right text-xs font-medium text-slate-500 uppercase">
-                    Action
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {batchStatus.files.map((r, i) => {
-                  const resultStatus = r.result?.status || r.status;
-                  const badge = STATUS_BADGE[resultStatus] || STATUS_BADGE.failed;
-                  return (
-                    <tr key={i} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-sm text-slate-700 max-w-[200px] truncate">
-                        {r.filename}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-700">
-                        {r.result?.parsed_name || "-"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-500">
-                        {r.result?.matched_email || "-"}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}
-                        >
-                          {badge.label}
-                        </span>
-                        {r.error && (
-                          <p className="mt-0.5 text-xs text-red-500">{r.error}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        {r.status === "succeeded" && r.result?.candidate_profile_id && (
-                          <Link
-                            href={`/recruiter/candidates/${r.result.candidate_profile_id}`}
-                            className="text-xs font-medium text-slate-600 hover:text-slate-900"
+          {allFiles.length > 0 && (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+              <table className="min-w-full divide-y divide-slate-200">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
+                      File
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
+                      Name
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
+                      Email
+                    </th>
+                    <th className="px-4 py-2.5 text-left text-xs font-medium text-slate-500 uppercase">
+                      Status
+                    </th>
+                    <th className="px-4 py-2.5 text-right text-xs font-medium text-slate-500 uppercase">
+                      Action
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {allFiles.map((r, i) => {
+                    const resultStatus = r.result?.status || r.status;
+                    const badge = STATUS_BADGE[resultStatus] || STATUS_BADGE.failed;
+                    return (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-4 py-3 text-sm text-slate-700 max-w-[200px] truncate">
+                          {r.filename}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-700">
+                          {r.result?.parsed_name || "-"}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-500">
+                          {r.result?.matched_email || "-"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span
+                            className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${badge.bg} ${badge.text}`}
                           >
-                            View
-                          </Link>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                            {badge.label}
+                          </span>
+                          {r.error && (
+                            <p className="mt-0.5 text-xs text-red-500">{r.error}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          {r.status === "succeeded" && r.result?.candidate_profile_id && (
+                            <Link
+                              href={`/recruiter/candidates/${r.result.candidate_profile_id}`}
+                              className="text-xs font-medium text-slate-600 hover:text-slate-900"
+                            >
+                              View
+                            </Link>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Load More button */}
+          {batchStatus.total_pages && currentPage < batchStatus.total_pages && (
+            <button
+              onClick={() => loadFilePage(batchStatus.batch_id, currentPage + 1)}
+              disabled={loadingMore}
+              className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 disabled:opacity-50"
+            >
+              {loadingMore
+                ? "Loading..."
+                : `Load More (page ${currentPage + 1} of ${batchStatus.total_pages})`}
+            </button>
+          )}
 
           <button
-            onClick={() => { setBatchStatus(null); setError(null); }}
+            onClick={() => {
+              setBatchStatus(null);
+              setMigrationStatus(null);
+              setError(null);
+              setAllFiles([]);
+              setCurrentPage(1);
+            }}
             className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50"
           >
             Upload More
