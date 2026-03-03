@@ -16,6 +16,7 @@ import GapRecommendationsCard from "../components/GapRecommendationsCard";
 import RejectionFeedbackCard from "../components/RejectionFeedbackCard";
 import StatusPrediction from "../components/StatusPrediction";
 import CultureSummary from "../components/CultureSummary";
+import EmailDraftModal from "../components/EmailDraftModal";
 
 type Job = {
   id: number;
@@ -230,6 +231,7 @@ function MatchesPageContent() {
   const [searchLoading, setSearchLoading] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [planTier, setPlanTier] = useState<string>("free");
+  const [showEmailDraft, setShowEmailDraft] = useState(false);
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
   const now = Date.now();
@@ -1031,6 +1033,13 @@ function MatchesPageContent() {
                         : "Create Draft"}
                     </span>
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowEmailDraft(true)}
+                    className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50"
+                  >
+                    Draft Intro Email
+                  </button>
 
                   {statusByJob[selectedMatch.job.id] && (
                     <span className="text-sm text-gray-600">
@@ -1069,6 +1078,15 @@ function MatchesPageContent() {
                   )}
                 </div>
               </div>
+
+              {showEmailDraft && (
+                <EmailDraftModal
+                  matchId={selectedMatch.id}
+                  jobTitle={selectedMatch.job.title}
+                  company={selectedMatch.job.company}
+                  onClose={() => setShowEmailDraft(false)}
+                />
+              )}
             </>
           ) : (
             <div className="flex h-full items-center justify-center">

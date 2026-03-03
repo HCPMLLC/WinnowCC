@@ -846,6 +846,79 @@ def create_rejection_feedback(
     return {"status": "pending", "analysis": None}
 
 
+# ---------------------------------------------------------------------------
+# Application Email Drafter
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/{match_id}/draft-email",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def get_draft_email(
+    match_id: int,
+    request: Request,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Generate a draft application email for this job match."""
+    from app.services.email_drafter import generate_email_for_match
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    candidate = session.execute(
+        select(Candidate).where(Candidate.user_id == user.id)
+    ).scalar_one_or_none()
+    tier = get_plan_tier(candidate)
+    check_daily_limit(
+        session,
+        user.id,
+        tier,
+        "email_drafts",
+        "email_drafts_per_day",
+        request=request,
+    )
+
+    result = generate_email_for_match(match_id, user.id, session)
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    increment_daily_counter(session, user.id, "email_drafts")
+    session.commit()
+    return result
+
+
+@router.post(
+    "/{match_id}/draft-email",
+    dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
+)
+def regenerate_draft_email(
+    match_id: int,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Regenerate the draft email (fresh generation, no billing re-check)."""
+    from app.services.email_drafter import generate_email_for_match
+
+    match = session.execute(
+        select(Match).where(Match.id == match_id, Match.user_id == user.id)
+    ).scalar_one_or_none()
+    if match is None:
+        raise HTTPException(status_code=404, detail="Match not found.")
+
+    result = generate_email_for_match(match_id, user.id, session)
+
+    if "error" in result:
+        raise HTTPException(status_code=404, detail=result["error"])
+
+    return result
+
+
 @router.get(
     "/{match_id}/rejection-feedback",
     dependencies=[Depends(require_onboarded_user), Depends(require_allowed_trust)],
