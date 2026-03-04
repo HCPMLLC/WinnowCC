@@ -2,7 +2,7 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 
@@ -100,7 +100,7 @@ def export_data(
 @limiter.limit("2/minute")
 def delete_account(
     request: Request,
-    body: DeleteAccountRequest,
+    body: DeleteAccountRequest = Body(...),
     user: User = Depends(get_current_user),
     db: Session = Depends(get_session),
 ) -> JSONResponse:

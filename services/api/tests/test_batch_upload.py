@@ -159,7 +159,8 @@ class TestFinalizeBatch:
         db_session.add_all([f1, f2])
         db_session.commit()
 
-        _finalize_batch(db_session, "test-batch-1")
+        _finalize_batch(db_session, "test-batch-1", file_status="succeeded")
+        _finalize_batch(db_session, "test-batch-1", file_status="failed")
 
         db_session.refresh(batch)
         assert batch.status == "completed"
@@ -277,7 +278,7 @@ class TestStatusEndpoint:
         db_session.commit()
 
         c = _auth_client(client, recruiter_user)
-        res = c.get("/api/upload-batches/status-test/status")
+        res = c.get("/api/upload-batches/status-test/status?include_files=true")
         assert res.status_code == 200
 
         data = res.json()
