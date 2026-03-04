@@ -72,11 +72,18 @@ async def sendgrid_inbound_webhook(
       1. Only processing emails from registered Winnow users
       2. Optional: IP allowlisting for SendGrid's IP ranges
     """
-    # Validate source IP against SendGrid's published ranges
-    client_ip = request.client.host if request.client else "unknown"
+    # Validate source IP against SendGrid's published ranges.
+    # Behind reverse proxies (Cloud Run, nginx, etc.) the real client IP
+    # is in the X-Forwarded-For header; request.client.host is the proxy.
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    client_ip = (
+        forwarded_for.split(",")[0].strip()
+        if forwarded_for
+        else (request.client.host if request.client else "unknown")
+    )
     enforce_ip = os.environ.get("SENDGRID_ENFORCE_IP", "true").lower() != "false"
     if enforce_ip and not _is_sendgrid_ip(client_ip):
-        logger.warning("Rejected inbound webhook from non-SendGrid IP: %s", client_ip)
+        logger.warning("Rejected inbound webhook from non-SendGrid IP: %s (XFF: %s)", client_ip, forwarded_for)
         raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
