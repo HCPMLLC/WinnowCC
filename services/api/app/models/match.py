@@ -9,6 +9,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -22,7 +23,10 @@ APPLICATION_STATUS_VALUES = ["saved", "applied", "interviewing", "rejected", "of
 
 class Match(Base):
     __tablename__ = "matches"
-    __table_args__ = (Index("ix_matches_user_created", "user_id", "created_at"),)
+    __table_args__ = (
+        Index("ix_matches_user_created", "user_id", "created_at"),
+        UniqueConstraint("user_id", "job_id", name="uq_match_user_job"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     user_id: Mapped[int] = mapped_column(

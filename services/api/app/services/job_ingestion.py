@@ -90,14 +90,14 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
                         & (Job.source_job_id == posting.source_job_id),
                     )
                 )
-            ).scalar_one_or_none()
+            ).scalars().first()
             if exists:
                 source_dup += 1
                 continue
             legacy_hash = _hash_posting(posting, posting.description_text)
             legacy = session.execute(
                 select(Job).where(Job.content_hash == legacy_hash)
-            ).scalar_one_or_none()
+            ).scalars().first()
             if legacy:
                 legacy.description_text = description
                 legacy.description_html = description_html

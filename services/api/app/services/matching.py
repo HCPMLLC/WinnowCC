@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import String, cast, delete, func, or_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.models.candidate import Candidate
@@ -135,19 +136,31 @@ def compute_matches(
     scored.sort(key=lambda item: item[1].match_score, reverse=True)
     top = scored[:50]
 
-    # Delete all previous matches for this user that the user hasn't
-    # interacted with (no application_status).  Matches the user saved,
-    # applied to, etc. are preserved so tracking state isn't lost.
-    session.execute(
-        delete(Match).where(
-            Match.user_id == user_id,
-            Match.application_status.is_(None),
-        )
-    )
-
     from app.services.match_explainer import generate_match_explanation
 
-    matches: list[Match] = []
+    top_job_ids = [job.id for job, _ in top]
+
+    # Delete stale matches: user's matches whose job is NOT in the new
+    # top-50 list AND the user hasn't interacted with them.
+    if top_job_ids:
+        session.execute(
+            delete(Match).where(
+                Match.user_id == user_id,
+                Match.job_id.not_in(top_job_ids),
+                Match.application_status.is_(None),
+            )
+        )
+    else:
+        session.execute(
+            delete(Match).where(
+                Match.user_id == user_id,
+                Match.application_status.is_(None),
+            )
+        )
+
+    # Upsert matches: insert new ones, update scoring fields on conflict
+    # while preserving user-interaction fields (application_status, referred).
+    matches: list[tuple[Match, Job]] = []
     for job, result in top:
         matched_skills = result.reasons.get("matched_skills", [])
         if result.match_score >= 40:
@@ -158,23 +171,48 @@ def compute_matches(
                 f"{', '.join(matched_skills[:2]) if matched_skills else 'experience'}."
             )
 
-        match = Match(
-            user_id=user_id,
-            job_id=job.id,
-            profile_version=profile_version,
-            match_score=result.match_score,
-            interview_readiness_score=result.interview_readiness_score,
-            offer_probability=result.offer_probability,
-            reasons=result.reasons,
-            resume_score=result.resume_score,
-            application_logistics_score=result.application_logistics_score,
-            cover_letter_score=50,  # Default until cover letter is generated
-            referred=False,
-            interview_probability=result.interview_probability,
-            semantic_similarity=result.semantic_similarity,
-            match_explanation=explanation,
+        values = {
+            "user_id": user_id,
+            "job_id": job.id,
+            "profile_version": profile_version,
+            "match_score": result.match_score,
+            "interview_readiness_score": result.interview_readiness_score,
+            "offer_probability": result.offer_probability,
+            "reasons": result.reasons,
+            "resume_score": result.resume_score,
+            "application_logistics_score": result.application_logistics_score,
+            "cover_letter_score": 50,
+            "referred": False,
+            "interview_probability": result.interview_probability,
+            "semantic_similarity": result.semantic_similarity,
+            "match_explanation": explanation,
+        }
+
+        stmt = pg_insert(Match).values(**values)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_match_user_job",
+            set_={
+                "profile_version": stmt.excluded.profile_version,
+                "match_score": stmt.excluded.match_score,
+                "interview_readiness_score": stmt.excluded.interview_readiness_score,
+                "offer_probability": stmt.excluded.offer_probability,
+                "reasons": stmt.excluded.reasons,
+                "resume_score": stmt.excluded.resume_score,
+                "application_logistics_score": stmt.excluded.application_logistics_score,
+                "cover_letter_score": stmt.excluded.cover_letter_score,
+                "interview_probability": stmt.excluded.interview_probability,
+                "semantic_similarity": stmt.excluded.semantic_similarity,
+                "match_explanation": stmt.excluded.match_explanation,
+            },
         )
-        session.add(match)
+        result_proxy = session.execute(stmt)
+
+        # Fetch the match row so we can generate explanations
+        match = session.execute(
+            select(Match).where(
+                Match.user_id == user_id, Match.job_id == job.id
+            )
+        ).scalar_one()
         matches.append((match, job))
 
     # Generate LLM explanations for qualifying matches

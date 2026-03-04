@@ -156,10 +156,12 @@ function diagnoseFailure(
   for (const { test, diagnosis } of ERROR_PATTERNS) {
     if (test(error)) return diagnosis;
   }
+  // Show actual error snippet instead of generic message
+  const snippet = error.length > 200 ? error.slice(0, 200) + "..." : error;
   return {
-    explanation: "An unexpected error occurred.",
+    explanation: snippet,
     remedy:
-      "Try retrying the job. If it persists, check the API logs for details.",
+      "Review the raw error below to determine root cause. If this error repeats across multiple jobs, it likely requires a code fix.",
   };
 }
 
@@ -263,6 +265,120 @@ function QueueCard({
             {queue.deferred}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+type ErrorGroup = {
+  explanation: string;
+  remedy: string;
+  jobs: FailedJob[];
+};
+
+function groupFailedJobs(jobs: FailedJob[]): ErrorGroup[] {
+  const groups = new Map<string, ErrorGroup>();
+  for (const job of jobs) {
+    const diagnosis = diagnoseFailure(job.func_name, job.error);
+    const key = diagnosis.explanation;
+    const existing = groups.get(key);
+    if (existing) {
+      existing.jobs.push(job);
+    } else {
+      groups.set(key, {
+        explanation: diagnosis.explanation,
+        remedy: diagnosis.remedy,
+        jobs: [job],
+      });
+    }
+  }
+  // Sort by count descending
+  return Array.from(groups.values()).sort(
+    (a, b) => b.jobs.length - a.jobs.length,
+  );
+}
+
+function FailedJobsSection({
+  queue,
+  onRetry,
+}: {
+  queue: QueueDetail;
+  onRetry: () => void;
+}) {
+  const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+  const groups = groupFailedJobs(queue.failed_jobs);
+  const showing = queue.failed_jobs.length;
+  const total = queue.failed;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">
+            Failed Jobs &mdash; {queue.name}
+          </h2>
+          {total > showing && (
+            <p className="mt-0.5 text-xs text-slate-500">
+              Showing {showing} of {total} failed jobs
+            </p>
+          )}
+        </div>
+        <button
+          onClick={onRetry}
+          className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
+        >
+          Retry All
+        </button>
+      </div>
+
+      <div className="flex flex-col gap-3">
+        {groups.map((group) => {
+          const isExpanded = expandedGroup === group.explanation;
+          return (
+            <div
+              key={group.explanation}
+              className="rounded-2xl border border-red-100 bg-white"
+            >
+              {/* Group header */}
+              <button
+                onClick={() =>
+                  setExpandedGroup(isExpanded ? null : group.explanation)
+                }
+                className="flex w-full items-center justify-between p-4 text-left"
+              >
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                      {group.jobs.length}
+                    </span>
+                    <span className="text-sm font-medium text-slate-800">
+                      {group.explanation.length > 120
+                        ? group.explanation.slice(0, 120) + "..."
+                        : group.explanation}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {group.remedy}
+                  </p>
+                </div>
+                <span className="ml-2 text-xs text-slate-400">
+                  {isExpanded ? "Hide" : "Show"} jobs
+                </span>
+              </button>
+
+              {/* Expanded job list */}
+              {isExpanded && (
+                <div className="border-t border-red-50 px-4 pb-4 pt-2">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    {group.jobs.map((fj) => (
+                      <FailedJobCard key={fj.job_id} job={fj} />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -389,24 +505,10 @@ export default function QueueMonitorPage() {
 
       {/* Bottom section: failed jobs for the selected queue */}
       {selectedQueueData && selectedQueueData.failed_jobs.length > 0 && (
-        <div className="flex flex-col gap-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-slate-900">
-              Failed Jobs &mdash; {selectedQueueData.name}
-            </h2>
-            <button
-              onClick={() => handleRetry(selectedQueueData.name)}
-              className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
-            >
-              Retry All
-            </button>
-          </div>
-          <div className="grid gap-3 md:grid-cols-2">
-            {selectedQueueData.failed_jobs.map((fj) => (
-              <FailedJobCard key={fj.job_id} job={fj} />
-            ))}
-          </div>
-        </div>
+        <FailedJobsSection
+          queue={selectedQueueData}
+          onRetry={() => handleRetry(selectedQueueData.name)}
+        />
       )}
     </div>
   );

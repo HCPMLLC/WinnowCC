@@ -15,12 +15,10 @@ logger = logging.getLogger(__name__)
 
 # Queue names used by Winnow (must match what queue.py uses)
 QUEUE_NAMES = [
+    "critical",
     "default",
-    "parse",
-    "match",
-    "tailor",
-    "embed",
-    "ingest",
+    "bulk",
+    "low",
 ]
 
 
