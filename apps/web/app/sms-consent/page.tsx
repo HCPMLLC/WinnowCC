@@ -179,8 +179,9 @@ export default function SmsConsentPage() {
             >
               Privacy Policy
             </Link>
-            . We do not share your phone number with third parties for marketing purposes.
-            For full details, please review our{" "}
+            . We do not sell, rent, or share your phone number with third parties for
+            marketing purposes. Text messaging originator opt-in data and consent will not
+            be shared with any third parties. For full details, please review our{" "}
             <Link
               href="/terms"
               className="font-semibold underline hover:text-slate-900"

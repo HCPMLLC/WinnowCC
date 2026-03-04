@@ -110,7 +110,8 @@ def send_stop_confirmation(phone_number: str) -> bool:
     """10DLC-required STOP auto-response."""
     return send_sms(
         phone_number,
-        "Winnow: You are unsubscribed and will receive no further messages.",
+        "Winnow Job Alerts: You have been unsubscribed and will receive no "
+        "further messages. Reply HELP for help.",
     )
 
 
@@ -118,6 +119,6 @@ def send_help_response(phone_number: str) -> bool:
     """10DLC-required HELP auto-response."""
     return send_sms(
         phone_number,
-        "Winnow: For help, contact us at support@winnowcc.ai or visit "
-        "https://winnowcc.ai/support",
+        "Winnow Job Alerts: For help, email support@winnowcc.ai or visit "
+        "https://winnowcc.ai/sms-consent. Reply STOP to opt out.",
     )

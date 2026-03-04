@@ -6,6 +6,7 @@ export const metadata = {
 const sections = [
   'Information We Collect',
   'How We Use Your Information',
+  'SMS / Text Messaging',
   'Data Storage & Security',
   'Third-Party Services',
   'Data Retention & Deletion',
@@ -23,7 +24,7 @@ export default function PrivacyPage() {
       <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: '60px 20px', textAlign: 'center' }}>
         <p style={{ color: '#a78bfa', fontSize: 14, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>Legal</p>
         <h1 style={{ color: '#ffffff', fontSize: 40, fontWeight: 700, margin: '0 0 16px' }}>Privacy Policy</h1>
-        <p style={{ color: '#94a3b8', fontSize: 16, margin: 0 }}>Last updated: February 2026 &nbsp;·&nbsp; Effective: February 2026</p>
+        <p style={{ color: '#94a3b8', fontSize: 16, margin: 0 }}>Last updated: March 2026 &nbsp;·&nbsp; Effective: March 2026</p>
       </div>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '60px 20px', display: 'flex', gap: 60, alignItems: 'flex-start' }}>
@@ -65,6 +66,7 @@ export default function PrivacyPage() {
               <p><strong>Resume &amp; profile data:</strong> Resume files you upload (PDF/DOCX) and the professional data extracted from them — work experience, education, skills, and contact details.</p>
               <p><strong>Job preferences:</strong> Target roles, preferred locations, salary expectations, and remote work preferences.</p>
               <p><strong>Usage data:</strong> Pages visited, features used, and interaction patterns — used to improve the platform.</p>
+              <p><strong>Phone number:</strong> If you opt in to SMS notifications, we collect your mobile phone number.</p>
               <p><strong>Device information:</strong> Device type, OS, and app version for troubleshooting.</p>
             </Section>
 
@@ -75,7 +77,53 @@ export default function PrivacyPage() {
                 <li>Provide Interview Probability Scores and dashboard analytics</li>
                 <li>Improve our matching algorithms and platform quality</li>
                 <li>Send transactional emails (job alerts, account notices) — never spam</li>
+                <li>Send SMS/text messages about job matches and application updates (only if you opt in)</li>
               </ul>
+            </Section>
+
+            <Section id="sms---text-messaging" title="SMS / Text Messaging">
+              <p>
+                Winnow offers an optional SMS notification program called <strong>Winnow Job Alerts &amp; Application Updates</strong>.
+                By opting in, you consent to receive automated text messages about new job matches, application status updates,
+                career alerts, and account security notifications at the mobile phone number you provide.
+              </p>
+              <p>
+                <strong>Opt-in:</strong> You may opt in to SMS notifications from your{' '}
+                <a href="/settings" style={{ color: '#6366f1' }}>Account Settings</a> page or
+                the <a href="/sms-consent" style={{ color: '#6366f1' }}>SMS Consent</a> page.
+                Consent is not a condition of purchasing any goods or services from Winnow.
+              </p>
+              <p>
+                <strong>Message frequency:</strong> Message frequency varies. You may receive up to 10 messages per week
+                depending on job matching activity. Some weeks you may receive fewer or no messages.
+              </p>
+              <p>
+                <strong>Message and data rates may apply.</strong> Check with your mobile carrier for details about
+                your text messaging plan.
+              </p>
+              <p>
+                <strong>Opt-out:</strong> Reply <strong>STOP</strong> to any message to stop receiving texts.
+                You will receive a one-time confirmation and no further messages will be sent.
+                You can also disable SMS notifications in your Account Settings.
+              </p>
+              <p>
+                <strong>Help:</strong> Reply <strong>HELP</strong> to any message for assistance, or email{' '}
+                <a href="mailto:support@winnowcc.ai" style={{ color: '#6366f1' }}>support@winnowcc.ai</a>.
+              </p>
+              <p>
+                <strong>Data handling:</strong> Your phone number is stored securely and used solely for delivering
+                SMS notifications you have consented to. We do not sell, rent, or share your phone number or SMS
+                opt-in consent with third parties for promotional or marketing purposes. Text messaging originator
+                opt-in data and consent will not be shared with any third parties. We may share your phone number
+                and SMS consent status only with third-party service providers that assist us in delivering messages
+                (such as our messaging platform provider, Telnyx, and telecommunications carriers) and only for the
+                purpose of transmitting messages on our behalf. See Third-Party Services below.
+              </p>
+              <p>
+                Supported carriers include AT&amp;T, T-Mobile, Verizon, and others. Carriers are not liable for
+                delayed or undelivered messages. For full SMS terms, see our{' '}
+                <a href="/sms-consent" style={{ color: '#6366f1' }}>SMS Messaging Terms &amp; Consent</a> page.
+              </p>
             </Section>
 
             <Section id="data-storage-&-security" title="Data Storage & Security">
@@ -108,6 +156,7 @@ export default function PrivacyPage() {
                     ['Google Cloud Platform', 'Infrastructure, storage, and compute', 'https://cloud.google.com/terms/data-processing-addendum'],
                     ['Sentry', 'Error tracking — personal data is scrubbed', 'https://sentry.io/privacy/'],
                     ['PostHog', 'Anonymous product analytics', 'https://posthog.com/privacy'],
+                    ['Telnyx', 'SMS / text message delivery (opt-in only)', 'https://telnyx.com/privacy-policy'],
                   ] as [string, string, string][]).map(([name, purpose, dpaUrl]) => (
                     <tr key={name}>
                       <td style={{ padding: '10px 16px', border: '1px solid #e2e8f0', fontWeight: 600 }}>{name}</td>
