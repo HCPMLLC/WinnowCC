@@ -116,8 +116,8 @@ async def process_inbound_email(
         db.commit()
         return {"status": "failed", "reason": "file_too_large"}
 
-    # 4. Match sender to a registered Winnow user
-    user, employer = _match_sender_to_user(sender_email, db)
+    # 4. Match sender to a registered Winnow user (employer or recruiter)
+    user, profile = _match_sender_to_user(sender_email, db)
 
     if not user:
         log_entry.status = "failed"
@@ -127,43 +127,52 @@ async def process_inbound_email(
         return {"status": "failed", "reason": "sender_not_registered"}
 
     log_entry.matched_user_id = user.id
-    if employer:
-        log_entry.matched_employer_id = employer.id
 
-    if not employer:
+    # Determine if the matched profile is employer or recruiter
+    from app.models.employer import EmployerProfile
+    from app.models.recruiter import RecruiterProfile
+
+    is_employer = isinstance(profile, EmployerProfile)
+    is_recruiter = isinstance(profile, RecruiterProfile)
+
+    if profile:
+        log_entry.matched_employer_id = profile.id
+
+    if not profile:
         log_entry.status = "failed"
         log_entry.status_detail = (
-            f"User {sender_email} has no employer profile — "
-            "email upload requires an employer or recruiter "
-            "account"
+            f"User {sender_email} has no employer or recruiter profile — "
+            "email upload requires an employer or recruiter account"
         )
         db.commit()
         _send_unregistered_reply(sender_email, subject)
         return {"status": "failed", "reason": "no_employer_profile"}
 
-    # 5. Check AI parsing tier limit
-    from app.services.billing import (
-        _maybe_reset_employer_counters,
-        get_employer_limit,
-        get_employer_tier,
-    )
+    # 5. Check AI parsing tier limit (employer profiles only;
+    #    recruiters use founder/admin bypass or have no parsing cap)
+    if is_employer:
+        from app.services.billing import (
+            _maybe_reset_employer_counters,
+            get_employer_limit,
+            get_employer_tier,
+        )
 
-    tier = get_employer_tier(employer)
-    ai_limit = get_employer_limit(tier, "ai_job_parsing_per_month")
-    if isinstance(ai_limit, int) and ai_limit < 999:
-        _maybe_reset_employer_counters(employer, db)
-        ai_used = employer.ai_parsing_used or 0
-        if ai_used >= ai_limit:
-            log_entry.status = "failed"
-            log_entry.status_detail = (
-                f"AI parsing limit reached: {ai_used}/{ai_limit} (tier={tier})"
-            )
-            db.commit()
-            _send_limit_reached_reply(sender_email, subject, tier, ai_limit)
-            return {
-                "status": "failed",
-                "reason": "tier_limit_reached",
-            }
+        tier = get_employer_tier(profile)
+        ai_limit = get_employer_limit(tier, "ai_job_parsing_per_month")
+        if isinstance(ai_limit, int) and ai_limit < 999:
+            _maybe_reset_employer_counters(profile, db)
+            ai_used = profile.ai_parsing_used or 0
+            if ai_used >= ai_limit:
+                log_entry.status = "failed"
+                log_entry.status_detail = (
+                    f"AI parsing limit reached: {ai_used}/{ai_limit} (tier={tier})"
+                )
+                db.commit()
+                _send_limit_reached_reply(sender_email, subject, tier, ai_limit)
+                return {
+                    "status": "failed",
+                    "reason": "tier_limit_reached",
+                }
 
     # 6. Save attachment to a persistent temp file (survives until
     #    the worker picks it up and cleans it)
@@ -194,7 +203,8 @@ async def process_inbound_email(
         subject,
         attachment_filename,
         user.id,
-        employer.id,
+        profile.id,
+        "recruiter" if is_recruiter else "employer",
     )
 
     logger.info(
@@ -217,11 +227,13 @@ def process_email_parse_job(
     subject: str,
     attachment_filename: str,
     user_id: int,
-    employer_id: int,
+    profile_id: int,
+    profile_type: str = "employer",
 ) -> None:
     """Phase 2: parse the document and create a draft job.
 
     Runs in the RQ worker. Opens its own DB session.
+    profile_type is "employer" or "recruiter".
     """
     from app.db.session import get_session_factory
 
@@ -235,7 +247,8 @@ def process_email_parse_job(
             subject,
             attachment_filename,
             user_id,
-            employer_id,
+            profile_id,
+            profile_type,
         )
     except Exception:
         session.rollback()
@@ -253,7 +266,8 @@ def _do_parse_and_create(
     subject: str,
     attachment_filename: str,
     user_id: int,
-    employer_id: int,
+    profile_id: int,
+    profile_type: str = "employer",
 ) -> None:
     """Inner logic for Phase 2, using an injected session."""
     log_entry = db.query(EmailIngestLog).filter(EmailIngestLog.id == log_id).first()
@@ -269,7 +283,7 @@ def _do_parse_and_create(
         parsed_data = parse_job_from_file(
             file_path=file_path,
             source="email_upload",
-            employer_id=str(employer_id),
+            employer_id=str(profile_id),
             user_id=str(user_id),
         )
         confidence = parsed_data.get("confidence", 0.0)
@@ -291,54 +305,82 @@ def _do_parse_and_create(
         _send_parse_error_reply(sender_email, subject, attachment_filename)
         return
 
-    # 2. Create draft employer_job
+    # 2. Create draft job (employer_job or recruiter_job based on profile)
     try:
-        from app.models.employer import EmployerJob
+        if profile_type == "recruiter":
+            from app.models.recruiter_job import RecruiterJob
 
-        job = EmployerJob(
-            employer_id=employer_id,
-            title=parsed_data.get("title", "Untitled Position"),
-            description=parsed_data.get("description", ""),
-            requirements=parsed_data.get(
-                "requirements",
-                parsed_data.get("requirements_text", ""),
-            ),
-            location=parsed_data.get("location", ""),
-            remote_policy=parsed_data.get("remote_policy", ""),
-            employment_type=parsed_data.get("employment_type", "full-time"),
-            salary_min=parsed_data.get("salary_min"),
-            salary_max=parsed_data.get("salary_max"),
-            salary_currency=parsed_data.get("salary_currency", "USD"),
-            status="draft",
-            parsed_from_document=True,
-            parsing_confidence=parsed_data.get("confidence", 0.0),
-            source_document_url=(f"email-upload://{attachment_filename}"),
-            job_id_external=parsed_data.get("job_id_external"),
-            department=parsed_data.get("department"),
-            job_category=parsed_data.get("job_category"),
-            job_type=parsed_data.get("job_type"),
-            certifications_required=parsed_data.get("certifications_required"),
-            start_date=parsed_data.get("start_date"),
-            close_date=parsed_data.get("close_date"),
-        )
+            job = RecruiterJob(
+                recruiter_profile_id=profile_id,
+                title=parsed_data.get("title", "Untitled Position"),
+                description=parsed_data.get("description", ""),
+                requirements=parsed_data.get(
+                    "requirements",
+                    parsed_data.get("requirements_text", ""),
+                ),
+                location=parsed_data.get("location", ""),
+                remote_policy=parsed_data.get("remote_policy", ""),
+                employment_type=parsed_data.get("employment_type", "full-time"),
+                salary_min=parsed_data.get("salary_min"),
+                salary_max=parsed_data.get("salary_max"),
+                salary_currency=parsed_data.get("salary_currency", "USD"),
+                status="draft",
+                department=parsed_data.get("department"),
+                job_id_external=parsed_data.get("job_id_external"),
+                job_category=parsed_data.get("job_category"),
+                client_company_name=parsed_data.get("company", ""),
+            )
+        else:
+            from app.models.employer import EmployerJob
+
+            job = EmployerJob(
+                employer_id=profile_id,
+                title=parsed_data.get("title", "Untitled Position"),
+                description=parsed_data.get("description", ""),
+                requirements=parsed_data.get(
+                    "requirements",
+                    parsed_data.get("requirements_text", ""),
+                ),
+                location=parsed_data.get("location", ""),
+                remote_policy=parsed_data.get("remote_policy", ""),
+                employment_type=parsed_data.get("employment_type", "full-time"),
+                salary_min=parsed_data.get("salary_min"),
+                salary_max=parsed_data.get("salary_max"),
+                salary_currency=parsed_data.get("salary_currency", "USD"),
+                status="draft",
+                parsed_from_document=True,
+                parsing_confidence=parsed_data.get("confidence", 0.0),
+                source_document_url=(f"email-upload://{attachment_filename}"),
+                job_id_external=parsed_data.get("job_id_external"),
+                department=parsed_data.get("department"),
+                job_category=parsed_data.get("job_category"),
+                job_type=parsed_data.get("job_type"),
+                certifications_required=parsed_data.get("certifications_required"),
+                start_date=parsed_data.get("start_date"),
+                close_date=parsed_data.get("close_date"),
+            )
+
         db.add(job)
         db.flush()
         job_id = job.id
 
         log_entry.created_job_id = job_id
         log_entry.status = "draft_created"
-        log_entry.status_detail = f"Draft job created: {job_id}"
+        log_entry.status_detail = f"Draft {profile_type} job created: {job_id}"
         log_entry.processed_at = datetime.now(UTC)
 
-        # Increment AI parsing usage counter
-        from app.models.employer import EmployerProfile
-        from app.services.billing import increment_employer_counter
+        # Increment AI parsing usage counter (employer only)
+        if profile_type == "employer":
+            from app.models.employer import EmployerProfile
+            from app.services.billing import increment_employer_counter
 
-        employer = (
-            db.query(EmployerProfile).filter(EmployerProfile.id == employer_id).first()
-        )
-        if employer:
-            increment_employer_counter(employer, "ai_parsing_used", db)
+            employer = (
+                db.query(EmployerProfile)
+                .filter(EmployerProfile.id == profile_id)
+                .first()
+            )
+            if employer:
+                increment_employer_counter(employer, "ai_parsing_used", db)
 
         db.commit()
     except Exception as e:
@@ -354,8 +396,11 @@ def _do_parse_and_create(
         db.commit()
         return
 
-    # 3. Send completion email
-    _send_success_reply(sender_email, subject, parsed_data, job_id)
+    # 3. Send completion email with correct review URL
+    review_path = (
+        "recruiter/jobs" if profile_type == "recruiter" else "employer/jobs"
+    )
+    _send_success_reply(sender_email, subject, parsed_data, job_id, review_path)
 
     logger.info("Draft job %s created from email by %s", job_id, sender_email)
 
@@ -399,14 +444,17 @@ def _match_sender_to_user(sender_email: str, db: Session) -> tuple:
     """Look up the sender's email in the users table.
 
     Also checks employer_profile.billing_email as fallback.
-    Returns (user, employer_profile) or (None, None).
+    Returns (user, employer_or_recruiter_profile) or (None, None).
+    Supports both employer and recruiter profiles for email ingest.
     """
     from app.models.employer import EmployerProfile
+    from app.models.recruiter import RecruiterProfile
     from app.models.user import User
 
     user = db.query(User).filter(User.email == sender_email).first()
 
     if not user:
+        # Fallback: check employer billing_email
         employer = (
             db.query(EmployerProfile)
             .filter(EmployerProfile.billing_email == sender_email)
@@ -417,11 +465,21 @@ def _match_sender_to_user(sender_email: str, db: Session) -> tuple:
             return (user, employer)
         return (None, None)
 
+    # Check employer profile first
     employer = (
         db.query(EmployerProfile).filter(EmployerProfile.user_id == user.id).first()
     )
+    if employer:
+        return (user, employer)
 
-    return (user, employer)
+    # Fall back to recruiter profile
+    recruiter = (
+        db.query(RecruiterProfile).filter(RecruiterProfile.user_id == user.id).first()
+    )
+    if recruiter:
+        return (user, recruiter)
+
+    return (user, None)
 
 
 def _cleanup_temp(file_path: str) -> None:
@@ -532,6 +590,7 @@ def _send_success_reply(
     original_subject: str,
     parsed_data: dict,
     job_id: int,
+    review_path: str = "employer/jobs",
 ) -> None:
     """Completion email with review link."""
     from app.services.email import RESEND_API_KEY, RESEND_FROM, _send
@@ -550,7 +609,7 @@ def _send_success_reply(
     title = parsed_data.get("title", "your job posting")
     confidence = parsed_data.get("confidence", 0.0)
     confidence_pct = f"{confidence * 100:.0f}%"
-    review_url = f"{FRONTEND_URL}/employer/jobs/{job_id}"
+    review_url = f"{FRONTEND_URL}/{review_path}/{job_id}"
 
     html = (
         "<p>Hi,</p>"
