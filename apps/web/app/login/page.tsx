@@ -7,6 +7,7 @@ import Link from "next/link";
 
 
 import { normalizeRedirect, withRedirectParam } from "../lib/redirects";
+import { parseApiError } from "../lib/api-error";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -79,9 +80,8 @@ function LoginForm() {
           body: JSON.stringify(signupBody),
         });
         if (!res.ok) {
-          const body = await res.text();
-          let detail = "Signup failed. Please try again.";
-          try { detail = JSON.parse(body).detail || detail; } catch {}
+          const data = await res.json().catch(() => ({}));
+          let detail = parseApiError(data, "Signup failed. Please try again.");
           if (detail.toLowerCase().includes("already")) {
             detail = "An account with this email already exists. Try signing in instead.";
           }
@@ -104,14 +104,12 @@ function LoginForm() {
           body: JSON.stringify({ email, password }),
         });
         if (!res.ok) {
-          const body = await res.text();
-          let detail = "";
-          try { detail = JSON.parse(body).detail || ""; } catch {}
           if (res.status === 401) {
             setShowResetOffer(true);
             throw new Error("The email or password you entered is incorrect. Please try again or reset your password.");
           }
-          throw new Error(detail || "Login failed. Please try again.");
+          const data = await res.json().catch(() => ({}));
+          throw new Error(parseApiError(data, "Login failed. Please try again."));
         }
 
         const data = await res.json();
@@ -158,10 +156,8 @@ function LoginForm() {
         body: JSON.stringify({ email: mfaEmail, otp_code: otpCode }),
       });
       if (!res.ok) {
-        const body = await res.text();
-        let detail = "Verification failed.";
-        try { detail = JSON.parse(body).detail || detail; } catch {}
-        throw new Error(detail);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(parseApiError(data, "Verification failed."));
       }
       const data = await res.json();
       // Non-candidate roles skip candidate onboarding
@@ -196,10 +192,8 @@ function LoginForm() {
         body: JSON.stringify({ email: mfaEmail, password, delivery_method: method }),
       });
       if (!res.ok) {
-        const body = await res.text();
-        let detail = "Could not resend code.";
-        try { detail = JSON.parse(body).detail || detail; } catch {}
-        throw new Error(detail);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(parseApiError(data, "Could not resend code."));
       }
       const data = await res.json();
       const usedMethod = data.delivery_method || method;
@@ -255,10 +249,8 @@ function LoginForm() {
         body: JSON.stringify({ token: resetToken, password: newPassword }),
       });
       if (!res.ok) {
-        const body = await res.text();
-        let detail = "Reset failed. Please try again.";
-        try { detail = JSON.parse(body).detail || detail; } catch {}
-        throw new Error(detail);
+        const data = await res.json().catch(() => ({}));
+        throw new Error(parseApiError(data, "Reset failed. Please try again."));
       }
       setResetSuccess(true);
     } catch (e: any) {
