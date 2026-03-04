@@ -37,32 +37,39 @@ Write-Host "Web:   $web"
 Write-Host ""
 
 # --- Kill stale processes ---
-Write-Host "[0/4] Stopping stale dev processes..." -ForegroundColor Yellow
+Write-Host "[0/5] Stopping stale dev processes..." -ForegroundColor Yellow
 & (Join-Path $root "stop-dev.ps1")
 Write-Host ""
 
 # --- Start infra (Postgres + Redis) ---
-Write-Host "[1/4] Starting Docker containers (Postgres + Redis)..." -ForegroundColor Yellow
+Write-Host "[1/5] Starting Docker containers (Postgres + Redis)..." -ForegroundColor Yellow
 Push-Location $infra
 docker compose up -d | Out-Null
 Pop-Location
 
 # --- Start API (uvicorn) ---
-Write-Host "[2/4] Starting API (uvicorn)..." -ForegroundColor Yellow
+Write-Host "[2/5] Starting API (uvicorn)..." -ForegroundColor Yellow
 Start-NewPSWindow `
   -title "Winnow API" `
   -workingDir $api `
   -command ".\.venv\Scripts\Activate.ps1; uvicorn app.main:app --reload"
 
 # --- Start Worker (RQ) ---
-Write-Host "[3/4] Starting Worker (RQ)..." -ForegroundColor Yellow
+Write-Host "[3/5] Starting Worker (RQ)..." -ForegroundColor Yellow
 Start-NewPSWindow `
   -title "Winnow Worker" `
   -workingDir $api `
   -command ".\.venv\Scripts\Activate.ps1; python -m app.worker"
 
+# --- Start Scheduler (RQ Scheduler) ---
+Write-Host "[4/5] Starting Scheduler (RQ Scheduler)..." -ForegroundColor Yellow
+Start-NewPSWindow `
+  -title "Winnow Scheduler" `
+  -workingDir $api `
+  -command ".\.venv\Scripts\Activate.ps1; python -m app.scheduler"
+
 # --- Start Web (Next.js) ---
-Write-Host "[4/4] Starting Web (Next.js)..." -ForegroundColor Yellow
+Write-Host "[5/5] Starting Web (Next.js)..." -ForegroundColor Yellow
 Start-NewPSWindow `
   -title "Winnow Web" `
   -workingDir $web `
