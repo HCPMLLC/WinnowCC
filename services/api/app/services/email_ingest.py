@@ -174,19 +174,22 @@ async def process_inbound_email(
                     "reason": "tier_limit_reached",
                 }
 
-    # 6. Save attachment to a persistent temp file (survives until
-    #    the worker picks it up and cleans it)
+    # 6. Save attachment to shared storage (GCS in prod, local disk in dev)
+    #    so the worker container can access it.
+    from app.services.storage import upload_bytes
+
+    import hashlib
+
+    file_hash = hashlib.sha256(file_data).hexdigest()[:12]
     suffix = file_ext if file_ext else ".docx"
-    ingest_dir = _ensure_ingest_dir()
-    with tempfile.NamedTemporaryFile(
-        delete=False, suffix=suffix, dir=ingest_dir
-    ) as tmp:
-        tmp.write(file_data)
-        tmp_path = tmp.name
+    stored_name = f"{file_hash}_{attachment_filename}"
+    stored_path = upload_bytes(
+        file_data, "email_ingest/", stored_name
+    )
 
     # 7. Mark as queued and commit
     log_entry.status = "queued"
-    log_entry.status_detail = f"Saved to {tmp_path}, enqueuing"
+    log_entry.status_detail = f"Saved to {stored_path}, enqueuing"
     db.commit()
 
     # 8. Send instant acknowledgment
@@ -198,7 +201,7 @@ async def process_inbound_email(
     get_queue().enqueue(
         process_email_parse_job,
         log_entry.id,
-        tmp_path,
+        stored_path,
         sender_email,
         subject,
         attachment_filename,
@@ -255,7 +258,9 @@ def process_email_parse_job(
         raise
     finally:
         session.close()
-        _cleanup_temp(file_path)
+        # Clean up stored file and any local temp copy
+        from app.services.storage import delete_file
+        delete_file(file_path)
 
 
 def _do_parse_and_create(
@@ -278,10 +283,18 @@ def _do_parse_and_create(
     log_entry.status = "processing"
     db.commit()
 
-    # 1. Parse with the unified job parser (PROMPT77)
+    # 1. Download file from shared storage to a local temp file
+    from app.services.storage import download_to_tempfile, delete_file
+
+    suffix = ""
+    if "." in attachment_filename:
+        suffix = "." + attachment_filename.rsplit(".", 1)[-1].lower()
+    local_path = download_to_tempfile(file_path, suffix=suffix)
+
+    # 2. Parse with the unified job parser (PROMPT77)
     try:
         parsed_data = parse_job_from_file(
-            file_path=file_path,
+            file_path=str(local_path),
             source="email_upload",
             employer_id=str(profile_id),
             user_id=str(user_id),
@@ -305,7 +318,7 @@ def _do_parse_and_create(
         _send_parse_error_reply(sender_email, subject, attachment_filename)
         return
 
-    # 2. Create draft job (employer_job or recruiter_job based on profile)
+    # 3. Create draft job (employer_job or recruiter_job based on profile)
     try:
         if profile_type == "recruiter":
             from app.models.recruiter_job import RecruiterJob
