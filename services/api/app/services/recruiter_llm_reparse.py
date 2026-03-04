@@ -14,7 +14,11 @@ from pathlib import Path
 from app.db.session import get_session_factory
 from app.models.candidate_profile import CandidateProfile
 from app.models.resume_document import ResumeDocument
-from app.services.profile_parser import extract_text
+from app.services.resume_pipeline import (
+    ParseOptions,
+    extract_and_parse,
+    merge_recruiter_reparse,
+)
 from app.services.storage import download_to_tempfile, is_gcs_path
 
 logger = logging.getLogger(__name__)
@@ -65,53 +69,30 @@ def recruiter_llm_reparse_job(
                 # Update the DB record so future lookups use GCS directly
                 resume.path = gcs_path
 
-        # Extract text from saved file
+        # Extract text and parse with LLM
         suffix = Path(resume.path).suffix if resume.path else ""
         local_path = download_to_tempfile(stored_path, suffix=suffix)
         try:
-            text = extract_text(local_path)
+            result = extract_and_parse(
+                local_path,
+                ParseOptions(parser_strategy="llm_only", min_text_length=20),
+            )
+        except (ValueError, RuntimeError) as exc:
+            cp.llm_parse_status = "failed"
+            session.commit()
+            logger.warning(
+                "LLM reparse failed for profile %d: %s",
+                candidate_profile_id,
+                exc,
+            )
+            return
         finally:
             if is_gcs_path(stored_path):
                 local_path.unlink(missing_ok=True)
 
-        if not text or len(text.strip()) < 20:
-            cp.llm_parse_status = "failed"
-            session.commit()
-            logger.warning(
-                "LLM reparse: No text extracted for profile %d",
-                candidate_profile_id,
-            )
-            return
-
-        # Call LLM parser (same as candidate flow)
-        from app.services.llm_parser import is_llm_parser_available, parse_with_llm
-
-        if not is_llm_parser_available():
-            cp.llm_parse_status = "failed"
-            session.commit()
-            logger.warning("LLM reparse: LLM parser not available")
-            return
-
-        llm_profile_json = parse_with_llm(text)
-
-        # Merge: preserve regex-extracted email/name (critical for pipeline
-        # matching) and recruiter metadata; upgrade everything else.
+        # Merge: preserve regex-extracted email/name and recruiter metadata
         existing = cp.profile_json or {}
-        existing_basics = existing.get("basics", {})
-        llm_basics = llm_profile_json.get("basics", {})
-
-        for key in ("email", "name", "first_name", "last_name"):
-            if existing_basics.get(key) and not llm_basics.get(key):
-                llm_basics[key] = existing_basics[key]
-
-        llm_profile_json["basics"] = llm_basics
-
-        # Preserve recruiter metadata
-        for key in ("source", "sourced_by_user_id"):
-            if existing.get(key):
-                llm_profile_json[key] = existing[key]
-
-        cp.profile_json = llm_profile_json
+        cp.profile_json = merge_recruiter_reparse(existing, result.profile_json)
         cp.llm_parse_status = "succeeded"
         session.commit()
 

@@ -362,7 +362,7 @@ def process_batch_resume_file(
         from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
         from app.models.resume_document import ResumeDocument
         from app.models.user import User
-        from app.services.profile_parser import extract_text, parse_profile_from_text
+        from app.services.resume_pipeline import ParseOptions, extract_and_parse
         from app.services.storage import (
             delete_file,
             download_to_tempfile,
@@ -381,15 +381,18 @@ def process_batch_resume_file(
         # Download staged file
         tmp_path = download_to_tempfile(bf.staged_path, suffix=ext)
         try:
-            # Extract text
-            text = extract_text(tmp_path)
-            if not text or len(text.strip()) < 20:
+            # Extract text and parse with regex (fast path for batch)
+            try:
+                result = extract_and_parse(
+                    tmp_path,
+                    ParseOptions(parser_strategy="regex_only", min_text_length=20),
+                )
+            except ValueError:
                 _fail_file(session, bf, "Could not extract meaningful text from file.")
                 _finalize_batch(session, batch_id, "failed")
                 return
 
-            # Parse profile (fast regex)
-            profile_json = parse_profile_from_text(text)
+            profile_json = result.profile_json
             basics = profile_json.get("basics", {})
             parsed_email = basics.get("email")
             parsed_name = basics.get("name")

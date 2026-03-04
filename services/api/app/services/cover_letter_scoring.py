@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from docx import Document
+from app.services.text_extraction import extract_text_from_docx
 
 
 def compute_cover_letter_score(
@@ -40,7 +40,7 @@ def compute_cover_letter_score(
         return 50
 
     try:
-        cover_text = _extract_text_from_docx(path)
+        cover_text = extract_text_from_docx(path)
     except Exception:
         return 50
 
@@ -55,13 +55,6 @@ def compute_cover_letter_score(
 
     c_s = int((keyword_match * 0.5) + (length_quality * 0.3) + (personalization * 0.2))
     return max(0, min(100, c_s))
-
-
-def _extract_text_from_docx(path: Path) -> str:
-    """Extract text content from a docx file."""
-    doc = Document(str(path))
-    paragraphs = [p.text for p in doc.paragraphs if p.text.strip()]
-    return "\n".join(paragraphs)
 
 
 def _tokenize(text: str) -> set[str]:
