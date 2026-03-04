@@ -2,7 +2,7 @@
 # Kill all Winnow dev processes listening on known ports (3000-3002, 8000).
 # Safe to run when nothing is running — errors are silenced.
 
-$ports = @(3000, 3001, 3002, 8000)
+$ports = @(3000, 3001, 3002, 8000, 8080)
 $killed = 0
 
 foreach ($port in $ports) {
