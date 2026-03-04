@@ -462,6 +462,36 @@ def admin_reset_password(
     return {"status": "ok", "email": user.email}
 
 
+class AdminSetMfaRequest(BaseModel):
+    email: EmailStr
+    mfa_required: bool
+
+
+@router.post("/admin-set-mfa")
+def admin_set_mfa(
+    payload: AdminSetMfaRequest,
+    x_admin_token: str | None = Header(None),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Enable or disable MFA for any user. Requires ADMIN_TOKEN header."""
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token or not x_admin_token or x_admin_token != admin_token:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    user = session.execute(
+        select(User).where(User.email == payload.email.lower().strip())
+    ).scalar_one_or_none()
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found.")
+    user.mfa_required = payload.mfa_required
+    if not payload.mfa_required:
+        user.mfa_otp_hash = None
+        user.mfa_otp_expires_at = None
+        user.mfa_otp_attempts = 0
+    session.commit()
+    return {"status": "ok", "email": user.email, "mfa_required": user.mfa_required}
+
+
 ALLOWED_ROLES = {"candidate", "employer", "recruiter", "both", "admin"}
 
 
