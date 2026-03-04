@@ -783,18 +783,18 @@ class JobParserService:
             if tool in text_lower:
                 tools.append(tool.title() if len(tool) > 3 else tool.upper())
 
-        # Extract skills from required/preferred sections
-        from app.services.matching import _extract_skills_from_text
+        # Extract skills from required/preferred sections using taxonomy
+        from app.services.skill_taxonomy import extract_skills_from_text
 
         req_text = " ".join(required_section)
         pref_text = " ".join(preferred_section)
 
         required_skills = (
-            _extract_skills_from_text(req_text)
+            extract_skills_from_text(req_text)
             if req_text
-            else _extract_skills_from_text(text)
+            else extract_skills_from_text(text)
         )
-        preferred_skills = _extract_skills_from_text(pref_text) if pref_text else []
+        preferred_skills = extract_skills_from_text(pref_text) if pref_text else []
 
         return (
             required_skills,

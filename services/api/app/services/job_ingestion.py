@@ -54,6 +54,7 @@ def clear_progress(run_id: int) -> None:
 def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> int:
     now = datetime.now(UTC)
     new_count = 0
+    new_jobs: list[Job] = []  # Track new jobs for post-commit parsing
     sources = get_job_sources()
     total_sources = len(sources)
     completed_sources = 0
@@ -126,6 +127,7 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
                 hiring_manager_phone=posting.hiring_manager_phone,
             )
             session.add(job)
+            new_jobs.append(job)
             source_new += 1
             new_count += 1
         logger.info(
@@ -138,8 +140,63 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
         completed_sources += 1
         _update_progress(run_id, completed_sources, total_sources, new_count)
     session.commit()
+
+    # Parse new jobs with regex+taxonomy to create JobParsedDetail records
+    # and queue embedding generation. This runs after commit so job IDs exist.
+    if new_jobs:
+        _parse_new_jobs(session, new_jobs)
+
     logger.info("Ingestion complete: %d new jobs total", new_count)
     return new_count
+
+
+def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
+    """Run regex+taxonomy parser on newly ingested jobs and queue embeddings."""
+    from app.services.job_parser import JobParserService
+
+    parser = JobParserService()
+    parsed_count = 0
+    low_skill_jobs: list[int] = []
+    for job in jobs:
+        try:
+            detail = parser.parse(session, job)
+            parsed_count += 1
+            # Track jobs with few skills for LLM enrichment
+            total_skills = len(detail.required_skills or []) + len(
+                detail.preferred_skills or []
+            )
+            if total_skills < 3:
+                low_skill_jobs.append(job.id)
+            if parsed_count % 50 == 0:
+                session.commit()
+        except Exception:
+            logger.debug("Failed to parse job %s during ingestion", job.id, exc_info=True)
+    session.commit()
+    logger.info("Parsed %d / %d new jobs during ingestion", parsed_count, len(jobs))
+
+    # Queue embedding generation and LLM skill enrichment
+    try:
+        from app.services.queue import get_queue
+
+        q = get_queue()
+        for job in jobs:
+            try:
+                q.enqueue("app.services.job_pipeline.embed_job", job.id)
+            except Exception:
+                logger.debug("Failed to queue embedding for job %s", job.id)
+        for job_id in low_skill_jobs:
+            try:
+                q.enqueue(
+                    "app.services.job_pipeline.parse_board_job_skills", job_id
+                )
+            except Exception:
+                logger.debug("Failed to queue LLM skill parse for job %s", job_id)
+        if low_skill_jobs:
+            logger.info(
+                "Queued %d jobs for LLM skill enrichment", len(low_skill_jobs)
+            )
+    except Exception:
+        logger.debug("Queue not available for post-ingestion tasks", exc_info=True)
 
 
 def _hash_posting(posting: JobPosting, description_text: str) -> str:

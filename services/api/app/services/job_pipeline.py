@@ -12,6 +12,7 @@ from app.services.embedding import (
     prepare_job_text,
     prepare_profile_text,
 )
+from app.models.job_parsed_detail import JobParsedDetail
 from app.services.job_ingestion import ingest_jobs
 from app.services.matching import compute_matches
 from app.services.tailor import create_tailored_docs
@@ -426,5 +427,171 @@ def deactivate_recruiter_job_proxy(job_id: int) -> None:
     except Exception:
         session.rollback()
         logger.exception("deactivate_recruiter_job_proxy: failed for %s", job_id)
+    finally:
+        session.close()
+
+
+def parse_board_job_skills(job_id: int) -> bool:
+    """Use a cheap LLM call to extract skills for a job with few taxonomy matches.
+
+    Only called for jobs where regex+taxonomy parsing found < 3 skills.
+    Uses Claude Haiku for minimal cost (~$0.001/job).
+    """
+    import json
+    import os
+
+    import anthropic
+
+    session = get_session_factory()()
+    try:
+        job = session.execute(select(Job).where(Job.id == job_id)).scalar_one_or_none()
+        if job is None:
+            logger.warning("parse_board_job_skills: job %s not found", job_id)
+            return False
+
+        parsed = session.execute(
+            select(JobParsedDetail).where(JobParsedDetail.job_id == job_id)
+        ).scalar_one_or_none()
+        if parsed is None:
+            logger.warning("parse_board_job_skills: no parsed detail for job %s", job_id)
+            return False
+
+        # Skip if already has enough skills
+        existing_skills = (parsed.required_skills or []) + (parsed.preferred_skills or [])
+        if len(existing_skills) >= 3:
+            return True
+
+        description = (job.description_text or "")[:3000]  # Cap to limit tokens
+        if not description.strip():
+            return False
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.warning("parse_board_job_skills: ANTHROPIC_API_KEY not set")
+            return False
+
+        client = anthropic.Anthropic(api_key=api_key, max_retries=2)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=300,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Extract the required and preferred technical skills from this "
+                        "job posting. Return ONLY a JSON object with two arrays:\n"
+                        '{"required_skills": [...], "preferred_skills": [...]}\n\n'
+                        "Rules:\n"
+                        "- Include programming languages, frameworks, tools, platforms\n"
+                        "- Use canonical names (e.g., 'JavaScript' not 'JS')\n"
+                        "- Do NOT include soft skills or vague terms\n"
+                        "- Max 15 skills per category\n\n"
+                        f"Job posting:\n{description}"
+                    ),
+                }
+            ],
+        )
+
+        text = response.content[0].text.strip()
+        # Extract JSON from response (handle markdown code blocks)
+        if "```" in text:
+            text = text.split("```")[1]
+            if text.startswith("json"):
+                text = text[4:]
+            text = text.strip()
+
+        data = json.loads(text)
+        req = [s for s in data.get("required_skills", []) if isinstance(s, str)][:15]
+        pref = [s for s in data.get("preferred_skills", []) if isinstance(s, str)][:15]
+
+        if req or pref:
+            parsed.required_skills = req
+            parsed.preferred_skills = pref
+            session.commit()
+            logger.info(
+                "parse_board_job_skills: job %s — %d required, %d preferred skills",
+                job_id, len(req), len(pref),
+            )
+        return True
+    except Exception:
+        session.rollback()
+        logger.exception("parse_board_job_skills: failed for job %s", job_id)
+        return False
+    finally:
+        session.close()
+
+
+def backfill_board_job_parsing() -> dict:
+    """Backfill regex+taxonomy parsing for all board jobs missing JobParsedDetail.
+
+    Returns stats on how many jobs were parsed and how many need LLM enrichment.
+    """
+    from app.services.job_parser import JobParserService
+    from app.services.queue import get_queue
+
+    session = get_session_factory()()
+    try:
+        # Find board jobs without parsed details
+        parsed_job_ids = select(JobParsedDetail.job_id)
+        jobs = session.execute(
+            select(Job).where(
+                Job.source.not_in(["employer", "recruiter"]),
+                Job.id.not_in(parsed_job_ids),
+                Job.is_active.is_not(False),
+            )
+        ).scalars().all()
+
+        parser = JobParserService()
+        parsed_count = 0
+        low_skill_count = 0
+        q = get_queue()
+
+        for job in jobs:
+            try:
+                detail = parser.parse(session, job)
+                parsed_count += 1
+
+                # Queue LLM enrichment if taxonomy found < 3 skills
+                total_skills = len(detail.required_skills or []) + len(
+                    detail.preferred_skills or []
+                )
+                if total_skills < 3:
+                    try:
+                        q.enqueue(
+                            "app.services.job_pipeline.parse_board_job_skills",
+                            job.id,
+                        )
+                        low_skill_count += 1
+                    except Exception:
+                        pass
+
+                if parsed_count % 50 == 0:
+                    session.commit()
+                    logger.info(
+                        "backfill_board_job_parsing: %d jobs parsed so far",
+                        parsed_count,
+                    )
+            except Exception:
+                logger.debug(
+                    "backfill_board_job_parsing: failed for job %s",
+                    job.id,
+                    exc_info=True,
+                )
+
+        session.commit()
+        logger.info(
+            "backfill_board_job_parsing: done — %d parsed, %d queued for LLM",
+            parsed_count,
+            low_skill_count,
+        )
+        return {
+            "total_missing": len(jobs),
+            "parsed": parsed_count,
+            "queued_for_llm": low_skill_count,
+        }
+    except Exception:
+        session.rollback()
+        logger.exception("backfill_board_job_parsing: failed")
+        return {"error": "backfill failed"}
     finally:
         session.close()
