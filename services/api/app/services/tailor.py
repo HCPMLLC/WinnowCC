@@ -193,7 +193,16 @@ def _build_cover_letter_doc(path: Path, job: Job, profile_json: dict) -> None:
     basics = profile_json.get("basics", {}) or {}
     name = basics.get("name") or "Candidate"
 
-    cl_text = generate_cover_letter_text(job, profile_json)
+    cl_text = generate_cover_letter_text(
+        job_title=job.title,
+        company=job.company,
+        job_description=job.description_text,
+        hiring_manager=getattr(job, "hiring_manager_name", None),
+        candidate_name=name,
+        candidate_summary=basics.get("summary"),
+        candidate_skills=profile_json.get("skills", []),
+        candidate_experience=profile_json.get("experience", []),
+    )
 
     # Parse the generated text into structured content
     lines = cl_text.strip().split("\n\n")
