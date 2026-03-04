@@ -325,11 +325,24 @@ def test_compute_all_triggers_sorting(session) -> None:
         )
     )
 
-    # Stale saved match (priority=3 trigger)
+    # Stale saved match (priority=3 trigger) — needs a different job to satisfy unique constraint
+    job2 = Job(
+        source="test",
+        source_job_id="test-2",
+        url="https://example.com/job/2",
+        title="Product Manager",
+        company="TestCorp",
+        location="Remote",
+        description_text="A second test job.",
+        content_hash="def456",
+    )
+    session.add(job2)
+    session.flush()
+
     session.add(
         Match(
             user_id=user.id,
-            job_id=job.id,
+            job_id=job2.id,
             profile_version=1,
             match_score=75,
             interview_readiness_score=65,
