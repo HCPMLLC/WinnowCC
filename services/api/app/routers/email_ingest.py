@@ -20,6 +20,7 @@ import ipaddress
 import json
 import logging
 import os
+import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
@@ -112,6 +113,7 @@ async def sendgrid_inbound_webhook(
     valid_attachment_key = None
     valid_attachment_meta = None
 
+    # Strategy 1: Check attachment-info metadata
     for key, meta in attachment_info.items():
         filename = meta.get("filename", "")
         if "." in filename:
@@ -127,15 +129,77 @@ async def sendgrid_inbound_webhook(
     if valid_attachment_key:
         valid_attachment = form.get(valid_attachment_key)
 
+    # Strategy 2: Scan form fields directly for file uploads.
+    # Forwarded emails may include attachments without populating
+    # attachment-info, so check all form fields named attachmentN.
+    if not valid_attachment or not hasattr(valid_attachment, "read"):
+        form_keys = list(form.keys())
+        logger.info(
+            "attachment-info empty/miss, scanning form keys: %s",
+            form_keys,
+        )
+        for key in form_keys:
+            if not re.match(r"attachment\d+$", key):
+                continue
+            field = form[key]
+            if not hasattr(field, "filename"):
+                continue
+            fname = getattr(field, "filename", "") or ""
+            if "." in fname:
+                ext = "." + fname.rsplit(".", 1)[-1].lower()
+            else:
+                ext = ""
+            if ext in ALLOWED_EXTENSIONS:
+                valid_attachment = field
+                valid_attachment_key = key
+                valid_attachment_meta = {
+                    "filename": fname,
+                    "type": getattr(field, "content_type", "")
+                    or "application/octet-stream",
+                }
+                logger.info(
+                    "Found attachment via form scan: key=%s filename=%s",
+                    key,
+                    fname,
+                )
+                break
+
     if not valid_attachment or not hasattr(valid_attachment, "read"):
         # No valid attachment found — log and reply
+        # Capture all form keys and content-types for debugging
+        form_debug = {}
+        for key in form.keys():
+            field = form[key]
+            if hasattr(field, "filename"):
+                form_debug[key] = {
+                    "filename": getattr(field, "filename", None),
+                    "content_type": getattr(field, "content_type", None),
+                    "size": getattr(field, "size", None),
+                }
+            else:
+                val = str(field)[:200] if field else ""
+                form_debug[key] = val
+
+        logger.warning(
+            "No valid attachment for email from %s. "
+            "attachment_info=%s form_debug=%s",
+            sender_email,
+            attachment_info_raw,
+            json.dumps(form_debug, default=str),
+        )
+
         log_entry = EmailIngestLog(
             sender_email=sender_email,
             sender_name=sender_name,
             subject=subject,
             status="ignored",
             status_detail="No valid .docx or .pdf attachment",
-            metadata_={"from": from_field, "attachment_info": attachment_info_raw},
+            metadata_={
+                "from": from_field,
+                "attachment_info": attachment_info_raw,
+                "form_keys": list(form.keys()),
+                "form_debug": form_debug,
+            },
         )
         db.add(log_entry)
         db.commit()
