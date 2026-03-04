@@ -251,6 +251,20 @@ export default function RecruiterSettingsScreen() {
         </View>
       </View>
 
+      {/* Outreach & Migration */}
+      <ProfileMenuItem
+        icon="mail-outline"
+        label="Outreach Sequences"
+        subtitle="Manage automated outreach"
+        onPress={() => router.push("/recruiter/sequences")}
+      />
+      <ProfileMenuItem
+        icon="swap-horizontal-outline"
+        label="CRM Migration"
+        subtitle="Import from another CRM"
+        onPress={() => router.push("/recruiter/migrate")}
+      />
+
       {/* Role switcher */}
       {role === "both" && (
         <TouchableOpacity

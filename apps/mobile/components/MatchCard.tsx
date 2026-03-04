@@ -15,6 +15,7 @@ interface MatchCardProps {
     interview_readiness_score: number;
     reasons?: { matched_skills?: string[] };
     application_status?: string;
+    match_explanation?: string;
   };
 }
 
@@ -38,6 +39,9 @@ export default function MatchCard({ match }: MatchCardProps) {
             {match.location}
             {match.remote_flag && "  Remote"}
           </Text>
+          {match.match_explanation && (
+            <Text style={styles.explanation}>{match.match_explanation}</Text>
+          )}
         </View>
         <ScoreBadge score={match.match_score} label="Match" />
       </View>
@@ -88,6 +92,12 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.gray400,
     marginTop: 2,
+  },
+  explanation: {
+    fontSize: fontSize.xs,
+    fontStyle: "italic",
+    color: colors.green500,
+    marginTop: 4,
   },
   skills: {
     flexDirection: "row",

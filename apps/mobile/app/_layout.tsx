@@ -393,6 +393,18 @@ export default function RootLayout() {
           options={{ title: "Bulk Resume Upload", presentation: "card" }}
         />
         <Stack.Screen
+          name="recruiter/sequences"
+          options={{ title: "Outreach Sequences", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/sequence/[id]"
+          options={{ title: "Sequence Detail", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="recruiter/migrate"
+          options={{ title: "CRM Migration", presentation: "card" }}
+        />
+        <Stack.Screen
           name="recruiter/pipeline/add"
           options={{ title: "Add to Pipeline", presentation: "card" }}
         />
@@ -423,6 +435,14 @@ export default function RootLayout() {
         <Stack.Screen
           name="employer/analytics"
           options={{ title: "Analytics", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/compliance"
+          options={{ title: "Compliance", presentation: "card" }}
+        />
+        <Stack.Screen
+          name="employer/distribution"
+          options={{ title: "Job Distribution", presentation: "card" }}
         />
         <Stack.Screen
           name="employer/saved"

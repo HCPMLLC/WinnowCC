@@ -184,3 +184,33 @@ export interface RecruiterPlan {
   usage: Record<string, number>;
   limits: Record<string, number | null>;
 }
+
+export interface OutreachStep {
+  id: number;
+  step_number: number;
+  delay_days: number;
+  subject: string;
+  body: string;
+  channel: string;
+}
+
+export interface OutreachSequence {
+  id: number;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+  steps: OutreachStep[];
+  total_enrolled: number;
+  total_sent: number;
+  created_at: string;
+}
+
+export interface OutreachEnrollment {
+  id: number;
+  sequence_id: number;
+  candidate_name: string | null;
+  candidate_email: string | null;
+  current_step: number;
+  status: string;
+  enrolled_at: string;
+}

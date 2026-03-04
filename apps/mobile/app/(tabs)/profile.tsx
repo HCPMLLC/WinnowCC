@@ -16,6 +16,7 @@ import { useAuth } from "../../lib/auth";
 import { api } from "../../lib/api";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import ProfileMenuItem from "../../components/ProfileMenuItem";
+import EnhancementSuggestionsCard from "../../components/EnhancementSuggestionsCard";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 interface ProfileData {
@@ -290,6 +291,9 @@ export default function ProfileScreen() {
           </View>
         </View>
       )}
+
+      {/* Enhancement Suggestions */}
+      <EnhancementSuggestionsCard />
 
       {/* Profile Hub */}
       <Text style={styles.sectionTitle}>Manage</Text>
