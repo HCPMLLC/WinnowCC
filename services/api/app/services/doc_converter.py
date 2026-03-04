@@ -17,28 +17,43 @@ def convert_doc_to_docx(doc_path: Path) -> Path:
     Raises RuntimeError if conversion fails.
     """
     tmp_dir = tempfile.mkdtemp(prefix="doc2docx_")
+    # LibreOffice needs a writable user profile; in containers the default
+    # $HOME/.config/libreoffice may not be writable or may lock up with
+    # concurrent conversions. Use a per-call temp profile.
+    profile_dir = tempfile.mkdtemp(prefix="lo_profile_")
     try:
-        subprocess.run(
+        result = subprocess.run(
             [
                 "soffice",
                 "--headless",
+                "--nolockcheck",
+                f"-env:UserInstallation=file://{profile_dir}",
                 "--convert-to",
                 "docx",
                 "--outdir",
                 tmp_dir,
                 str(doc_path),
             ],
-            timeout=30,
+            timeout=60,
             capture_output=True,
-            check=True,
         )
+        if result.returncode != 0:
+            logger.warning(
+                "LibreOffice returned %d: stdout=%s stderr=%s",
+                result.returncode,
+                result.stdout[:500] if result.stdout else b"",
+                result.stderr[:500] if result.stderr else b"",
+            )
     except (
         subprocess.CalledProcessError,
         subprocess.TimeoutExpired,
         FileNotFoundError,
     ) as exc:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+        shutil.rmtree(profile_dir, ignore_errors=True)
         raise RuntimeError(f"LibreOffice conversion failed: {exc}") from exc
+    finally:
+        shutil.rmtree(profile_dir, ignore_errors=True)
 
     docx_path = Path(tmp_dir) / (doc_path.stem + ".docx")
     if not docx_path.exists():

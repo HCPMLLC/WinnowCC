@@ -1015,39 +1015,15 @@ def _extract_text_from_pdf(file_path: str) -> str:
 
 
 def _extract_text_from_doc(file_path: str) -> str:
-    """Extract text from .doc via Win32 COM or LibreOffice fallback."""
-    abs_path = os.path.abspath(file_path)
+    """Extract text from .doc via LibreOffice conversion or olefile fallback."""
+    from pathlib import Path as _Path
 
-    # Try Word COM automation (Windows)
+    from app.services.doc_converter import extract_text_from_doc
+
     try:
-        import win32com.client
-
-        word = win32com.client.Dispatch("Word.Application")
-        word.Visible = False
-        try:
-            doc = word.Documents.Open(abs_path, ReadOnly=True)
-            text = doc.Content.Text
-            doc.Close(False)
-            return text
-        finally:
-            word.Quit()
+        return extract_text_from_doc(_Path(file_path))
     except Exception as e:
-        logger.debug("Word COM extraction failed, trying LibreOffice: %s", e)
-
-    # Fall back to LibreOffice conversion
-    try:
-        import shutil
-        from pathlib import Path as _Path
-
-        from app.services.doc_converter import convert_doc_to_docx
-
-        docx_path = convert_doc_to_docx(_Path(file_path))
-        try:
-            return _extract_text_from_docx(str(docx_path))
-        finally:
-            shutil.rmtree(docx_path.parent, ignore_errors=True)
-    except Exception as e:
-        logger.error(".doc extraction failed (no Word or LibreOffice): %s", e)
+        logger.error(".doc extraction failed: %s", e)
         return ""
 
 
