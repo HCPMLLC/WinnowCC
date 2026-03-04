@@ -299,6 +299,18 @@ def _do_parse_and_create(
             employer_id=str(profile_id),
             user_id=str(user_id),
         )
+        if not parsed_data or not parsed_data.get("title"):
+            logger.warning(
+                "Empty parse result for %s from %s",
+                attachment_filename,
+                sender_email,
+            )
+            log_entry.status = "failed"
+            log_entry.status_detail = "No job details could be extracted"
+            log_entry.processed_at = datetime.now(UTC)
+            db.commit()
+            _send_parse_error_reply(sender_email, subject, attachment_filename, profile_type)
+            return
         confidence = parsed_data.get("confidence", 0.0)
         log_entry.parsing_confidence = confidence
         log_entry.status = "parsed"
@@ -315,7 +327,7 @@ def _do_parse_and_create(
         log_entry.status_detail = f"Parsing failed: {e}"
         log_entry.processed_at = datetime.now(UTC)
         db.commit()
-        _send_parse_error_reply(sender_email, subject, attachment_filename)
+        _send_parse_error_reply(sender_email, subject, attachment_filename, profile_type)
         return
 
     # 3. Create draft job (employer_job or recruiter_job based on profile)
@@ -758,7 +770,10 @@ def _send_unregistered_reply(to_email: str, original_subject: str) -> None:
 
 
 def _send_parse_error_reply(
-    to_email: str, original_subject: str, filename: str
+    to_email: str,
+    original_subject: str,
+    filename: str,
+    profile_type: str = "employer",
 ) -> None:
     """Reply explaining the document couldn't be parsed."""
     from app.services.email import RESEND_API_KEY, RESEND_FROM, _send
@@ -770,7 +785,8 @@ def _send_parse_error_reply(
 
     resend.api_key = RESEND_API_KEY
 
-    upload_url = f"{FRONTEND_URL}/employer/jobs/new"
+    upload_path = "recruiter/jobs" if profile_type == "recruiter" else "employer/jobs/new"
+    upload_url = f"{FRONTEND_URL}/{upload_path}"
     html = (
         "<p>Hi,</p>"
         "<p>We received your file "

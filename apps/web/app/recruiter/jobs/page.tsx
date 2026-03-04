@@ -329,19 +329,42 @@ export default function RecruiterJobsPage() {
         return;
       }
       const data = await res.json();
-      setUploadBatchStatus({
-        batch_id: data.batch_id,
-        status: "processing",
-        total_files: data.total_files,
-        files_completed: 0,
-        files_succeeded: 0,
-        files_failed: 0,
-        files: uploadFiles.map((f) => ({
-          filename: f.name, status: "pending", error: null, result: null,
-        })),
-      });
-      setUploadFiles([]);
-      startUploadPolling(data.batch_id);
+
+      if (data.batch_id) {
+        // Async batch mode — poll for progress
+        setUploadBatchStatus({
+          batch_id: data.batch_id,
+          status: "processing",
+          total_files: data.total_files,
+          files_completed: 0,
+          files_succeeded: 0,
+          files_failed: 0,
+          files: uploadFiles.map((f) => ({
+            filename: f.name, status: "pending", error: null, result: null,
+          })),
+        });
+        setUploadFiles([]);
+        startUploadPolling(data.batch_id);
+      } else {
+        // Synchronous response — results are already available
+        setUploadBatchStatus({
+          batch_id: "",
+          status: "completed",
+          total_files: data.total_submitted,
+          files_completed: data.total_submitted,
+          files_succeeded: data.total_succeeded,
+          files_failed: data.total_failed,
+          files: (data.results || []).map((r: { filename: string; success: boolean; error?: string; title?: string; job_id?: number }) => ({
+            filename: r.filename,
+            status: r.success ? "succeeded" : "failed",
+            error: r.error || null,
+            result: r.success ? { title: r.title, job_id: r.job_id } : null,
+          })),
+        });
+        setUploadFiles([]);
+        setUploading(false);
+        fetchJobs();
+      }
     } catch {
       setError("Network error during upload");
       setUploading(false);
