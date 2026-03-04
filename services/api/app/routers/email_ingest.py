@@ -171,6 +171,52 @@ async def sendgrid_inbound_webhook(
                 )
                 break
 
+    # Strategy 3: Parse raw MIME from the 'email' field.
+    # Forwarded emails (especially from Outlook) embed attachments inside
+    # the MIME body rather than as separate form fields.
+    if not valid_attachment or not hasattr(valid_attachment, "read"):
+        raw_email = form.get("email", "")
+        if raw_email and isinstance(raw_email, str) and len(raw_email) > 100:
+            import email as email_lib
+            from io import BytesIO
+
+            class AsyncBytesIO(BytesIO):
+                """BytesIO with an async read() for compatibility with UploadFile."""
+                async def read(self, size=-1):
+                    return super().read(size)
+
+            try:
+                msg = email_lib.message_from_string(raw_email)
+                for part in msg.walk():
+                    ct = part.get_content_type() or ""
+                    fname = part.get_filename() or ""
+                    if not fname:
+                        continue
+                    if "." in fname:
+                        ext = "." + fname.rsplit(".", 1)[-1].lower()
+                    else:
+                        ext = ""
+                    if ext in ALLOWED_EXTENSIONS:
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            bio = AsyncBytesIO(payload)
+                            bio.filename = fname
+                            bio.content_type = ct
+                            valid_attachment = bio
+                            valid_attachment_key = "mime_parsed"
+                            valid_attachment_meta = {
+                                "filename": fname,
+                                "type": ct or "application/octet-stream",
+                            }
+                            logger.info(
+                                "Found attachment via MIME parsing: filename=%s size=%d",
+                                fname,
+                                len(payload),
+                            )
+                            break
+            except Exception as e:
+                logger.warning("MIME parsing failed: %s", e)
+
     if not valid_attachment or not hasattr(valid_attachment, "read"):
         # No valid attachment found — log and reply
         # Capture all form keys and content-types for debugging
