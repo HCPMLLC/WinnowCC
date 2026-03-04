@@ -374,6 +374,69 @@ def embedding_status(
     }
 
 
+@router.post("/skills/backfill")
+def backfill_board_job_skills(
+    admin: User = Depends(require_admin_user),
+    session: Session = Depends(get_session),
+):
+    """Enqueue backfill of regex+taxonomy parsing for board jobs missing JobParsedDetail."""
+    from app.services.queue import get_queue
+
+    # Count how many jobs need parsing
+    parsed_job_ids = select(JobParsedDetail.job_id)
+    missing_count = session.execute(
+        select(func.count(Job.id)).where(
+            Job.source.not_in(["employer", "recruiter"]),
+            Job.id.not_in(parsed_job_ids),
+            Job.is_active.is_not(False),
+        )
+    ).scalar()
+
+    get_queue("low").enqueue("app.services.job_pipeline.backfill_board_job_parsing")
+    return {"status": "queued", "jobs_missing_parsed_detail": missing_count}
+
+
+@router.get("/skills/status")
+def skill_parsing_status(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """Return counts of jobs with/without parsed skill data."""
+    total_jobs = session.execute(
+        select(func.count(Job.id)).where(
+            Job.source.not_in(["employer", "recruiter"]),
+            Job.is_active.is_not(False),
+        )
+    ).scalar()
+    jobs_with_parsed = session.execute(
+        select(func.count(JobParsedDetail.job_id)).where(
+            JobParsedDetail.job_id.in_(
+                select(Job.id).where(
+                    Job.source.not_in(["employer", "recruiter"]),
+                    Job.is_active.is_not(False),
+                )
+            )
+        )
+    ).scalar()
+    jobs_with_skills = session.execute(
+        select(func.count(JobParsedDetail.job_id)).where(
+            JobParsedDetail.job_id.in_(
+                select(Job.id).where(
+                    Job.source.not_in(["employer", "recruiter"]),
+                    Job.is_active.is_not(False),
+                )
+            ),
+            func.jsonb_array_length(JobParsedDetail.required_skills) > 0,
+        )
+    ).scalar()
+    return {
+        "board_jobs_total": total_jobs,
+        "board_jobs_with_parsed_detail": jobs_with_parsed,
+        "board_jobs_with_skills": jobs_with_skills,
+        "board_jobs_missing_parsed_detail": total_jobs - jobs_with_parsed,
+    }
+
+
 @router.get("/purge/preview")
 def purge_preview(
     session: Session = Depends(get_session),

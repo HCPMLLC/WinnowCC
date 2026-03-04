@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.models.candidate import Candidate
 from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
+from app.models.job_parsed_detail import JobParsedDetail
 from app.models.match import Match
 
 MIN_MATCH_SCORE = 45
@@ -112,9 +113,33 @@ def compute_matches(
         .scalars()
         .all()
     )
+    # Batch-load parsed skill data for all jobs so missing_skills
+    # reflects real skills instead of random description tokens.
+    job_ids = [j.id for j in jobs]
+    parsed_skills_map: dict[int, list[str]] = {}
+    if job_ids:
+        parsed_rows = session.execute(
+            select(
+                JobParsedDetail.job_id,
+                JobParsedDetail.required_skills,
+                JobParsedDetail.preferred_skills,
+            ).where(JobParsedDetail.job_id.in_(job_ids))
+        ).all()
+        for jid, req, pref in parsed_rows:
+            combined = []
+            if req and isinstance(req, list):
+                combined.extend(req)
+            if pref and isinstance(pref, list):
+                combined.extend(pref)
+            if combined:
+                parsed_skills_map[jid] = combined
+
     scored: list[tuple[Job, MatchResult]] = []
     for job in jobs:
-        result = _score_job(job, profile.profile_json, candidate)
+        parsed_skills = parsed_skills_map.get(job.id)
+        result = _score_job(
+            job, profile.profile_json, candidate, parsed_skills,
+        )
 
         # Blend in semantic similarity when embeddings are available
         job_embedding = _get_embedding_list(job.embedding)
@@ -252,9 +277,11 @@ def _get_profile(
 
 
 def _score_job(
-    job: Job, profile_json: dict, candidate: Candidate | None
+    job: Job, profile_json: dict, candidate: Candidate | None,
+    parsed_job_skills: list[str] | None = None,
 ) -> MatchResult:
     skills = [s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)]
+    skills_set = set(skills)
     preferences = (
         profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
     )
@@ -271,9 +298,22 @@ def _score_job(
 
     job_tokens = _tokenize(job.description_text)
     matched_skills = [s for s in skills if s in job_tokens]
-    missing_skills = [
-        token for token in _top_keywords(job_tokens) if token not in skills
-    ][:7]
+
+    # Use parsed skills from JobParsedDetail when available —
+    # these are real skill names extracted during job ingestion.
+    # Fall back to taxonomy extraction from description if needed.
+    if parsed_job_skills:
+        missing_skills = [
+            s for s in parsed_job_skills
+            if s.lower() not in skills_set
+        ][:7]
+    else:
+        from app.services.skill_taxonomy import extract_skills_from_text
+
+        fallback_skills = extract_skills_from_text(job.description_text or "")
+        missing_skills = [
+            s for s in fallback_skills if s.lower() not in skills_set
+        ][:7]
     skill_score = min(40, int(len(matched_skills) * 4))
 
     location_score = _location_score(job, preferences)
@@ -435,59 +475,46 @@ def _overlap(a: set[str], b: set[str]) -> float:
 
 
 _STOP = {
-    "the",
-    "and",
-    "for",
-    "are",
-    "you",
-    "our",
-    "with",
-    "this",
-    "that",
-    "will",
-    "have",
-    "from",
-    "your",
-    "can",
-    "all",
-    "has",
-    "not",
-    "but",
-    "they",
-    "been",
-    "their",
-    "which",
-    "about",
-    "would",
-    "make",
-    "like",
-    "just",
-    "over",
-    "such",
-    "also",
-    "into",
-    "year",
-    "some",
-    "than",
-    "them",
-    "other",
-    "new",
-    "more",
-    "experience",
-    "work",
-    "team",
-    "role",
-    "ability",
-    "strong",
-    "must",
-    "required",
-    "preferred",
-    "years",
-    "including",
-    "working",
-    "knowledge",
-    "skills",
-    "using",
+    # --- articles / pronouns / prepositions / conjunctions ---
+    "the", "and", "for", "are", "you", "our", "with", "this", "that",
+    "will", "have", "from", "your", "can", "all", "has", "not", "but",
+    "they", "been", "their", "which", "about", "would", "make", "like",
+    "just", "over", "such", "also", "into", "year", "some", "than",
+    "them", "other", "new", "more", "its", "was", "were", "who", "whom",
+    "what", "when", "where", "how", "each", "both", "any", "per", "may",
+    "own", "very", "well", "use", "one", "two", "via", "etc", "does",
+    "did", "had", "being", "should", "could", "shall", "these", "those",
+    # --- common job-posting verbs / adjectives ---
+    "experience", "work", "team", "role", "ability", "strong", "must",
+    "required", "preferred", "years", "including", "working", "knowledge",
+    "skills", "using", "ensure", "develop", "manage", "maintain", "provide",
+    "support", "create", "implement", "build", "drive", "lead", "deliver",
+    "collaborate", "responsible", "assist", "help", "perform", "apply",
+    "contribute", "identify", "define", "design", "review", "establish",
+    "execute", "coordinate", "facilitate", "evaluate", "improve", "monitor",
+    "resolve", "plan", "track", "report", "analyze", "participate",
+    "communicate", "understand", "leverage", "utilize", "demonstrate",
+    "seek", "looking", "join", "offer", "need", "want", "take", "keep",
+    "start", "grow", "learn", "bring", "serve", "meet", "set", "run",
+    # --- generic job-posting nouns ---
+    "company", "organization", "position", "candidate", "opportunity",
+    "environment", "business", "requirements", "responsibilities",
+    "qualifications", "benefits", "salary", "compensation", "description",
+    "job", "time", "day", "week", "month", "world", "part", "full",
+    "level", "area", "base", "end", "top", "high", "low", "best",
+    "way", "process", "system", "solution", "tool", "service", "product",
+    "project", "program", "client", "customer", "user", "member",
+    "leader", "partner", "stakeholder", "group", "department", "function",
+    "industry", "market", "field", "sector", "practice", "standard",
+    "issue", "problem", "result", "goal", "success", "growth", "change",
+    "need", "key", "range", "type", "based", "related", "across",
+    # --- generic adjectives in job postings ---
+    "excellent", "great", "good", "relevant", "various", "multiple",
+    "effective", "efficient", "complex", "current", "technical",
+    "professional", "additional", "specific", "overall", "internal",
+    "external", "existing", "potential", "appropriate", "necessary",
+    "critical", "essential", "minimum", "ideal", "proven", "plus",
+    "equivalent", "similar", "able", "cross", "within", "ongoing",
 }
 
 
