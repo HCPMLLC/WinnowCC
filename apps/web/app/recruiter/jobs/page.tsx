@@ -503,7 +503,9 @@ export default function RecruiterJobsPage() {
                 <div>
                   <div className="mb-1 flex items-center justify-between text-sm">
                     <span className="font-medium text-slate-700">
-                      Processing{uploadBatchStatus ? ` ${uploadBatchStatus.files_completed} of ${uploadBatchStatus.total_files}` : ""}...
+                      {uploadBatchStatus && uploadBatchStatus.total_files > 0
+                        ? `Processing ${uploadBatchStatus.files_completed} of ${uploadBatchStatus.total_files}...`
+                        : "Uploading & parsing — this may take 30–60 seconds..."}
                     </span>
                     <span className="text-slate-500">
                       {uploadBatchStatus && uploadBatchStatus.total_files > 0
@@ -512,17 +514,19 @@ export default function RecruiterJobsPage() {
                     </span>
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
-                      style={{
-                        width: uploadBatchStatus && uploadBatchStatus.total_files > 0
-                          ? `${Math.max(2, Math.round((uploadBatchStatus.files_completed / uploadBatchStatus.total_files) * 100))}%`
-                          : "2%",
-                      }}
-                    />
+                    {uploadBatchStatus && uploadBatchStatus.total_files > 0 ? (
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
+                        style={{
+                          width: `${Math.max(2, Math.round((uploadBatchStatus.files_completed / uploadBatchStatus.total_files) * 100))}%`,
+                        }}
+                      />
+                    ) : (
+                      <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
+                    )}
                   </div>
                   <p className="mt-2 text-center text-xs text-slate-500">
-                    AI is parsing documents in the background...
+                    AI is extracting job details from your document...
                   </p>
                 </div>
               )}
