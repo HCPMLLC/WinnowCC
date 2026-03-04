@@ -9,8 +9,10 @@ Usage:
 
 import logging
 import os
+import signal
 import sys
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -35,6 +37,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Track whether we should truly exit (e.g. user Ctrl+C or real Cloud Run shutdown)
+_shutdown_requested = False
+
+
+def _handle_sigterm(signum, frame):
+    """Handle SIGTERM gracefully — only exit on second signal."""
+    global _shutdown_requested
+    if _shutdown_requested:
+        logger.info("Second SIGTERM received, forcing exit.")
+        sys.exit(0)
+    _shutdown_requested = True
+    logger.info("SIGTERM received, will shut down after current scheduler cycle.")
+
 
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -52,7 +67,87 @@ def _start_health_server():
     server.serve_forever()
 
 
+def _register_cron_jobs(scheduler: Scheduler) -> None:
+    """Register all cron jobs, clearing duplicates first."""
+    # Map of job_type -> (cron_string, func, queue_name)
+    cron_expr = get_scheduler_ingest_cron()
+    jobs_to_schedule = [
+        (
+            "ingest",
+            cron_expr,
+            "app.services.scheduled_jobs:scheduled_ingest_jobs",
+            "default",
+        ),
+        (
+            "expire_introductions",
+            "0 3 * * *",
+            "app.services.scheduled_jobs:scheduled_expire_introductions",
+            "default",
+        ),
+        (
+            "outreach",
+            "*/15 * * * *",
+            "app.services.scheduled_jobs:scheduled_process_outreach",
+            "default",
+        ),
+        (
+            "stale_check",
+            "0 2 * * *",
+            "app.services.scheduled_jobs:scheduled_check_stale_jobs",
+            "default",
+        ),
+        (
+            "job_purge",
+            "0 4 * * 0",
+            "app.services.scheduled_jobs:scheduled_purge_inactive_jobs",
+            "default",
+        ),
+        (
+            "hard_delete",
+            "0 5 * * *",
+            "app.services.scheduled_jobs:scheduled_hard_delete_expired",
+            "default",
+        ),
+        (
+            "weekly_digest",
+            "0 7 * * 0",
+            "app.services.scheduled_jobs:scheduled_send_weekly_digests",
+            "low",
+        ),
+        (
+            "promote_imports",
+            "*/2 * * * *",
+            "app.services.scheduled_jobs:scheduled_promote_queued_imports",
+            "default",
+        ),
+    ]
+
+    # Cancel all existing scheduled jobs to avoid duplicates
+    job_types = {j[0] for j in jobs_to_schedule}
+    for job in scheduler.get_jobs():
+        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") in job_types:
+            scheduler.cancel(job)
+            logger.info(
+                f"Cancelled existing job: {job.meta['scheduled_job_type']} ({job.id})"
+            )
+
+    # Register all cron jobs
+    for job_type, cron_string, func, queue_name in jobs_to_schedule:
+        registered = scheduler.cron(
+            cron_string=cron_string,
+            func=func,
+            queue_name=queue_name,
+            meta={"scheduled_job_type": job_type},
+        )
+        logger.info(f"Registered {job_type}: {registered.id} (cron: {cron_string})")
+
+
 def main():
+    global _shutdown_requested
+
+    # Intercept SIGTERM before rq_scheduler can register its own handler
+    signal.signal(signal.SIGTERM, _handle_sigterm)
+
     # Cloud Run requires a listening port for health checks
     threading.Thread(target=_start_health_server, daemon=True).start()
 
@@ -64,133 +159,42 @@ def main():
         sys.exit(1)
 
     redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-    redis_conn = Redis.from_url(redis_url)
 
-    scheduler = Scheduler(connection=redis_conn, queue_name="default")
+    # Restart loop: if scheduler.run() exits (e.g. transient signal, Redis blip),
+    # reconnect and restart instead of letting the process die.
+    while not _shutdown_requested:
+        try:
+            redis_conn = Redis.from_url(redis_url)
+            redis_conn.ping()
+            logger.info("Redis connection established.")
 
-    # Clear existing scheduled jobs to avoid duplicates on restart
-    for job in scheduler.get_jobs():
-        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "ingest":
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing scheduled job: {job.id}")
+            scheduler = Scheduler(connection=redis_conn, queue_name="default")
+            _register_cron_jobs(scheduler)
 
-    # Get cron expression
-    cron_expr = get_scheduler_ingest_cron()
+            logger.info("Scheduler running. Will auto-restart if interrupted.")
 
-    # Schedule the job ingestion
-    job = scheduler.cron(
-        cron_string=cron_expr,
-        func="app.services.scheduled_jobs:scheduled_ingest_jobs",
-        queue_name="default",
-        meta={"scheduled_job_type": "ingest"},
-    )
+            # Re-apply our SIGTERM handler since Scheduler.__init__ or run()
+            # may override it with its own
+            signal.signal(signal.SIGTERM, _handle_sigterm)
 
-    logger.info(f"Scheduled job ingestion registered: {job.id}")
-    logger.info(f"Cron schedule: {cron_expr}")
+            scheduler.run()
 
-    # Schedule introduction expiration (daily at 3am UTC)
-    intro_job = scheduler.cron(
-        cron_string="0 3 * * *",
-        func="app.services.scheduled_jobs:scheduled_expire_introductions",
-        queue_name="default",
-        meta={"scheduled_job_type": "expire_introductions"},
-    )
-    logger.info(f"Scheduled introduction expiration registered: {intro_job.id}")
+            # scheduler.run() exited — rq_scheduler caught a signal internally
+            if _shutdown_requested:
+                logger.info("Shutdown requested, exiting.")
+                break
+            logger.warning("Scheduler exited unexpectedly, restarting in 5s...")
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt, exiting.")
+            break
+        except Exception:
+            logger.exception("Scheduler crashed, restarting in 10s...")
+            time.sleep(10)
+            continue
 
-    # Schedule outreach processing (every 15 minutes)
-    for job in scheduler.get_jobs():
-        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "outreach":
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing outreach job: {job.id}")
+        time.sleep(5)
 
-    outreach_job = scheduler.cron(
-        cron_string="*/15 * * * *",
-        func="app.services.scheduled_jobs:scheduled_process_outreach",
-        queue_name="default",
-        meta={"scheduled_job_type": "outreach"},
-    )
-    logger.info(f"Scheduled outreach processing registered: {outreach_job.id}")
-
-    # Schedule stale job check (daily at 2am UTC)
-    for job in scheduler.get_jobs():
-        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "stale_check":
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing stale check job: {job.id}")
-
-    stale_job = scheduler.cron(
-        cron_string="0 2 * * *",
-        func="app.services.scheduled_jobs:scheduled_check_stale_jobs",
-        queue_name="default",
-        meta={"scheduled_job_type": "stale_check"},
-    )
-    logger.info(f"Scheduled stale job check registered: {stale_job.id}")
-
-    # Schedule inactive job purge (weekly on Sunday at 4am UTC)
-    for job in scheduler.get_jobs():
-        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "job_purge":
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing job purge: {job.id}")
-
-    purge_job = scheduler.cron(
-        cron_string="0 4 * * 0",
-        func="app.services.scheduled_jobs:scheduled_purge_inactive_jobs",
-        queue_name="default",
-        meta={"scheduled_job_type": "job_purge"},
-    )
-    logger.info(f"Scheduled job purge registered: {purge_job.id}")
-
-    # Schedule hard-delete of expired soft-deleted files (daily at 5am UTC)
-    for job in scheduler.get_jobs():
-        if hasattr(job, "meta") and job.meta.get("scheduled_job_type") == "hard_delete":
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing hard-delete job: {job.id}")
-
-    hard_delete_job = scheduler.cron(
-        cron_string="0 5 * * *",
-        func="app.services.scheduled_jobs:scheduled_hard_delete_expired",
-        queue_name="default",
-        meta={"scheduled_job_type": "hard_delete"},
-    )
-    logger.info(f"Scheduled hard-delete registered: {hard_delete_job.id}")
-
-    # Schedule weekly job market digest (Sunday at 7am UTC, low queue)
-    for job in scheduler.get_jobs():
-        if (
-            hasattr(job, "meta")
-            and job.meta.get("scheduled_job_type") == "weekly_digest"
-        ):
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing weekly digest job: {job.id}")
-
-    digest_job = scheduler.cron(
-        cron_string="0 7 * * 0",
-        func="app.services.scheduled_jobs:scheduled_send_weekly_digests",
-        queue_name="low",
-        meta={"scheduled_job_type": "weekly_digest"},
-    )
-    logger.info(f"Scheduled weekly digest registered: {digest_job.id}")
-
-    # Schedule queued import promotion + stale batch reconciliation (every 2 min)
-    for job in scheduler.get_jobs():
-        if (
-            hasattr(job, "meta")
-            and job.meta.get("scheduled_job_type") == "promote_imports"
-        ):
-            scheduler.cancel(job)
-            logger.info(f"Cancelled existing promote imports job: {job.id}")
-
-    promote_job = scheduler.cron(
-        cron_string="*/2 * * * *",
-        func="app.services.scheduled_jobs:scheduled_promote_queued_imports",
-        queue_name="default",
-        meta={"scheduled_job_type": "promote_imports"},
-    )
-    logger.info(f"Scheduled import promotion registered: {promote_job.id}")
-
-    logger.info("Scheduler running. Press Ctrl+C to stop.")
-
-    # Run the scheduler
-    scheduler.run()
+    logger.info("Scheduler process stopped.")
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ import json
 import os
 from datetime import datetime
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -15,6 +15,8 @@ from app.models.user import User
 from app.services.auth import require_admin_user
 from app.services.queue import get_queue, get_redis_connection
 from app.services.scheduler_config import get_scheduler_config
+
+ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
 
 router = APIRouter(prefix="/api/admin/scheduler", tags=["admin-scheduler"])
 
@@ -119,14 +121,28 @@ def get_scheduler_status(
 def trigger_ingestion(
     admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
 ) -> SchedulerTriggerResponse:
-    """Manually trigger a job ingestion run."""
+    """Manually trigger a job ingestion run (session auth)."""
     queue = get_queue()
-
-    # Import the function path for RQ
     job = queue.enqueue(
         "app.services.scheduled_jobs.scheduled_ingest_jobs",
     )
+    return SchedulerTriggerResponse(
+        message="Job ingestion triggered",
+        job_id=job.id,
+    )
 
+
+@router.post("/trigger-token", response_model=SchedulerTriggerResponse)
+def trigger_ingestion_token(
+    x_admin_token: str = Header(default=""),  # noqa: B008
+) -> SchedulerTriggerResponse:
+    """Manually trigger a job ingestion run (token auth)."""
+    if not ADMIN_TOKEN or x_admin_token != ADMIN_TOKEN:
+        raise HTTPException(status_code=403, detail="Invalid admin token.")
+    queue = get_queue()
+    job = queue.enqueue(
+        "app.services.scheduled_jobs.scheduled_ingest_jobs",
+    )
     return SchedulerTriggerResponse(
         message="Job ingestion triggered",
         job_id=job.id,
