@@ -13,6 +13,8 @@ import type {
   AnalyticsOverview,
   CostMetrics,
   BoardRecommendation,
+  FunnelData,
+  AnalyticsRecommendation,
 } from "../../lib/employer-types";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
@@ -28,6 +30,8 @@ export default function EmployerAnalyticsScreen() {
   const [recommendations, setRecommendations] = useState<
     BoardRecommendation[]
   >([]);
+  const [funnel, setFunnel] = useState<FunnelData | null>(null);
+  const [aiRecs, setAiRecs] = useState<AnalyticsRecommendation[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,9 +39,11 @@ export default function EmployerAnalyticsScreen() {
   const loadData = async () => {
     try {
       setError(null);
-      const [overviewRes, costRes, recRes] = await Promise.all([
+      const [overviewRes, costRes, recRes, funnelRes, aiRecRes] = await Promise.all([
         api.get("/api/employer/analytics/overview"),
         api.get("/api/employer/analytics/cost").catch(() => null),
+        api.get("/api/employer/analytics/recommendations").catch(() => null),
+        api.get("/api/employer/analytics/funnel").catch(() => null),
         api.get("/api/employer/analytics/recommendations").catch(() => null),
       ]);
 
@@ -54,6 +60,16 @@ export default function EmployerAnalyticsScreen() {
         setRecommendations(
           Array.isArray(data) ? data : data.recommendations ?? [],
         );
+      }
+      if (funnelRes && funnelRes.ok) {
+        setFunnel(await funnelRes.json());
+      }
+      if (aiRecRes && aiRecRes.ok) {
+        const data = await aiRecRes.json();
+        const recs = Array.isArray(data)
+          ? data
+          : data.ai_recommendations ?? data.recommendations ?? [];
+        setAiRecs(recs);
       }
     } catch {
       setError("Could not connect to server.");
@@ -159,6 +175,45 @@ export default function EmployerAnalyticsScreen() {
               </Text>
             </View>
           </View>
+        </>
+      )}
+
+      {/* Hiring Funnel */}
+      {funnel && funnel.stages && funnel.stages.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>Hiring Funnel</Text>
+          <View style={styles.card}>
+            {funnel.stages.map((stage) => {
+              const pct = funnel.total > 0 ? (stage.count / funnel.total) * 100 : 0;
+              return (
+                <View key={stage.stage} style={styles.funnelRow}>
+                  <Text style={styles.funnelLabel}>{stage.stage}</Text>
+                  <View style={styles.funnelBarTrack}>
+                    <View
+                      style={[
+                        styles.funnelBarFill,
+                        { width: `${Math.max(pct, 2)}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.funnelCount}>{stage.count}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </>
+      )}
+
+      {/* AI Recommendations */}
+      {aiRecs.length > 0 && (
+        <>
+          <Text style={styles.sectionTitle}>AI Recommendations</Text>
+          {aiRecs.map((rec, i) => (
+            <View key={i} style={styles.card}>
+              <Text style={styles.aiRecTitle}>{rec.title}</Text>
+              <Text style={styles.aiRecDesc}>{rec.description}</Text>
+            </View>
+          ))}
         </>
       )}
 
@@ -314,5 +369,47 @@ const styles = StyleSheet.create({
   recStatDot: {
     marginHorizontal: spacing.xs,
     color: colors.gray300,
+  },
+  funnelRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: spacing.sm,
+    gap: spacing.sm,
+  },
+  funnelLabel: {
+    fontSize: fontSize.xs,
+    color: colors.gray700,
+    width: 80,
+    textTransform: "capitalize",
+  },
+  funnelBarTrack: {
+    flex: 1,
+    height: 16,
+    backgroundColor: colors.gray100,
+    borderRadius: borderRadius.sm,
+    overflow: "hidden",
+  },
+  funnelBarFill: {
+    height: 16,
+    backgroundColor: colors.gold,
+    borderRadius: borderRadius.sm,
+  },
+  funnelCount: {
+    fontSize: fontSize.xs,
+    fontWeight: "600",
+    color: colors.gray900,
+    width: 30,
+    textAlign: "right",
+  },
+  aiRecTitle: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.gray900,
+    marginBottom: spacing.xs,
+  },
+  aiRecDesc: {
+    fontSize: fontSize.sm,
+    color: colors.gray600,
+    lineHeight: 20,
   },
 });

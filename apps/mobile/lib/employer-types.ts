@@ -143,3 +143,19 @@ export interface EmployerProfile {
   subscription_tier: string;
   subscription_status: string;
 }
+
+export interface FunnelStage {
+  stage: string;
+  count: number;
+}
+
+export interface FunnelData {
+  stages: FunnelStage[];
+  total: number;
+}
+
+export interface AnalyticsRecommendation {
+  title: string;
+  description: string;
+  priority: string;
+}

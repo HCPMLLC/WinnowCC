@@ -240,6 +240,20 @@ export default function EmployerSettingsScreen() {
       />
 
       <ProfileMenuItem
+        icon="shield-checkmark-outline"
+        label="Compliance"
+        subtitle="Audit log & OFCCP reports"
+        onPress={() => router.push("/employer/compliance")}
+      />
+
+      <ProfileMenuItem
+        icon="globe-outline"
+        label="Job Distribution"
+        subtitle="Board connections & distribution"
+        onPress={() => router.push("/employer/distribution")}
+      />
+
+      <ProfileMenuItem
         icon="bookmark-outline"
         label="Saved Candidates"
         subtitle="Manage saved candidates"

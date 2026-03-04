@@ -12,6 +12,7 @@
     "@expo/vector-icons": "^15.0.3",
     "@react-native-picker/picker": "^2.11.4",
     "expo": "~54.0.33",
+    "expo-clipboard": "~8.0.8",
     "expo-constants": "~18.0.13",
     "expo-device": "~8.0.10",
     "expo-document-picker": "~14.0.8",

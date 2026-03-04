@@ -18,6 +18,13 @@ import { getToken } from "../../lib/auth";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import ScoreBadge from "../../components/ScoreBadge";
 import SkillTag from "../../components/SkillTag";
+import StatusPredictionCard from "../../components/StatusPredictionCard";
+import InterviewPrepPanel from "../../components/InterviewPrepPanel";
+import RejectionFeedbackCard from "../../components/RejectionFeedbackCard";
+import CultureSummaryCard from "../../components/CultureSummaryCard";
+import GapRecommendationsCard from "../../components/GapRecommendationsCard";
+import EmailDraftModal from "../../components/EmailDraftModal";
+import SalaryCoachModal from "../../components/SalaryCoachModal";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
 
 const API_BASE =
@@ -54,6 +61,7 @@ interface MatchDetail {
     missing_skills?: string[];
     salary_estimate?: number[];
   };
+  match_explanation?: string;
   application_status: string | null;
   notes: string | null;
 }
@@ -69,6 +77,8 @@ export default function MatchDetailScreen() {
     cover_letter_url?: string;
   } | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [emailModalVisible, setEmailModalVisible] = useState(false);
+  const [salaryModalVisible, setSalaryModalVisible] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -223,6 +233,10 @@ export default function MatchDetailScreen() {
       </Text>
       {salaryDisplay && <Text style={styles.salary}>{salaryDisplay}</Text>}
 
+      {match.match_explanation && (
+        <Text style={styles.matchExplanation}>{match.match_explanation}</Text>
+      )}
+
       {/* Scores */}
       <View style={styles.scoresRow}>
         <View style={styles.scoreItem}>
@@ -274,6 +288,12 @@ export default function MatchDetailScreen() {
         </View>
       )}
 
+      {/* Gap Recommendations — only when missing skills exist */}
+      {missingSkills.length > 0 && <GapRecommendationsCard matchId={match.id} />}
+
+      {/* Culture Summary */}
+      <CultureSummaryCard jobId={match.job.id} />
+
       {/* Application Status */}
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Application Status</Text>
@@ -299,6 +319,17 @@ export default function MatchDetailScreen() {
           ))}
         </View>
       </View>
+
+      {/* Status Prediction — only when applied */}
+      {status === "applied" && <StatusPredictionCard matchId={match.id} />}
+
+      {/* Interview Prep — when interviewing or offer */}
+      {(status === "interviewing" || status === "offer") && (
+        <InterviewPrepPanel matchId={match.id} />
+      )}
+
+      {/* Rejection Feedback — when rejected */}
+      {status === "rejected" && <RejectionFeedbackCard matchId={match.id} />}
 
       {/* Generate ATS Resume */}
       <View style={styles.section}>
@@ -350,6 +381,30 @@ export default function MatchDetailScreen() {
         )}
       </View>
 
+      {/* Draft Email */}
+      <View style={styles.section}>
+        <TouchableOpacity
+          style={styles.secondaryBtn}
+          onPress={() => setEmailModalVisible(true)}
+        >
+          <Ionicons name="mail-outline" size={18} color={colors.primary} />
+          <Text style={styles.secondaryBtnText}>Draft Email</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Salary Coach — only when offer */}
+      {status === "offer" && (
+        <View style={styles.section}>
+          <TouchableOpacity
+            style={styles.secondaryBtn}
+            onPress={() => setSalaryModalVisible(true)}
+          >
+            <Ionicons name="cash-outline" size={18} color={colors.primary} />
+            <Text style={styles.secondaryBtnText}>Salary Coach</Text>
+          </TouchableOpacity>
+        </View>
+      )}
+
       {/* View Job Posting */}
       {match.job.url && (
         <TouchableOpacity
@@ -360,6 +415,18 @@ export default function MatchDetailScreen() {
           <Text style={styles.linkBtnText}>View Job Posting</Text>
         </TouchableOpacity>
       )}
+
+      {/* Modals */}
+      <EmailDraftModal
+        visible={emailModalVisible}
+        onClose={() => setEmailModalVisible(false)}
+        matchId={match.id}
+      />
+      <SalaryCoachModal
+        visible={salaryModalVisible}
+        onClose={() => setSalaryModalVisible(false)}
+        matchId={match.id}
+      />
     </ScrollView>
   );
 }
@@ -394,7 +461,14 @@ const styles = StyleSheet.create({
     fontSize: fontSize.md,
     fontWeight: "600",
     color: colors.green500,
+    marginBottom: spacing.xs,
+  },
+  matchExplanation: {
+    fontSize: fontSize.sm,
+    fontStyle: "italic",
+    color: colors.green500,
     marginBottom: spacing.md,
+    lineHeight: 20,
   },
   scoresRow: {
     flexDirection: "row",
@@ -490,6 +564,21 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.xs,
     paddingVertical: spacing.md,
+  },
+  secondaryBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.xs,
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: borderRadius.md,
+    paddingVertical: spacing.md,
+  },
+  secondaryBtnText: {
+    fontSize: fontSize.md,
+    fontWeight: "600",
+    color: colors.primary,
   },
   linkBtnText: {
     fontSize: fontSize.md,
