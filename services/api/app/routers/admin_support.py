@@ -613,7 +613,7 @@ def queue_monitor(
         failed_count = qdata.get("failed", 0)
         failed_jobs = []
         if failed_count > 0:
-            raw_failed = get_failed_jobs(qname, 10)
+            raw_failed = get_failed_jobs(qname, 50)
             for fj in raw_failed:
                 failed_jobs.append(
                     {
