@@ -28,6 +28,9 @@ def ingest_jobs_job(query: dict) -> int:
 
 
 def match_jobs_job(user_id: int, profile_version: int) -> int:
+    if user_id is None:
+        logger.warning("match_jobs_job: skipping — user_id is None")
+        return 0
     session = get_session_factory()()
     try:
         matches = compute_matches(session, user_id, profile_version)
