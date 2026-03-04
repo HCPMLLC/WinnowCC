@@ -11,6 +11,7 @@ const sections = [
   'Content Ownership',
   'Subscription & Billing',
   'Refunds & Cancellation',
+  'SMS / Text Messaging',
   'AI-Generated Content',
   'Disclaimer of Warranties',
   'Limitation of Liability',
@@ -26,7 +27,7 @@ export default function TermsPage() {
       <div style={{ background: 'linear-gradient(135deg, #1a1a2e 0%, #16213e 100%)', padding: '60px 20px', textAlign: 'center' }}>
         <p style={{ color: '#a78bfa', fontSize: 14, fontWeight: 600, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 12 }}>Legal</p>
         <h1 style={{ color: '#ffffff', fontSize: 40, fontWeight: 700, margin: '0 0 16px' }}>Terms of Service</h1>
-        <p style={{ color: '#94a3b8', fontSize: 16, margin: 0 }}>Last updated: February 2026 &nbsp;·&nbsp; Effective: February 2026</p>
+        <p style={{ color: '#94a3b8', fontSize: 16, margin: 0 }}>Last updated: March 2026 &nbsp;·&nbsp; Effective: March 2026</p>
       </div>
 
       <div style={{ maxWidth: 1100, margin: '0 auto', padding: '60px 20px', display: 'flex', gap: 60, alignItems: 'flex-start' }}>
@@ -144,6 +145,52 @@ export default function TermsPage() {
                 Upon cancellation, you will receive a confirmation email. Your data will be retained for
                 30 days after the end of your billing period, after which it will be deleted per our
                 Privacy Policy.
+              </p>
+            </Section>
+
+            <Section id="sms---text-messaging" title="SMS / Text Messaging">
+              <p>
+                Winnow offers an optional SMS notification program, <strong>Winnow Job Alerts &amp; Application Updates</strong>,
+                that sends automated text messages to your mobile phone. By opting in, you agree to receive the following
+                types of messages:
+              </p>
+              <ul>
+                <li>New job match alerts based on your preferences</li>
+                <li>Application status updates (submitted, viewed, interview scheduled)</li>
+                <li>Career alerts and recommendations</li>
+                <li>Account security notifications (e.g., verification codes)</li>
+              </ul>
+              <p>
+                <strong>Message frequency:</strong> Message frequency varies. You may receive up to 10 messages per week
+                depending on your job matching activity. Some weeks you may receive fewer or no messages.
+              </p>
+              <p>
+                <strong>Message and data rates may apply.</strong> Check with your mobile carrier for details about your
+                text messaging plan.
+              </p>
+              <p>
+                <strong>Opt-out:</strong> You can stop receiving SMS messages at any time by replying <strong>STOP</strong> to
+                any message from Winnow. You will receive a one-time confirmation and no further messages will be sent.
+                You can also disable SMS notifications in your{' '}
+                <a href="/settings" style={{ color: '#6366f1' }}>Account Settings</a>.
+              </p>
+              <p>
+                <strong>Help:</strong> Reply <strong>HELP</strong> to any message for assistance, or contact us
+                at <a href="mailto:support@winnowcc.ai" style={{ color: '#6366f1' }}>support@winnowcc.ai</a>.
+              </p>
+              <p>
+                <strong>Consent is not required.</strong> Opting in to SMS notifications is not a condition of purchasing
+                any goods or services from Winnow. You may use all features of the platform without enabling SMS notifications.
+              </p>
+              <p>
+                <strong>Privacy:</strong> We will not share your opt-in to our SMS program with any third party for purposes
+                unrelated to providing you with the messaging service. For full details, see our{' '}
+                <a href="/privacy" style={{ color: '#6366f1' }}>Privacy Policy</a> and{' '}
+                <a href="/sms-consent" style={{ color: '#6366f1' }}>SMS Messaging Terms &amp; Consent</a> page.
+              </p>
+              <p>
+                Supported carriers include AT&amp;T, T-Mobile, Verizon, and others. Carriers are not liable for delayed
+                or undelivered messages. T-Mobile is not liable for delayed or undelivered messages.
               </p>
             </Section>
 
