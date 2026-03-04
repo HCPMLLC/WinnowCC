@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import logging
 import os
 from datetime import UTC, datetime, timedelta
@@ -8,6 +6,7 @@ import httpx
 from fastapi import (
     APIRouter,
     BackgroundTasks,
+    Body,
     Depends,
     Header,
     HTTPException,
@@ -215,8 +214,8 @@ def _do_send_otp(
 @limiter.limit("5/minute")
 def signup(
     request: Request,
-    payload: AuthRequest,
     response: Response,
+    payload: AuthRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> MeResponse:
     _validate_password(payload.password)
@@ -250,9 +249,9 @@ def signup(
 @limiter.limit("10/minute")
 def login(
     request: Request,
-    payload: AuthRequest,
     response: Response,
     bg: BackgroundTasks,
+    payload: AuthRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> LoginResponse:
     _validate_password(payload.password)
@@ -296,8 +295,8 @@ def login(
 @limiter.limit("10/minute")
 def verify_otp_endpoint(
     request: Request,
-    payload: VerifyOtpRequest,
     response: Response,
+    payload: VerifyOtpRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> MeResponse:
     email = payload.email.lower().strip()
@@ -341,8 +340,8 @@ def verify_otp_endpoint(
 @limiter.limit("3/minute")
 def resend_otp(
     request: Request,
-    payload: ResendOtpRequest,
     bg: BackgroundTasks,
+    payload: ResendOtpRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> dict:
     _validate_password(payload.password)
@@ -374,8 +373,8 @@ RESET_TOKEN_TTL_MINUTES = 30
 @limiter.limit("3/minute")
 def forgot_password(
     request: Request,
-    payload: ForgotPasswordRequest,
     background_tasks: BackgroundTasks,
+    payload: ForgotPasswordRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> dict:
     """Send a password reset link. Always returns 200 to prevent email enumeration."""
@@ -400,8 +399,8 @@ def forgot_password(
 @limiter.limit("5/minute")
 def reset_password(
     request: Request,
-    payload: ResetPasswordRequest,
     response: Response,
+    payload: ResetPasswordRequest = Body(...),
     session: Session = Depends(get_session),
 ) -> dict:
     """Reset password using a valid token."""
