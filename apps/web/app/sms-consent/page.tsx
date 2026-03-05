@@ -14,68 +14,82 @@ export default function SmsConsentPage() {
       </h1>
       <p className="mb-8 text-sm text-slate-500">Last updated: March 2, 2026</p>
 
-      {/* Visible opt-in form for Telnyx 10DLC compliance */}
+      {/* How to Opt In — clear CTA path for Telnyx 10DLC compliance */}
       <section className="mb-10 rounded-2xl border border-blue-200 bg-blue-50 p-6">
         <h2 className="mb-1 text-lg font-semibold text-slate-900">
-          Opt In to Winnow SMS Notifications
+          How to Opt In to Winnow SMS Notifications
         </h2>
         <p className="mb-4 text-sm text-slate-600">
-          Enter your phone number and check the box below to receive text messages
-          from Winnow.
+          Follow these steps to receive text messages from Winnow:
         </p>
 
-        <div className="flex flex-col gap-4">
-          <label className="flex flex-col gap-1 text-sm font-medium text-slate-700">
-            Mobile Phone Number
-            <input
-              type="tel"
-              placeholder="(210) 555-1234"
-              disabled
-              className="max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-400"
-            />
-          </label>
-
-          <label className="flex items-start gap-3 text-sm text-slate-700">
-            <input type="checkbox" disabled className="mt-1" />
-            <span>
-              I agree to receive automated text messages from <strong>Winnow</strong>{" "}
-              about job match alerts, application status updates, and career
-              recommendations at the mobile phone number provided. Message frequency
-              varies. Standard Message and Data Rates may apply. Reply STOP to opt out
-              or HELP for help. We will not share your mobile information with third
-              parties for promotional or marketing purposes. Consent is not a condition
-              of purchase or use of Winnow. See our{" "}
-              <Link
-                href="/terms"
-                target="_blank"
-                className="font-semibold underline hover:text-slate-900"
-              >
-                Terms of Service
-              </Link>{" "}
-              and{" "}
-              <Link
-                href="/privacy"
-                target="_blank"
-                className="font-semibold underline hover:text-slate-900"
-              >
-                Privacy Policy
-              </Link>
-              .
-            </span>
-          </label>
-
-          <p className="text-xs text-slate-500">
-            To opt in,{" "}
-            <Link href="/login" className="font-semibold underline hover:text-slate-700">
-              sign in to your Winnow account
-            </Link>{" "}
-            and enable SMS notifications in{" "}
-            <Link href="/settings" className="font-semibold underline hover:text-slate-700">
-              Settings
+        <ol className="mb-5 list-inside list-decimal space-y-2 text-sm text-slate-700">
+          <li>
+            <Link href="/login" className="font-semibold underline hover:text-slate-900">
+              Create a free Winnow account or sign in
             </Link>
-            .
+          </li>
+          <li>
+            Go to your{" "}
+            <Link href="/settings" className="font-semibold underline hover:text-slate-900">
+              Account Settings
+            </Link>{" "}
+            page
+          </li>
+          <li>
+            Scroll to <strong>&quot;Phone &amp; SMS Notifications&quot;</strong>
+          </li>
+          <li>Enter your mobile phone number</li>
+          <li>
+            Check the consent box and tap <strong>&quot;Save Changes&quot;</strong>
+          </li>
+        </ol>
+
+        <div className="rounded-lg border border-blue-300 bg-white p-4 text-sm text-slate-700">
+          <p className="mb-2 font-semibold text-slate-900">
+            At the point of opt-in you will see and agree to the following:
+          </p>
+          <p className="italic text-slate-600">
+            &quot;I agree to receive automated text messages from Winnow about job
+            matches, application updates, and career alerts at the phone number
+            provided. Message frequency varies. Standard Msg &amp; data rates may
+            apply. Reply STOP to opt out or HELP for help. We will not share your
+            mobile information with third parties for promotional or marketing
+            purposes. See our{" "}
+            <span className="font-semibold underline">Terms of Service</span> and{" "}
+            <span className="font-semibold underline">Privacy Policy</span>. Consent
+            is not required to use Winnow.&quot;
           </p>
         </div>
+
+        <div className="mt-4 flex">
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Sign In to Opt In
+          </Link>
+        </div>
+      </section>
+
+      {/* Quick-reference disclosure box for reviewer */}
+      <section className="mb-10 rounded-2xl border border-slate-300 bg-slate-50 p-6">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
+          SMS Program Summary
+        </h2>
+        <table className="w-full text-sm text-slate-700">
+          <tbody className="divide-y divide-slate-200">
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Brand</td><td className="py-2">Winnow Career Concierge</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Program</td><td className="py-2">Winnow Job Alerts &amp; Application Updates</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Opt-in</td><td className="py-2"><Link href="/login" className="font-semibold underline hover:text-slate-900">Sign in</Link> &rarr; <Link href="/settings" className="font-semibold underline hover:text-slate-900">Settings</Link> &rarr; Phone &amp; SMS Notifications &rarr; check consent box &rarr; Save</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Opt-out</td><td className="py-2">Reply <strong>STOP</strong> to any message, or disable in <Link href="/settings" className="font-semibold underline hover:text-slate-900">Account Settings</Link></td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Help</td><td className="py-2">Reply <strong>HELP</strong> to any message, or email <a href="mailto:support@winnowcc.ai" className="font-semibold underline hover:text-slate-900">support@winnowcc.ai</a></td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Frequency</td><td className="py-2">Message frequency varies; up to 10 messages per week</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Rates</td><td className="py-2">Message and data rates may apply</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Privacy</td><td className="py-2"><Link href="/privacy" className="font-semibold underline hover:text-slate-900">Privacy Policy</Link> &mdash; see <Link href="/privacy#sms---text-messaging" className="font-semibold underline hover:text-slate-900">SMS / Text Messaging</Link> section</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Terms</td><td className="py-2"><Link href="/terms" className="font-semibold underline hover:text-slate-900">Terms of Service</Link> &mdash; see <Link href="/terms#sms---text-messaging" className="font-semibold underline hover:text-slate-900">SMS / Text Messaging</Link> section</td></tr>
+          </tbody>
+        </table>
       </section>
 
       <div className="space-y-8 text-sm leading-relaxed text-slate-700">
