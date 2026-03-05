@@ -311,7 +311,7 @@ def _do_parse_and_create(
             db.commit()
             _send_parse_error_reply(sender_email, subject, attachment_filename, profile_type)
             return
-        confidence = parsed_data.get("confidence", 0.0)
+        confidence = parsed_data.get("parsing_confidence", 0.0)
         log_entry.parsing_confidence = confidence
         log_entry.status = "parsed"
         db.commit()
@@ -424,6 +424,13 @@ def _do_parse_and_create(
     # 3. Send completion email with correct review URL
     review_path = (
         "recruiter/jobs" if profile_type == "recruiter" else "employer/jobs"
+    )
+    logger.info(
+        "Sending success email for job %s: title=%r confidence=%s keys=%s",
+        job_id,
+        parsed_data.get("title"),
+        parsed_data.get("parsing_confidence"),
+        list(parsed_data.keys()),
     )
     _send_success_reply(sender_email, subject, parsed_data, job_id, review_path)
 
@@ -631,8 +638,8 @@ def _send_success_reply(
 
     resend.api_key = RESEND_API_KEY
 
-    title = parsed_data.get("title", "your job posting")
-    confidence = parsed_data.get("confidence", 0.0)
+    title = parsed_data.get("title") or parsed_data.get("normalized_title") or "your job posting"
+    confidence = parsed_data.get("parsing_confidence", 0.0)
     confidence_pct = f"{confidence * 100:.0f}%"
     review_url = f"{FRONTEND_URL}/{review_path}/{job_id}"
 

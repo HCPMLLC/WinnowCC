@@ -1659,7 +1659,7 @@ def parse_job_from_file(
     except Exception:
         parsed = {}
 
-    if not parsed:
+    if not parsed or not parsed.get("title"):
         parsed = _regex_fallback_parse(raw_text)
 
     # Post-process and score
@@ -1700,7 +1700,7 @@ def parse_job_from_text(
     except Exception:
         parsed = {}
 
-    if not parsed:
+    if not parsed or not parsed.get("title"):
         parsed = _regex_fallback_parse(raw_text)
 
     # Override company name if provided externally
