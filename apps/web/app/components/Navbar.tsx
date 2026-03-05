@@ -5,40 +5,64 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useState } from "react";
+import ProfileDropdown from "./ProfileDropdown";
 
-// --- Link definitions ---
+// --- Slim navbar links (3-4 per role) ---
 const CANDIDATE_LINKS = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/matches", label: "Matches" },
-  { href: "/profile", label: "Profile" },
-  { href: "/insights", label: "Insights" },
-  { href: "/settings", label: "Settings" },
+  { href: "/sieve", label: "Sieve AI" },
 ];
 
 const EMPLOYER_LINKS = [
   { href: "/employer/dashboard", label: "Dashboard" },
   { href: "/employer/jobs", label: "Jobs" },
   { href: "/employer/candidates", label: "Candidates" },
-  { href: "/employer/settings", label: "Settings" },
 ];
 
 const RECRUITER_LINKS = [
   { href: "/recruiter/dashboard", label: "Dashboard" },
-  { href: "/recruiter/jobs", label: "Jobs" },
-  { href: "/recruiter/clients", label: "Clients" },
   { href: "/recruiter/pipeline", label: "Pipeline" },
   { href: "/recruiter/candidates", label: "Candidates" },
 ];
 
 const ADMIN_LINKS = [
+  { href: "/admin/kpi", label: "KPI" },
   { href: "/admin/trust", label: "Trust Queue" },
-  { href: "/admin/jobs", label: "Jobs" },
-  { href: "/admin/job-quality", label: "Job Quality" },
-  { href: "/admin/candidates", label: "Candidates" },
+  { href: "/admin/support", label: "Support" },
 ];
 
+// --- Profile dropdown links per role ---
+function getProfileLinks(
+  isCandidate: boolean,
+  isEmployer: boolean,
+  isRecruiter: boolean,
+) {
+  if (isRecruiter) {
+    return [
+      { href: "/recruiter/settings", label: "Settings" },
+      { href: "/recruiter/pricing", label: "Billing" },
+      { href: "/trust-safety", label: "Trust & Safety" },
+    ];
+  }
+  if (isEmployer) {
+    return [
+      { href: "/employer/settings", label: "Settings" },
+      { href: "/employer/pricing", label: "Billing" },
+      { href: "/trust-safety", label: "Trust & Safety" },
+    ];
+  }
+  // Default: candidate
+  return [
+    { href: "/settings", label: "Settings" },
+    { href: "/billing", label: "Billing" },
+    { href: "/trust-safety", label: "Trust & Safety" },
+  ];
+}
+
 export default function Navbar() {
-  const { user, loading, isAdmin, isCandidate, isEmployer, isRecruiter } = useAuth();
+  const { user, loading, isAdmin, isCandidate, isEmployer, isRecruiter } =
+    useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -72,6 +96,8 @@ export default function Navbar() {
       ? "/employer/dashboard"
       : "/dashboard";
 
+  const profileLinks = getProfileLinks(isCandidate, isEmployer, isRecruiter);
+
   return (
     <nav className="bg-slate-900 text-white shadow-lg">
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
@@ -92,7 +118,7 @@ export default function Navbar() {
 
           {/* Desktop links */}
           <div className="hidden items-center space-x-1 md:flex">
-            {/* Candidate links — only shown for candidate/both role */}
+            {/* Candidate links */}
             {isCandidate &&
               CANDIDATE_LINKS.map((link) => (
                 <Link
@@ -108,7 +134,7 @@ export default function Navbar() {
                 </Link>
               ))}
 
-            {/* Employer section — only shown for employer/both role */}
+            {/* Employer section */}
             {isEmployer && (
               <>
                 {isCandidate && <div className="mx-2 h-6 w-px bg-slate-600" />}
@@ -131,7 +157,7 @@ export default function Navbar() {
               </>
             )}
 
-            {/* Recruiter section — only shown for recruiter role */}
+            {/* Recruiter section */}
             {isRecruiter && (
               <>
                 <div className="mx-2 h-6 w-px bg-slate-600" />
@@ -154,10 +180,10 @@ export default function Navbar() {
               </>
             )}
 
-            {/* Admin section — only shown if user.is_admin */}
+            {/* Admin section */}
             {isAdmin && (
               <>
-                <div className="mx-2 h-6 w-px bg-slate-600" /> {/* Divider */}
+                <div className="mx-2 h-6 w-px bg-slate-600" />
                 <span className="mr-1 text-xs uppercase tracking-wider text-slate-500">
                   Admin
                 </span>
@@ -178,26 +204,18 @@ export default function Navbar() {
             )}
           </div>
 
-          {/* Right side: user info + logout */}
-          <div className="hidden items-center space-x-4 md:flex">
-            <span className="text-sm text-gray-400">{user.email}</span>
+          {/* Right side: profile dropdown */}
+          <div className="hidden items-center space-x-3 md:flex">
             {isAdmin && (
               <span className="rounded-full bg-red-900/50 px-2 py-0.5 text-xs text-red-300">
                 Admin
               </span>
             )}
-            <Link
-              href="/trust-safety"
-              className="text-sm text-gray-500 transition-colors hover:text-gray-300"
-            >
-              Trust &amp; Safety
-            </Link>
-            <button
-              onClick={handleLogout}
-              className="text-sm text-gray-400 transition-colors hover:text-white"
-            >
-              Logout
-            </button>
+            <ProfileDropdown
+              email={user.email}
+              onLogout={handleLogout}
+              links={profileLinks}
+            />
           </div>
 
           {/* Mobile hamburger button */}
@@ -324,13 +342,16 @@ export default function Navbar() {
             )}
 
             <div className="my-2 border-t border-slate-700" />
-            <Link
-              href="/trust-safety"
-              onClick={() => setMobileOpen(false)}
-              className="block rounded-md px-3 py-2 text-sm text-gray-500 hover:text-gray-300"
-            >
-              Trust &amp; Safety
-            </Link>
+            {profileLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setMobileOpen(false)}
+                className="block rounded-md px-3 py-2 text-sm text-gray-400 hover:text-gray-300"
+              >
+                {link.label}
+              </Link>
+            ))}
             <div className="px-3 py-2">
               <p className="text-sm text-gray-400">{user.email}</p>
               <button

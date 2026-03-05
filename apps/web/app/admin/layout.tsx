@@ -6,29 +6,17 @@ import { useAuth } from "../hooks/useAuth";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useCallback } from "react";
 
-const ADMIN_NAV = [
-  { href: "/admin/kpi", label: "KPI" },
-  { href: "/admin/profile", label: "Users" },
-  { href: "/admin/candidates", label: "Candidates" },
-  { href: "/admin/employers", label: "Employers" },
-  { href: "/admin/recruiters", label: "Recruiters" },
-  { href: "/admin/jobs", label: "Jobs" },
-  { href: "/admin/job-quality", label: "Job Quality" },
-  { href: "/admin/trust", label: "Trust" },
-  { href: "/admin/forms", label: "Forms" },
-  { href: "/admin/settings", label: "Settings" },
-];
+type AdminNavItem = {
+  href: string;
+  label: string;
+  exact?: boolean;
+  badge?: number;
+};
 
-const SUPPORT_NAV = [
-  { href: "/admin/support", label: "Overview", exact: true },
-  { href: "/admin/support/lookup", label: "User Lookup" },
-  { href: "/admin/support/billing", label: "Billing" },
-  { href: "/admin/support/queues", label: "Queues" },
-  { href: "/admin/support/scheduler", label: "Scheduler" },
-  { href: "/admin/support/usage", label: "Usage" },
-  { href: "/admin/support/audit", label: "Audit Log" },
-  { href: "/admin/support/tickets", label: "Tickets" },
-];
+type AdminNavSection = {
+  label: string;
+  items: AdminNavItem[];
+};
 
 export default function AdminLayout({
   children,
@@ -80,54 +68,78 @@ export default function AdminLayout({
   }
 
   if (!isAdmin) {
-    return null; // Will redirect via the useEffect above
+    return null;
   }
 
-  const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href + "/");
+  const isActive = (href: string, exact?: boolean) =>
+    exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
+
+  const ADMIN_SECTIONS: AdminNavSection[] = [
+    {
+      label: "Platform",
+      items: [
+        { href: "/admin/kpi", label: "KPI Dashboard" },
+        { href: "/admin/profile", label: "Users" },
+        { href: "/admin/candidates", label: "Candidates" },
+        { href: "/admin/employers", label: "Employers" },
+        { href: "/admin/recruiters", label: "Recruiters" },
+        { href: "/admin/jobs", label: "Jobs" },
+        { href: "/admin/job-quality", label: "Job Quality" },
+        { href: "/admin/forms", label: "Forms" },
+      ],
+    },
+    {
+      label: "Trust & Compliance",
+      items: [
+        { href: "/admin/trust", label: "Trust Queue" },
+        { href: "/admin/support/audit", label: "Audit Log" },
+        { href: "/admin/settings", label: "Settings" },
+      ],
+    },
+    {
+      label: "Operations",
+      items: [
+        { href: "/admin/support", label: "Support Overview", exact: true },
+        { href: "/admin/support/lookup", label: "User Lookup" },
+        { href: "/admin/support/billing", label: "Billing" },
+        { href: "/admin/support/queues", label: "Queues", badge: failedCount },
+        { href: "/admin/support/scheduler", label: "Scheduler" },
+        { href: "/admin/support/usage", label: "Usage" },
+        { href: "/admin/support/tickets", label: "Tickets" },
+      ],
+    },
+  ];
 
   return (
     <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       <div className="flex gap-8">
         {/* Sidebar nav */}
-        <aside className="hidden w-44 flex-shrink-0 lg:block">
+        <aside className="hidden w-48 flex-shrink-0 lg:block">
           <nav className="sticky top-6 space-y-1">
-            <p className="mb-3 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Admin
-            </p>
-            {ADMIN_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  isActive(item.href)
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <p className="mb-3 mt-6 px-3 text-xs font-semibold uppercase tracking-wider text-slate-400">
-              Support
-            </p>
-            {SUPPORT_NAV.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                  ("exact" in item ? pathname === item.href : isActive(item.href))
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                }`}
-              >
-                {item.label}
-                {item.label === "Queues" && failedCount > 0 && (
-                  <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
-                    {failedCount}
-                  </span>
-                )}
-              </Link>
+            {ADMIN_SECTIONS.map((section) => (
+              <div key={section.label}>
+                <p className="mb-1 px-3 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400 first:pt-0">
+                  {section.label}
+                </p>
+                {section.items.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                      isActive(item.href, item.exact)
+                        ? "bg-slate-900 text-white"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                    }`}
+                  >
+                    {item.label}
+                    {item.badge != null && item.badge > 0 && (
+                      <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
+                        {item.badge}
+                      </span>
+                    )}
+                  </Link>
+                ))}
+              </div>
             ))}
           </nav>
         </aside>
