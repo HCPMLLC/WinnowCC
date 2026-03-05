@@ -6,6 +6,7 @@ import { fetchAuthMe, type AuthMe } from "../lib/auth";
 import { buildRedirectValue, withRedirectParam } from "../lib/redirects";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
+import UsageMeter from "../components/UsageMeter";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -18,52 +19,14 @@ type BillingStatus = {
   match_refreshes_limit: number | null;
   tailor_requests_used: number;
   tailor_requests_limit: number | null;
+  usage?: {
+    sieve_messages_today: number;
+    semantic_searches_today: number;
+  };
+  limits?: Record<string, unknown>;
 };
 
 /* ---------- Reusable components ---------- */
-
-function UsageMeter({
-  label,
-  used,
-  limit,
-}: {
-  label: string;
-  used: number;
-  limit: number | null;
-}) {
-  const isUnlimited = limit === null;
-  const pct = isUnlimited
-    ? 0
-    : limit > 0
-      ? Math.min((used / limit) * 100, 100)
-      : 0;
-  const atLimit = !isUnlimited && limit !== null && used >= limit;
-
-  return (
-    <div>
-      <div className="mb-1 flex justify-between text-sm">
-        <span className="font-medium text-slate-700">{label}</span>
-        <span className={atLimit ? "font-semibold text-red-600" : "text-slate-500"}>
-          {used} / {isUnlimited ? "Unlimited" : limit}
-        </span>
-      </div>
-      <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-100">
-        <div
-          className={`h-full rounded-full transition-all ${
-            isUnlimited
-              ? "w-full bg-blue-500"
-              : atLimit
-                ? "bg-red-500"
-                : pct > 70
-                  ? "bg-amber-500"
-                  : "bg-blue-500"
-          }`}
-          style={!isUnlimited ? { width: `${pct}%` } : undefined}
-        />
-      </div>
-    </div>
-  );
-}
 
 function StatusBadge({ status }: { status: string | null }) {
   if (!status) return null;
@@ -497,6 +460,32 @@ function BillingPageContent() {
                 used={billing.tailor_requests_used}
                 limit={billing.tailor_requests_limit}
               />
+              {billing.usage && billing.limits && (
+                <>
+                  <UsageMeter
+                    label="Sieve Messages"
+                    period="(today)"
+                    used={billing.usage.sieve_messages_today}
+                    limit={
+                      typeof billing.limits.sieve_messages_per_day === "number" &&
+                      (billing.limits.sieve_messages_per_day as number) < 9999
+                        ? (billing.limits.sieve_messages_per_day as number)
+                        : null
+                    }
+                  />
+                  <UsageMeter
+                    label="Semantic Searches"
+                    period="(today)"
+                    used={billing.usage.semantic_searches_today}
+                    limit={
+                      typeof billing.limits.semantic_searches_per_day === "number" &&
+                      (billing.limits.semantic_searches_per_day as number) < 9999
+                        ? (billing.limits.semantic_searches_per_day as number)
+                        : null
+                    }
+                  />
+                </>
+              )}
             </div>
           </div>
         )}

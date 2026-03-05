@@ -185,11 +185,14 @@ Winnow serves three user segments with independent pricing and feature gates:
 - Daily limits tracked via `DailyUsageCounter` model (PostgreSQL upsert + SQLite fallback for tests)
 - Helpers: `get_tier_limit()`, `check_feature_access()`, `check_daily_limit()`, `increment_daily_counter()`
 
-### Employers (starter $49/mo / pro $149/mo)
+### Employers (free / starter $49/mo / pro $149/mo / enterprise custom)
+- `free` is the default tier (1 active job, 5 candidate views/mo, Google Jobs only)
+- `enterprise` is admin-assigned only (not purchasable), 999-level limits on all features
 - Job posting, distribution, candidate management, compliance reporting
 - Visibility gates: `submission_view` (`basic` → `standard` → `full`), `duplicate_highlighting`
 
-### Recruiters (solo $39/mo / team $89/user/mo / agency $129/user/mo)
+### Recruiters (trial 14-day / solo $39/mo / team $89/user/mo / agency $129/user/mo)
+- `trial` is a 14-day free trial auto-assigned to new recruiters, generous limits (999 for most features), includes features Solo cannot access (cross_vendor_duplicate_check, client_hierarchy, etc.)
 - CRM pipeline, multi-channel outreach, client management, migration toolkit
 - Visibility gates: `cross_vendor_duplicate_check`, `contract_vehicle_management`, `client_hierarchy`, `submission_analytics` (Solo=off, Team/Agency=on)
 

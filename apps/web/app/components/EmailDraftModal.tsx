@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import UpgradeModal from "./UpgradeModal";
+import { useUpgradeModal } from "../hooks/useUpgradeModal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -30,20 +32,29 @@ export default function EmailDraftModal({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const { modalProps: upgradeModalProps, handleBillingError, closeModal: closeUpgradeModal } = useUpgradeModal();
 
   useEffect(() => {
     setLoading(true);
     setError(null);
-    fetch(`${API_BASE}/api/matches/${matchId}/draft-email`, {
-      credentials: "include",
-    })
-      .then((res) => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/api/matches/${matchId}/draft-email`, {
+          credentials: "include",
+        });
+        if (res.status === 403 || res.status === 429) {
+          const handled = await handleBillingError(res, "Email Draft");
+          if (handled) { setLoading(false); return; }
+        }
         if (!res.ok) throw new Error("Failed to generate email draft");
-        return res.json();
-      })
-      .then((data: EmailDraft) => setDraft(data))
-      .catch(() => setError("Failed to generate email draft."))
-      .finally(() => setLoading(false));
+        const data: EmailDraft = await res.json();
+        setDraft(data);
+      } catch {
+        setError("Failed to generate email draft.");
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [matchId]);
 
   const copyToClipboard = () => {
@@ -62,6 +73,10 @@ export default function EmailDraftModal({
         `${API_BASE}/api/matches/${matchId}/draft-email`,
         { method: "POST", credentials: "include" },
       );
+      if (res.status === 403 || res.status === 429) {
+        const handled = await handleBillingError(res, "Email Draft");
+        if (handled) return;
+      }
       if (!res.ok) throw new Error("Failed to regenerate");
       const data: EmailDraft = await res.json();
       setDraft(data);
@@ -170,6 +185,8 @@ export default function EmailDraftModal({
             </p>
           </>
         ) : null}
+
+        <UpgradeModal {...upgradeModalProps} onClose={closeUpgradeModal} />
       </div>
     </div>
   );

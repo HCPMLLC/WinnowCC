@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import UpgradeModal from "./UpgradeModal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -78,6 +79,9 @@ export default function RejectionFeedbackCard({
   const [rejectionEmail, setRejectionEmail] = useState("");
   const [showEmailInput, setShowEmailInput] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [showUpgrade, setShowUpgrade] = useState(false);
+  const [upgradeMessage, setUpgradeMessage] = useState("");
+  const [upgradeLimitReached, setUpgradeLimitReached] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchFeedback = useCallback(async () => {
@@ -128,11 +132,11 @@ export default function RejectionFeedbackCard({
       );
       if (!res.ok) {
         if (res.status === 429) {
-          setData({
-            status: "limit_reached",
-            analysis: null,
-            error_message: "Daily limit reached. Upgrade for more.",
-          });
+          const errData = await res.json().catch(() => ({}));
+          const msg = errData?.detail || "Daily limit reached. Upgrade for more.";
+          setUpgradeMessage(typeof msg === "string" ? msg : "Daily limit reached. Upgrade for more.");
+          setUpgradeLimitReached(true);
+          setShowUpgrade(true);
           setLoading(false);
           return;
         }
@@ -184,17 +188,30 @@ export default function RejectionFeedbackCard({
             what you can do next.
           </p>
           {planTier === "free" ? (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-              <p className="text-sm text-amber-700">
-                Rejection insights are available on Starter and Pro plans.
-              </p>
-              <a
-                href="/settings"
-                className="mt-2 inline-block rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-              >
-                Upgrade Plan
-              </a>
-            </div>
+            <>
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+                <p className="text-sm text-amber-700">
+                  Rejection insights are available on Starter and Pro plans.
+                </p>
+                <button
+                  onClick={() => {
+                    setUpgradeMessage("Rejection insights are available on Starter and Pro plans.");
+                    setUpgradeLimitReached(false);
+                    setShowUpgrade(true);
+                  }}
+                  className="mt-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+                >
+                  Upgrade Plan
+                </button>
+              </div>
+              <UpgradeModal
+                open={showUpgrade}
+                onClose={() => setShowUpgrade(false)}
+                featureName="Rejection Feedback"
+                message={upgradeMessage}
+                limitReached={upgradeLimitReached}
+              />
+            </>
           ) : (
             <div className="space-y-3">
               <button
@@ -246,23 +263,32 @@ export default function RejectionFeedbackCard({
     );
   }
 
-  // Limit reached
+  // Limit reached — handled by upgrade modal now
   if (data && data.status === "limit_reached") {
     return (
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Rejection Feedback
-        </h3>
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
-          <p className="text-sm text-amber-700">{data.error_message}</p>
-          <a
-            href="/settings"
-            className="mt-2 inline-block rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
-          >
-            Upgrade Plan
-          </a>
+      <>
+        <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Rejection Feedback
+          </h3>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-center">
+            <p className="text-sm text-amber-700">Daily limit reached.</p>
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="mt-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700"
+            >
+              Upgrade Plan
+            </button>
+          </div>
         </div>
-      </div>
+        <UpgradeModal
+          open={showUpgrade}
+          onClose={() => setShowUpgrade(false)}
+          featureName="Rejection Feedback"
+          message={upgradeMessage}
+          limitReached
+        />
+      </>
     );
   }
 

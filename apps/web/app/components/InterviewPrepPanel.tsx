@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import UpgradeModal from "./UpgradeModal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8000";
@@ -69,6 +70,7 @@ export default function InterviewPrepPanel({
   const [expandedQ, setExpandedQ] = useState<number | null>(null);
   const [retrying, setRetrying] = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [showUpgrade, setShowUpgrade] = useState(false);
 
   const shouldShow =
     !!applicationStatus && ["interviewing", "offer"].includes(applicationStatus);
@@ -142,23 +144,32 @@ export default function InterviewPrepPanel({
   // Free tier — show upgrade CTA
   if (planTier === "free") {
     return (
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
-        <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
-          Interview Prep Coach
-        </h3>
-        <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-center">
-          <p className="text-sm text-purple-700">
-            Get personalized interview preparation with STAR answers, company insights,
-            and closing questions.
-          </p>
-          <a
-            href="/settings"
-            className="mt-2 inline-block rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
-          >
-            Upgrade to Starter
-          </a>
+      <>
+        <div className="mt-4 rounded-lg border border-gray-200 bg-white p-5">
+          <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-gray-500">
+            Interview Prep Coach
+          </h3>
+          <div className="rounded-lg border border-purple-200 bg-purple-50 p-4 text-center">
+            <p className="text-sm text-purple-700">
+              Get personalized interview preparation with STAR answers, company insights,
+              and closing questions.
+            </p>
+            <button
+              onClick={() => setShowUpgrade(true)}
+              className="mt-2 inline-block rounded-md bg-purple-600 px-4 py-2 text-sm font-medium text-white hover:bg-purple-700"
+            >
+              Upgrade to Starter
+            </button>
+          </div>
         </div>
-      </div>
+        <UpgradeModal
+          open={showUpgrade}
+          onClose={() => setShowUpgrade(false)}
+          featureName="Interview Prep"
+          message="Interview Prep Coach with STAR answers, company insights, and closing questions requires a Starter or Pro plan."
+          limitReached={false}
+        />
+      </>
     );
   }
 

@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import CandidateLayout from "../components/CandidateLayout";
 import CollapsibleTip from "../components/CollapsibleTip";
+import UsageMeter from "../components/UsageMeter";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
@@ -39,42 +40,6 @@ interface BillingStatus {
   usage?: UsageSummary;
   limits?: Record<string, unknown>;
   features?: FeatureAccess;
-}
-
-function UsageBar({
-  used,
-  limit,
-  label,
-}: {
-  used: number;
-  limit: number | null;
-  label: string;
-}) {
-  if (limit === null) {
-    return (
-      <div className="flex items-center justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="text-slate-500">{used} used (unlimited)</span>
-      </div>
-    );
-  }
-  const pct = limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0;
-  return (
-    <div>
-      <div className="mb-1 flex items-center justify-between text-sm">
-        <span className="text-slate-600">{label}</span>
-        <span className="text-slate-500">
-          {used} / {limit}
-        </span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-slate-200">
-        <div
-          className={`h-2 rounded-full transition-all ${pct >= 100 ? "bg-red-500" : pct >= 75 ? "bg-amber-500" : "bg-emerald-500"}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-    </div>
-  );
 }
 
 function SettingsContent() {
@@ -358,20 +323,21 @@ function SettingsContent() {
 
               {/* Usage bars */}
               <div className="mb-6 space-y-3">
-                <UsageBar
+                <UsageMeter
                   label="Tailored Resumes"
                   used={billing.tailor_requests_used}
                   limit={billing.tailor_requests_limit}
                 />
-                <UsageBar
+                <UsageMeter
                   label="Match Refreshes"
                   used={billing.match_refreshes_used}
                   limit={billing.match_refreshes_limit}
                 />
                 {billing.usage && billing.limits && (
                   <>
-                    <UsageBar
-                      label="Sieve Messages (today)"
+                    <UsageMeter
+                      label="Sieve Messages"
+                      period="(today)"
                       used={billing.usage.sieve_messages_today}
                       limit={
                         typeof billing.limits.sieve_messages_per_day === "number" &&
@@ -380,8 +346,9 @@ function SettingsContent() {
                           : null
                       }
                     />
-                    <UsageBar
-                      label="Semantic Searches (today)"
+                    <UsageMeter
+                      label="Semantic Searches"
+                      period="(today)"
                       used={billing.usage.semantic_searches_today}
                       limit={
                         typeof billing.limits.semantic_searches_per_day === "number" &&
