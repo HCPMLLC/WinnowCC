@@ -65,22 +65,20 @@ def _is_sendgrid_ip(ip_str: str) -> bool:
 
 
 @router.post("/webhook")
+@router.post("/webhook/{token}")
 async def sendgrid_inbound_webhook(
-    request: Request, db: Session = Depends(get_session)
+    request: Request, db: Session = Depends(get_session), token: str = ""
 ):
     """Receives inbound emails from SendGrid Inbound Parse.
 
     SendGrid POSTs multipart/form-data with email fields and attachments.
     This endpoint does NOT require authentication — SendGrid cannot send auth
     headers. Security is handled via:
-      1. Only processing emails from registered Winnow users
-      2. Optional: IP allowlisting for SendGrid's IP ranges
+      1. URL path token (preferred — immune to IP rotation)
+      2. IP allowlisting for SendGrid's known CIDR ranges (fallback)
+      3. Only processing emails from registered Winnow users
     """
-    # Authenticate the webhook request.
-    # Option A: URL token (preferred — set SENDGRID_WEBHOOK_SECRET and
-    #           configure SendGrid URL as .../webhook?token=SECRET)
-    # Option B: IP allowlist against SendGrid's known CIDR ranges
-    token = request.query_params.get("token", "")
+    # Authenticate: path token takes priority, then fall back to IP allowlist
     if _WEBHOOK_SECRET and token == _WEBHOOK_SECRET:
         pass  # Token matches — request is authenticated
     else:
