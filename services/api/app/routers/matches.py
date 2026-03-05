@@ -588,6 +588,18 @@ def update_application_status(
 
     session.commit()
 
+    # Enqueue preference learning update (non-blocking, low priority)
+    if body.status in ("saved", "applied", "interviewing", "offer", "rejected"):
+        try:
+            from app.services.preference_learning import update_preference_weights_job
+
+            low_queue = get_queue("low")
+            low_queue.enqueue(
+                update_preference_weights_job, user.id, match.id, body.status
+            )
+        except Exception:
+            pass  # Non-critical — don't fail the status update
+
     return ApplicationStatusUpdateResponse(
         id=match.id,
         application_status=match.application_status,

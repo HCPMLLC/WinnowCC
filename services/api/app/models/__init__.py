@@ -3,6 +3,7 @@
 from app.models.admin_test_email import AdminTestEmail
 from app.models.candidate import Candidate
 from app.models.candidate_notification import CandidateNotification
+from app.models.candidate_preference_weights import CandidatePreferenceWeights
 from app.models.candidate_profile import CandidateProfile
 from app.models.candidate_submission import CandidateSubmission
 from app.models.candidate_trust import CandidateTrust
@@ -76,6 +77,7 @@ __all__ = [
     "BoardConnection",
     "Candidate",
     "CandidateNotification",
+    "CandidatePreferenceWeights",
     "DailyUsageCounter",
     "CandidateProfile",
     "CandidateSubmission",
