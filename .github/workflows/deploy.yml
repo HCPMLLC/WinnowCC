@@ -55,7 +55,7 @@ jobs:
             --allow-unauthenticated \
             --add-cloudsql-instances=${{ env.PROJECT_ID }}:us-central1:winnow-db \
             --vpc-connector=winnow-connector \
-            --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest,ADMIN_TOKEN=admin-token:latest,RAPIDAPI_KEY=rapidapi-key:latest,TELNYX_API_KEY=TELNYX_API_KEY:latest,TELNYX_FROM_NUMBER=TELNYX_PHONE_NUMBER:latest \
+            --set-secrets=DB_URL=db-url:latest,AUTH_SECRET=auth-secret:latest,ANTHROPIC_API_KEY=anthropic-api-key:latest,STRIPE_SECRET_KEY=stripe-secret-key:latest,STRIPE_WEBHOOK_SECRET=stripe-webhook-secret:latest,RESEND_API_KEY=resend-api-key:latest,REDIS_URL=redis-url:latest,AUTH0_DOMAIN=auth0-domain:latest,AUTH0_CLIENT_ID=auth0-client-id:latest,AUTH0_CLIENT_SECRET=auth0-client-secret:latest,ADMIN_TOKEN=admin-token:latest,RAPIDAPI_KEY=rapidapi-key:latest,TELNYX_API_KEY=TELNYX_API_KEY:latest,TELNYX_FROM_NUMBER=TELNYX_PHONE_NUMBER:latest,SENDGRID_WEBHOOK_SECRET=sendgrid-webhook-secret:latest \
             --set-env-vars=^::^FRONTEND_URL=https://winnowcc.ai::AUTH_COOKIE_NAME=rm_session::AUTH_COOKIE_SECURE=true::COOKIE_DOMAIN=.winnowcc.ai::EMBEDDING_PROVIDER=sentence-transformers::JOB_SOURCES=remotive,themuse,greenhouse,lever,remoteok,adzuna,jooble,usajobs,jobicy,himalayas,manual,jsearch::GCS_BUCKET=winnow-resumes-prod::SCHEDULER_ENABLED=true::WINNOW_PROCESS_TYPE=api \
             --memory=512Mi \
             --cpu=1 \
