@@ -46,6 +46,8 @@ class RecruiterJob(Base):
     salary_currency: Mapped[str | None] = mapped_column(
         String(10), server_default="USD"
     )
+    hourly_rate_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    hourly_rate_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Client company
     client_company_name: Mapped[str | None] = mapped_column(String(255), nullable=True)

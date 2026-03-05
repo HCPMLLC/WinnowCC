@@ -1763,6 +1763,8 @@ async def upload_job_documents(
                 salary_min=parsed.get("salary_min"),
                 salary_max=parsed.get("salary_max"),
                 salary_currency=parsed.get("salary_currency") or "USD",
+                hourly_rate_min=parsed.get("hourly_rate_min"),
+                hourly_rate_max=parsed.get("hourly_rate_max"),
                 department=parsed.get("department"),
                 job_id_external=parsed.get("job_id_external"),
                 job_category=parsed.get("job_category"),

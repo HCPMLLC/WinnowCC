@@ -998,16 +998,27 @@ def _extract_text_from_docx(file_path: str) -> str:
 
 
 def _extract_text_from_pdf(file_path: str) -> str:
-    """Extract text from .pdf file using pypdf."""
+    """Extract text from .pdf file using pdfplumber (table-aware)."""
     try:
-        from pypdf import PdfReader
+        import pdfplumber
 
-        reader = PdfReader(file_path)
         parts: list[str] = []
-        for page in reader.pages:
-            text = page.extract_text()
-            if text:
-                parts.append(text.strip())
+        with pdfplumber.open(file_path) as pdf:
+            for page in pdf.pages:
+                # Extract tables first so Claude sees structured data up front
+                tables = page.extract_tables()
+                for table in tables:
+                    for row in table:
+                        cells = [
+                            (cell or "").strip() for cell in row
+                        ]
+                        if any(cells):
+                            parts.append(" | ".join(cells))
+
+                # Extract remaining page text
+                text = page.extract_text()
+                if text:
+                    parts.append(text.strip())
         return "\n".join(parts)
     except Exception as e:
         logger.error("PDF text extraction failed: %s", e)
@@ -1323,10 +1334,28 @@ def _post_process(parsed: dict[str, Any]) -> dict[str, Any]:
     sal_type = (parsed.get("salary_type") or "").lower()
     sal_min = parsed.get("salary_min")
     sal_max = parsed.get("salary_max")
-    if sal_type == "hourly":
+
+    # Auto-detect hourly: if salary_type says hourly OR both values < 1000
+    is_hourly = sal_type == "hourly"
+    if not is_hourly and sal_min and sal_max:
+        if (
+            isinstance(sal_min, (int, float))
+            and isinstance(sal_max, (int, float))
+            and sal_min < 1000
+            and sal_max < 1000
+        ):
+            is_hourly = True
+    elif not is_hourly and not sal_min and sal_max:
+        if isinstance(sal_max, (int, float)) and sal_max < 1000:
+            is_hourly = True
+
+    if is_hourly:
+        # Store hourly rates as cents for precision
         if isinstance(sal_min, (int, float)) and sal_min > 0:
+            parsed["hourly_rate_min"] = int(round(sal_min * 100))
             parsed["salary_min"] = int(sal_min * 2080)
         if isinstance(sal_max, (int, float)) and sal_max > 0:
+            parsed["hourly_rate_max"] = int(round(sal_max * 100))
             parsed["salary_max"] = int(sal_max * 2080)
     elif sal_type == "monthly":
         if isinstance(sal_min, (int, float)) and sal_min > 0:

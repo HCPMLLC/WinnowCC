@@ -23,6 +23,8 @@ interface RecruiterJob {
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string | null;
+  hourly_rate_min: number | null;
+  hourly_rate_max: number | null;
   status: string;
   application_url: string | null;
   application_email: string | null;
@@ -610,6 +612,62 @@ export default function RecruiterJobDetailPage() {
         </div>
       </div>
 
+      {/* Key Fields Summary */}
+      {!editing && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+            {job.job_id_external && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Job ID</h3>
+                <p className="mt-1 text-sm text-slate-700">{job.job_id_external}</p>
+              </div>
+            )}
+            <div>
+              <h3 className="text-sm font-medium text-slate-500">Job Title</h3>
+              <p className="mt-1 text-sm text-slate-700">{job.title}</p>
+            </div>
+            {job.job_category && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Category</h3>
+                <p className="mt-1 text-sm text-slate-700">{job.job_category}</p>
+              </div>
+            )}
+            {job.employment_type && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Type</h3>
+                <p className="mt-1 text-sm capitalize text-slate-700">{job.employment_type}</p>
+              </div>
+            )}
+            {job.salary_max && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Hourly Rate</h3>
+                <p className="mt-1 text-sm text-slate-700">
+                  {`$${(job.salary_max / 2080).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr`}
+                </p>
+              </div>
+            )}
+            {job.start_at && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Start Date</h3>
+                <p className="mt-1 text-sm text-slate-700">{new Date(job.start_at).toLocaleDateString()}</p>
+              </div>
+            )}
+            {job.closes_at && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Application Deadline</h3>
+                <p className="mt-1 text-sm text-slate-700">{new Date(job.closes_at).toLocaleDateString()}</p>
+              </div>
+            )}
+            {job.client_company_name && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">Client</h3>
+                <p className="mt-1 text-sm text-slate-700">{job.client_name || job.client_company_name}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Edit Form or Read-only Details */}
       {editing ? (
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -824,6 +882,11 @@ export default function RecruiterJobDetailPage() {
                   className={inputCls}
                   placeholder="e.g. 80000"
                 />
+                {form.salary_min && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {`$${parseInt(form.salary_min).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD`}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -838,6 +901,11 @@ export default function RecruiterJobDetailPage() {
                   className={inputCls}
                   placeholder="e.g. 120000"
                 />
+                {form.salary_max && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    {`$${parseInt(form.salary_max).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} USD ($${(parseInt(form.salary_max) / 2080).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr)`}
+                  </p>
+                )}
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1028,15 +1096,28 @@ export default function RecruiterJobDetailPage() {
                   </p>
                 </div>
               )}
-              {job.salary_min && job.salary_max && (
+              {(job.salary_min || job.salary_max) && (
                 <div>
                   <h3 className="text-sm font-medium text-slate-500">
                     Salary
                   </h3>
                   <p className="mt-1 text-sm text-slate-700">
-                    ${job.salary_min.toLocaleString()} - $
-                    {job.salary_max.toLocaleString()}{" "}
+                    {job.salary_min && job.salary_max
+                      ? `$${job.salary_min.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - $${job.salary_max.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                      : job.salary_max
+                        ? `$${job.salary_max.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : `$${job.salary_min!.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}{" "}
                     {job.salary_currency || "USD"}
+                  </p>
+                </div>
+              )}
+              {job.salary_max && (
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">
+                    Hourly Rate
+                  </h3>
+                  <p className="mt-1 text-sm text-slate-700">
+                    ${(job.salary_max / 2080).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr
                   </p>
                 </div>
               )}

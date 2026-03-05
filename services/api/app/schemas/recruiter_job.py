@@ -22,6 +22,8 @@ class RecruiterJobCreate(BaseModel):
     salary_min: int | None = Field(None, ge=0)
     salary_max: int | None = Field(None, ge=0)
     salary_currency: str = Field(default="USD", max_length=10)
+    hourly_rate_min: int | None = Field(None, ge=0)
+    hourly_rate_max: int | None = Field(None, ge=0)
     client_company_name: str | None = Field(None, max_length=255)
     client_id: int | None = None
     status: str = Field(default="draft")
@@ -88,6 +90,8 @@ class RecruiterJobUpdate(BaseModel):
     salary_min: int | None = Field(None, ge=0)
     salary_max: int | None = Field(None, ge=0)
     salary_currency: str | None = Field(None, max_length=10)
+    hourly_rate_min: int | None = Field(None, ge=0)
+    hourly_rate_max: int | None = Field(None, ge=0)
     client_company_name: str | None = Field(None, max_length=255)
     client_id: int | None = None
     status: str | None = None
@@ -146,6 +150,8 @@ class RecruiterJobResponse(BaseModel):
     salary_min: int | None = None
     salary_max: int | None = None
     salary_currency: str | None = "USD"
+    hourly_rate_min: int | None = None
+    hourly_rate_max: int | None = None
     client_company_name: str | None = None
     client_id: int | None = None
     client_name: str | None = None

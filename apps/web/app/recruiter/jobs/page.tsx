@@ -20,6 +20,8 @@ interface RecruiterJob {
   employment_type: string | null;
   salary_min: number | null;
   salary_max: number | null;
+  hourly_rate_min: number | null;
+  hourly_rate_max: number | null;
   priority: string | null;
   positions_to_fill: number;
   positions_filled: number;
@@ -1018,10 +1020,16 @@ export default function RecruiterJobsPage() {
                           {job.employment_type}
                         </span>
                       )}
-                      {job.salary_min && job.salary_max && (
+                      {(job.salary_min || job.salary_max) && (
                         <span>
-                          ${job.salary_min.toLocaleString()} - $
-                          {job.salary_max.toLocaleString()}
+                          {job.salary_min && job.salary_max
+                            ? `$${job.salary_min.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} - $${job.salary_max.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                            : job.salary_max
+                              ? `$${job.salary_max.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : `$${job.salary_min!.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+                          {job.salary_max && (
+                            <> (${(job.salary_max / 2080).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/hr)</>
+                          )}
                         </span>
                       )}
                     </div>
