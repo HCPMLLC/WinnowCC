@@ -684,6 +684,7 @@ export default function SieveWidget({
       <div className={`fixed ${positionClasses} z-50`}>
         {!isOpen && (
           <button
+            data-sieve-toggle
             onClick={() => setIsOpen(true)}
             aria-label="Open Sieve assistant"
             className="group relative flex items-center justify-center w-16 h-16 rounded-full shadow-lg transition-all duration-300 hover:scale-105 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-amber-500"

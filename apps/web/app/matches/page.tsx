@@ -242,6 +242,7 @@ function MatchesPageContent() {
   const { modalProps: upgradeModalProps, handleBillingError, closeModal: closeUpgradeModal } = useUpgradeModal();
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
+  const belowThreshold = matches.length - qualified.length;
   const now = Date.now();
   const recentMatches = qualified.filter(
     (m) => m.job.posted_date && now - new Date(m.job.posted_date).getTime() <= SEVEN_DAYS_MS
@@ -640,7 +641,7 @@ function MatchesPageContent() {
                 ))
               )}
             </>
-          ) : qualified.length === 0 ? (
+          ) : qualified.length === 0 && belowThreshold === 0 ? (
             <div className="p-8 text-center">
               <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-gray-100">
                 <svg className="h-6 w-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -649,6 +650,42 @@ function MatchesPageContent() {
               </div>
               <p className="text-sm text-gray-500">
                 No matches yet. Click Refresh to find jobs.
+              </p>
+            </div>
+          ) : qualified.length === 0 && belowThreshold > 0 ? (
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-amber-100">
+                <svg className="h-6 w-6 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M12 2a10 10 0 100 20 10 10 0 000-20z" />
+                </svg>
+              </div>
+              <h3 className="mb-1 text-sm font-semibold text-gray-900">
+                No strong matches yet
+              </h3>
+              <p className="mb-4 text-sm text-gray-500">
+                We found {belowThreshold} {belowThreshold === 1 ? "job" : "jobs"}, but none scored high enough to recommend. A stronger profile leads to better matches.
+              </p>
+              <div className="mx-auto max-w-xs space-y-2 text-left text-sm text-gray-600">
+                <p className="font-medium text-gray-700">Try these tips:</p>
+                <ul className="list-inside list-disc space-y-1">
+                  <li>Upload an updated resume with quantified achievements</li>
+                  <li>Add more skills and relevant keywords to your <a href="/profile" className="font-medium text-green-600 underline hover:text-green-700">profile</a></li>
+                  <li>Make sure your job title and summary reflect your target role</li>
+                </ul>
+              </div>
+              <p className="mt-4 text-sm text-gray-500">
+                Need help? Ask{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    const sieveBtn = document.querySelector<HTMLButtonElement>("[data-sieve-toggle]");
+                    if (sieveBtn) sieveBtn.click();
+                  }}
+                  className="font-medium text-green-600 underline hover:text-green-700"
+                >
+                  Sieve, your AI assistant
+                </button>
+                , to help strengthen your profile for better matches.
               </p>
             </div>
           ) : (
