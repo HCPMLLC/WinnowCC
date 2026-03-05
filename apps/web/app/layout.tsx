@@ -8,9 +8,31 @@ import QueryProvider from "./providers/QueryProvider";
 
 export const metadata: Metadata = {
   title: "Winnow Career Concierge",
-  description: "Match resumes to roles with confidence.",
+  description: "Know the odds before you apply. AI-powered job matching with Interview Probability Scores for candidates, employers, and recruiters.",
+  metadataBase: new URL("https://winnowcc.ai"),
   icons: {
     icon: "/logo.png",
+  },
+  openGraph: {
+    title: "Winnow Career Concierge",
+    description: "Know the odds before you apply.",
+    url: "https://winnowcc.ai",
+    siteName: "Winnow Career Concierge",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Winnow Career Concierge – Know the odds before you apply.",
+      },
+    ],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Winnow Career Concierge",
+    description: "Know the odds before you apply.",
+    images: ["/og-image.png"],
   },
 };
 
