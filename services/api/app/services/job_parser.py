@@ -1068,8 +1068,9 @@ Extract the following fields and return ONLY valid JSON:
   "department": "Department or team if mentioned, null otherwise",
   "job_category": "The EXACT category/labor category/functional area as written in \
 the document. Do NOT map to a standard list. null if not mentioned",
-  "job_id_external": "Job ID, requisition number, solicitation number, posting \
-number, or vacancy number if mentioned, null otherwise",
+  "job_id_external": "Job ID, requisition number, solicitation number, solicitation \
+reference, RFQ number, task order number, posting number, vacancy number, or \
+contract number if mentioned ANYWHERE in the document, null otherwise",
   "company_name": "Company name if mentioned, null otherwise",
   "client_company_name": "The client, customer, end-client, hiring agency, or \
 organization the work is performed for. For government contracts this is the agency \
@@ -1092,8 +1093,9 @@ if mentioned, null otherwise",
   "start_date": "YYYY-MM-DD format if mentioned, null otherwise",
   "close_date": "YYYY-MM-DD format if mentioned, null otherwise",
 
-  "salary_min": null or integer,
-  "salary_max": null or integer,
+  "salary_min": null or integer (look for min rate, floor rate, base rate, starting salary),
+  "salary_max": null or integer (look for max rate, ceiling rate, NTE rate, cap, \
+'up to', top of range — MUST be extracted if ANY salary range or max rate appears),
   "salary_currency": "USD or other currency code, null if no salary",
   "salary_type": "annual|hourly|monthly, null if no salary",
   "equity_offered": true or false,
@@ -1143,11 +1145,16 @@ Rules:
 5. Return ONLY the JSON object, no other text
 6. For description and requirements, include ALL content - do NOT summarize or truncate
 7. Content from tables is separated by " | " - include it in the appropriate field
-8. For job_id_external: use any identifying number for the position
+8. For job_id_external: search the ENTIRE document for any identifying number \
+(solicitation #, RFQ, task order, req ID, vacancy #, posting #, reference #). \
+Check headers, footers, subject lines, and metadata sections
 9. For title: use the actual position title, NOT the labor category
 10. For required_skills: extract as structured objects with skill name and years
-11. READ THE ENTIRE DOCUMENT before deciding on salary. For government contracts: \
-use the official agency MAX NTE rate, NOT the vendor proposed rate
+11. READ THE ENTIRE DOCUMENT before deciding on salary. Extract BOTH salary_min \
+AND salary_max when a range is given (e.g. "$80,000 - $120,000" → min=80000, \
+max=120000; "$45-$65/hr" → min=45, max=65, type=hourly). For government \
+contracts: use the official agency MAX NTE rate, NOT the vendor proposed rate. \
+If only one number is given, set it as BOTH min and max
 12. For certifications_required: extract ALL certifications mentioned as required
 13. For posting_quality_score: rate 0-100 based on completeness, clarity, and detail
 14. For client_company_name: in government contracts this is the agency name
@@ -1180,7 +1187,15 @@ def _parse_with_claude(text: str) -> dict[str, Any]:
         if response_text.endswith("```"):
             response_text = response_text[:-3]
 
-        return json.loads(response_text.strip())
+        result = json.loads(response_text.strip())
+        logger.info(
+            "Claude parsed: job_id_external=%s salary_min=%s salary_max=%s title=%s",
+            result.get("job_id_external"),
+            result.get("salary_min"),
+            result.get("salary_max"),
+            result.get("title"),
+        )
+        return result
 
     except json.JSONDecodeError as e:
         logger.error("Failed to parse Claude JSON response: %s", e)
