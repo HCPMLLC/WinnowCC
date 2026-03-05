@@ -121,6 +121,8 @@ export default function RecruiterJobDetailPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submissionChecks, setSubmissionChecks] = useState<Record<number, SubmissionCheck>>({});
   const [submittingId, setSubmittingId] = useState<number | null>(null);
+  const [reparsing, setReparsing] = useState(false);
+  const [reparseError, setReparseError] = useState("");
 
   const [form, setForm] = useState({
     title: "",
@@ -413,6 +415,32 @@ export default function RecruiterJobDetailPage() {
       }
     } catch (err) {
       console.error("Delete failed:", err);
+    }
+  }
+
+  async function handleReparse(file: File) {
+    setReparsing(true);
+    setReparseError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(
+        `${API_BASE}/api/recruiter/jobs/${jobId}/reparse`,
+        { method: "POST", credentials: "include", body: formData },
+      );
+      if (res.ok) {
+        const updated = await res.json();
+        setJob(updated);
+        populateForm(updated);
+        setReparseError("");
+      } else {
+        const err = await res.json().catch(() => ({ detail: "Re-parse failed" }));
+        setReparseError(err.detail || "Re-parse failed");
+      }
+    } catch {
+      setReparseError("Network error during re-parse");
+    } finally {
+      setReparsing(false);
     }
   }
 
@@ -1046,6 +1074,33 @@ export default function RecruiterJobDetailPage() {
             Job Details
           </h2>
           <div className="space-y-4">
+            {!job.description && (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <p className="text-sm font-medium text-amber-800">
+                  No job details were extracted from the uploaded document.
+                </p>
+                <p className="mt-1 text-sm text-amber-700">
+                  Re-upload the document to try again, or click Edit to enter details manually.
+                </p>
+                <label className="mt-3 inline-flex cursor-pointer items-center gap-2 rounded-md bg-amber-600 px-4 py-2 text-sm font-medium text-white hover:bg-amber-700">
+                  {reparsing ? "Re-parsing..." : "Re-upload Document"}
+                  <input
+                    type="file"
+                    accept=".doc,.docx,.pdf,.txt"
+                    className="hidden"
+                    disabled={reparsing}
+                    onChange={(e) => {
+                      const f = e.target.files?.[0];
+                      if (f) handleReparse(f);
+                      e.target.value = "";
+                    }}
+                  />
+                </label>
+                {reparseError && (
+                  <p className="mt-2 text-sm text-red-700">{reparseError}</p>
+                )}
+              </div>
+            )}
             <div>
               <h3 className="text-sm font-medium text-slate-500">
                 Description

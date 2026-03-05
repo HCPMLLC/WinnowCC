@@ -1754,7 +1754,7 @@ async def upload_job_documents(
             job = RecruiterJob(
                 recruiter_profile_id=profile.id,
                 title=parsed.get("title"),
-                description=parsed.get("description", ""),
+                description=parsed.get("description") or "",
                 requirements=parsed.get("requirements"),
                 nice_to_haves=parsed.get("nice_to_haves"),
                 location=parsed.get("location"),
@@ -2084,6 +2084,141 @@ def update_recruiter_job(
             q.enqueue(deactivate_recruiter_job_proxy, job.id)
     except Exception:
         logger.debug("Failed to enqueue sync jobs for recruiter job %s", job.id)
+
+    count = (
+        session.execute(
+            select(func.count(RecruiterJobCandidate.id)).where(
+                RecruiterJobCandidate.recruiter_job_id == job.id
+            )
+        ).scalar()
+        or 0
+    )
+    resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
+    resp.matched_candidates_count = count
+    return resp
+
+
+@router.post("/jobs/{job_id}/reparse", response_model=RecruiterJobResponse)
+async def reparse_recruiter_job(
+    job_id: int,
+    file: UploadFile = File(...),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> RecruiterJobResponse:
+    """Re-upload and re-parse a document for an existing recruiter job.
+
+    Overwrites the job fields with freshly parsed data from the uploaded file.
+    Useful when initial parsing produced blank/incomplete results.
+    """
+    from app.services.employer_job_parser import parse_job_document
+
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    filename = file.filename or "file"
+    if not filename.lower().endswith((".doc", ".docx", ".pdf", ".txt")):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Unsupported file type. Use .doc, .docx, .pdf, or .txt.",
+        )
+
+    contents = await file.read()
+    if len(contents) > 10 * 1024 * 1024:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="File too large. Maximum size is 10 MB.",
+        )
+
+    ext = Path(filename).suffix.lower()
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as tmp:
+        tmp.write(contents)
+        tmp_path = tmp.name
+
+    try:
+        parsed = parse_job_document(tmp_path)
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        ) from e
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+    if not parsed.get("title"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Could not extract job title from document.",
+        )
+
+    # Update job fields with parsed data (only overwrite non-empty values)
+    from datetime import date as _date
+
+    field_map = {
+        "title": "title",
+        "description": "description",
+        "requirements": "requirements",
+        "nice_to_haves": "nice_to_haves",
+        "location": "location",
+        "remote_policy": "remote_policy",
+        "employment_type": "employment_type",
+        "salary_min": "salary_min",
+        "salary_max": "salary_max",
+        "department": "department",
+        "job_id_external": "job_id_external",
+        "job_category": "job_category",
+        "client_company_name": "client_company_name",
+        "application_email": "application_email",
+        "application_url": "application_url",
+    }
+    for parsed_key, model_field in field_map.items():
+        val = parsed.get(parsed_key)
+        if val:
+            setattr(job, model_field, val)
+
+    # Handle salary currency
+    if parsed.get("salary_currency"):
+        job.salary_currency = parsed["salary_currency"]
+
+    # Handle hourly rates
+    if parsed.get("hourly_rate_min") is not None:
+        job.hourly_rate_min = parsed["hourly_rate_min"]
+    if parsed.get("hourly_rate_max") is not None:
+        job.hourly_rate_max = parsed["hourly_rate_max"]
+
+    # Handle dates
+    sd = parsed.get("start_date")
+    cd = parsed.get("close_date")
+    if isinstance(sd, _date):
+        job.start_at = datetime(sd.year, sd.month, sd.day, tzinfo=UTC)
+    if isinstance(cd, _date):
+        job.closes_at = datetime(cd.year, cd.month, cd.day, tzinfo=UTC)
+
+    # Regenerate embedding
+    try:
+        from app.services.embedding import generate_embedding
+
+        text = (
+            f"Job Title: {job.title}\n"
+            f"Company: {job.client_company_name or ''}\n"
+            f"Description: {(job.description or '')[:2000]}\n"
+            f"Requirements: {(job.requirements or '')[:1000]}\n"
+            f"Location: {job.location or ''}"
+        )
+        job.embedding = generate_embedding(text)
+    except Exception:
+        logger.debug("Failed to regenerate embedding for recruiter job %s", job.id)
+
+    session.commit()
+    session.refresh(job)
 
     count = (
         session.execute(

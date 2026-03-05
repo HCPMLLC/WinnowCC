@@ -1721,6 +1721,12 @@ def parse_job_from_file(
 
     if not parsed or not parsed.get("title"):
         parsed = _regex_fallback_parse(raw_text)
+    elif not parsed.get("description"):
+        # Claude found a title but no description — merge regex fallback data
+        fallback = _regex_fallback_parse(raw_text)
+        for key, val in fallback.items():
+            if not parsed.get(key) and val:
+                parsed[key] = val
 
     # Post-process and score
     parsed = _post_process(parsed)
@@ -1762,6 +1768,11 @@ def parse_job_from_text(
 
     if not parsed or not parsed.get("title"):
         parsed = _regex_fallback_parse(raw_text)
+    elif not parsed.get("description"):
+        fallback = _regex_fallback_parse(raw_text)
+        for key, val in fallback.items():
+            if not parsed.get(key) and val:
+                parsed[key] = val
 
     # Override company name if provided externally
     if company_name and not parsed.get("company_name"):
