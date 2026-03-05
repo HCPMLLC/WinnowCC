@@ -83,6 +83,17 @@ def compute_matches(
     tier = get_plan_tier(candidate)
     allowed_sources = get_tier_limit(tier, "job_sources") or ["board"]
 
+    # Load learned preference weights for starter/pro candidates
+    preference_weights = None
+    if get_tier_limit(tier, "preference_learning"):
+        from app.models.candidate_preference_weights import CandidatePreferenceWeights
+
+        preference_weights = session.execute(
+            select(CandidatePreferenceWeights).where(
+                CandidatePreferenceWeights.user_id == user_id
+            )
+        ).scalar_one_or_none()
+
     # Board jobs: 7-day cutoff; employer/recruiter: 30-day cutoff
     board_cutoff = datetime.now(UTC) - timedelta(days=7)
     extended_cutoff = datetime.now(UTC) - timedelta(days=30)
@@ -139,6 +150,7 @@ def compute_matches(
         parsed_skills = parsed_skills_map.get(job.id)
         result = _score_job(
             job, profile.profile_json, candidate, parsed_skills,
+            preference_weights=preference_weights,
         )
 
         # Blend in semantic similarity when embeddings are available
@@ -279,6 +291,7 @@ def _get_profile(
 def _score_job(
     job: Job, profile_json: dict, candidate: Candidate | None,
     parsed_job_skills: list[str] | None = None,
+    preference_weights=None,
 ) -> MatchResult:
     skills = [s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)]
     skills_set = set(skills)
@@ -319,6 +332,14 @@ def _score_job(
     location_score = _location_score(job, preferences)
     salary_score = _salary_score(job, preferences)
     years_score = _years_score(candidate, job)
+
+    # Apply learned preference weight multipliers (starter/pro only)
+    if preference_weights is not None:
+        skill_score = min(40, int(skill_score * preference_weights.skill_weight))
+        title_score = min(20, int(title_score * preference_weights.title_weight))
+        location_score = min(15, int(location_score * preference_weights.location_weight))
+        salary_score = min(10, int(salary_score * preference_weights.salary_weight))
+        years_score = min(15, int(years_score * preference_weights.years_weight))
 
     match_score = min(
         100, skill_score + title_score + location_score + salary_score + years_score

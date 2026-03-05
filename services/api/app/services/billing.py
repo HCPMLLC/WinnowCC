@@ -121,6 +121,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "salary_negotiation": False,
         "submission_details": "basic",
         "submission_notifications": False,
+        "preference_learning": False,
         "job_sources": ["board"],
     },
     "starter": {
@@ -140,6 +141,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "salary_negotiation": False,
         "submission_details": "standard",
         "submission_notifications": True,
+        "preference_learning": True,
         "job_sources": ["board", "employer"],
     },
     "pro": {
@@ -159,6 +161,7 @@ CANDIDATE_PLAN_LIMITS: dict[str, dict] = {
         "salary_negotiation": True,
         "submission_details": "full",
         "submission_notifications": True,
+        "preference_learning": True,
         "job_sources": ["board", "employer", "recruiter"],
     },
 }
