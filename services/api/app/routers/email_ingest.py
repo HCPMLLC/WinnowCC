@@ -47,8 +47,12 @@ _SENDGRID_CIDRS = [
     "50.31.32.0/19",
     "198.21.0.0/21",
     "100.24.0.0/16",
+    "159.26.0.0/16",  # Twilio/SendGrid Inbound Parse IPs (observed 2026-03)
 ]
 _SENDGRID_NETWORKS = [ipaddress.ip_network(cidr) for cidr in _SENDGRID_CIDRS]
+
+# Shared webhook secret: if set, validates ?token= instead of (or in addition to) IP
+_WEBHOOK_SECRET = os.environ.get("SENDGRID_WEBHOOK_SECRET", "")
 
 
 def _is_sendgrid_ip(ip_str: str) -> bool:
@@ -72,19 +76,25 @@ async def sendgrid_inbound_webhook(
       1. Only processing emails from registered Winnow users
       2. Optional: IP allowlisting for SendGrid's IP ranges
     """
-    # Validate source IP against SendGrid's published ranges.
-    # Behind reverse proxies (Cloud Run, nginx, etc.) the real client IP
-    # is in the X-Forwarded-For header; request.client.host is the proxy.
-    forwarded_for = request.headers.get("x-forwarded-for", "")
-    client_ip = (
-        forwarded_for.split(",")[0].strip()
-        if forwarded_for
-        else (request.client.host if request.client else "unknown")
-    )
-    enforce_ip = os.environ.get("SENDGRID_ENFORCE_IP", "true").lower() != "false"
-    if enforce_ip and not _is_sendgrid_ip(client_ip):
-        logger.warning("Rejected inbound webhook from non-SendGrid IP: %s (XFF: %s)", client_ip, forwarded_for)
-        raise HTTPException(status_code=403, detail="Forbidden")
+    # Authenticate the webhook request.
+    # Option A: URL token (preferred — set SENDGRID_WEBHOOK_SECRET and
+    #           configure SendGrid URL as .../webhook?token=SECRET)
+    # Option B: IP allowlist against SendGrid's known CIDR ranges
+    token = request.query_params.get("token", "")
+    if _WEBHOOK_SECRET and token == _WEBHOOK_SECRET:
+        pass  # Token matches — request is authenticated
+    else:
+        # Fall back to IP allowlist
+        forwarded_for = request.headers.get("x-forwarded-for", "")
+        client_ip = (
+            forwarded_for.split(",")[0].strip()
+            if forwarded_for
+            else (request.client.host if request.client else "unknown")
+        )
+        enforce_ip = os.environ.get("SENDGRID_ENFORCE_IP", "true").lower() != "false"
+        if enforce_ip and not _is_sendgrid_ip(client_ip):
+            logger.warning("Rejected inbound webhook from non-SendGrid IP: %s (XFF: %s)", client_ip, forwarded_for)
+            raise HTTPException(status_code=403, detail="Forbidden")
 
     try:
         form = await request.form()
