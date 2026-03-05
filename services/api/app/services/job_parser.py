@@ -1304,9 +1304,25 @@ def _post_process(parsed: dict[str, Any]) -> dict[str, Any]:
         elif val is None:
             parsed[field] = []
 
-    # Validate salary ranges
+    # Convert hourly/monthly salaries to annual integers for storage
+    sal_type = (parsed.get("salary_type") or "").lower()
     sal_min = parsed.get("salary_min")
     sal_max = parsed.get("salary_max")
+    if sal_type == "hourly":
+        if isinstance(sal_min, (int, float)) and sal_min > 0:
+            parsed["salary_min"] = int(sal_min * 2080)
+        if isinstance(sal_max, (int, float)) and sal_max > 0:
+            parsed["salary_max"] = int(sal_max * 2080)
+    elif sal_type == "monthly":
+        if isinstance(sal_min, (int, float)) and sal_min > 0:
+            parsed["salary_min"] = int(sal_min * 12)
+        if isinstance(sal_max, (int, float)) and sal_max > 0:
+            parsed["salary_max"] = int(sal_max * 12)
+    # Re-read after possible conversion
+    sal_min = parsed.get("salary_min")
+    sal_max = parsed.get("salary_max")
+
+    # Validate salary ranges
     if sal_min is not None and sal_max is not None:
         if isinstance(sal_min, (int, float)) and isinstance(sal_max, (int, float)):
             if sal_min > sal_max:

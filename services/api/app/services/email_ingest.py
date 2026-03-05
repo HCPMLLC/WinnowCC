@@ -335,25 +335,39 @@ def _do_parse_and_create(
         if profile_type == "recruiter":
             from app.models.recruiter_job import RecruiterJob
 
+            # Convert parsed date objects to datetimes for DB columns
+            from datetime import date as _date
+
+            start_at = None
+            closes_at = None
+            sd = parsed_data.get("start_date")
+            cd = parsed_data.get("close_date")
+            if isinstance(sd, _date):
+                start_at = datetime(sd.year, sd.month, sd.day, tzinfo=UTC)
+            if isinstance(cd, _date):
+                closes_at = datetime(cd.year, cd.month, cd.day, tzinfo=UTC)
+
             job = RecruiterJob(
                 recruiter_profile_id=profile_id,
                 title=parsed_data.get("title", "Untitled Position"),
                 description=parsed_data.get("description", ""),
-                requirements=parsed_data.get(
-                    "requirements",
-                    parsed_data.get("requirements_text", ""),
-                ),
+                requirements=parsed_data.get("requirements", ""),
+                nice_to_haves=parsed_data.get("nice_to_haves"),
                 location=parsed_data.get("location", ""),
                 remote_policy=parsed_data.get("remote_policy", ""),
                 employment_type=parsed_data.get("employment_type", "full-time"),
                 salary_min=parsed_data.get("salary_min"),
                 salary_max=parsed_data.get("salary_max"),
-                salary_currency=parsed_data.get("salary_currency", "USD"),
+                salary_currency=parsed_data.get("salary_currency") or "USD",
                 status="draft",
                 department=parsed_data.get("department"),
                 job_id_external=parsed_data.get("job_id_external"),
                 job_category=parsed_data.get("job_category"),
-                client_company_name=parsed_data.get("company", ""),
+                client_company_name=parsed_data.get("client_company_name", ""),
+                application_email=parsed_data.get("application_email"),
+                application_url=parsed_data.get("application_url"),
+                start_at=start_at,
+                closes_at=closes_at,
             )
         else:
             from app.models.employer import EmployerJob
@@ -362,19 +376,17 @@ def _do_parse_and_create(
                 employer_id=profile_id,
                 title=parsed_data.get("title", "Untitled Position"),
                 description=parsed_data.get("description", ""),
-                requirements=parsed_data.get(
-                    "requirements",
-                    parsed_data.get("requirements_text", ""),
-                ),
+                requirements=parsed_data.get("requirements", ""),
+                nice_to_haves=parsed_data.get("nice_to_haves"),
                 location=parsed_data.get("location", ""),
                 remote_policy=parsed_data.get("remote_policy", ""),
                 employment_type=parsed_data.get("employment_type", "full-time"),
                 salary_min=parsed_data.get("salary_min"),
                 salary_max=parsed_data.get("salary_max"),
-                salary_currency=parsed_data.get("salary_currency", "USD"),
+                salary_currency=parsed_data.get("salary_currency") or "USD",
                 status="draft",
                 parsed_from_document=True,
-                parsing_confidence=parsed_data.get("confidence", 0.0),
+                parsing_confidence=parsed_data.get("parsing_confidence", 0.0),
                 source_document_url=(f"email-upload://{attachment_filename}"),
                 job_id_external=parsed_data.get("job_id_external"),
                 department=parsed_data.get("department"),
@@ -643,11 +655,38 @@ def _send_success_reply(
     confidence_pct = f"{confidence * 100:.0f}%"
     review_url = f"{FRONTEND_URL}/{review_path}/{job_id}"
 
+    # Build optional detail lines for the email summary
+    detail_lines = ""
+    job_ext = parsed_data.get("job_id_external")
+    if job_ext:
+        detail_lines += f"<li><strong>Job/Solicitation #:</strong> {job_ext}</li>"
+    client = parsed_data.get("client_company_name") or parsed_data.get("company_name")
+    if client:
+        detail_lines += f"<li><strong>Client:</strong> {client}</li>"
+    loc = parsed_data.get("location")
+    if loc:
+        detail_lines += f"<li><strong>Location:</strong> {loc}</li>"
+    sal_min = parsed_data.get("salary_min")
+    sal_max = parsed_data.get("salary_max")
+    sal_type = parsed_data.get("salary_type") or "annual"
+    if sal_min or sal_max:
+        sal_str = ""
+        if sal_min and sal_max and sal_min != sal_max:
+            sal_str = f"${sal_min:,} – ${sal_max:,}"
+        elif sal_max:
+            sal_str = f"Up to ${sal_max:,}"
+        elif sal_min:
+            sal_str = f"${sal_min:,}"
+        if sal_type == "hourly":
+            sal_str += " (hourly rate, annualized)"
+        detail_lines += f"<li><strong>Salary:</strong> {sal_str}</li>"
+
     html = (
         "<p>Hi,</p>"
         "<p>Your job posting has been parsed!</p>"
         "<ul>"
         f"<li><strong>Job Title:</strong> {title}</li>"
+        f"{detail_lines}"
         f"<li><strong>Confidence:</strong> "
         f"{confidence_pct}</li>"
         "<li><strong>Status:</strong> Draft "
