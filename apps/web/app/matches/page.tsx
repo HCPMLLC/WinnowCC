@@ -19,6 +19,8 @@ import StatusPrediction from "../components/StatusPrediction";
 import CultureSummary from "../components/CultureSummary";
 import EmailDraftModal from "../components/EmailDraftModal";
 import SalaryCoachModal from "../components/SalaryCoachModal";
+import UpgradeModal from "../components/UpgradeModal";
+import { useUpgradeModal } from "../hooks/useUpgradeModal";
 import { MatchListSkeleton, MatchDetailSkeleton } from "../components/Skeleton";
 
 type Job = {
@@ -237,6 +239,7 @@ function MatchesPageContent() {
   const [planTier, setPlanTier] = useState<string>("free");
   const [showEmailDraft, setShowEmailDraft] = useState(false);
   const [showSalaryCoach, setShowSalaryCoach] = useState(false);
+  const { modalProps: upgradeModalProps, handleBillingError, closeModal: closeUpgradeModal } = useUpgradeModal();
 
   const qualified = matches.filter((m) => m.match_score >= SCORE_THRESHOLD);
   const now = Date.now();
@@ -452,15 +455,12 @@ function MatchesPageContent() {
         `${API_BASE}/api/matches/search?q=${encodeURIComponent(trimmed)}&limit=20`,
         { credentials: "include" }
       );
-      if (response.status === 403) {
-        setSearchError("Semantic search requires a Starter or Pro plan.");
-        setSearchResults(null);
-        return;
-      }
-      if (response.status === 429) {
-        setSearchError("Daily search limit reached. Upgrade for more searches.");
-        setSearchResults(null);
-        return;
+      if (response.status === 403 || response.status === 429) {
+        const handled = await handleBillingError(response, "Semantic Search");
+        if (handled) {
+          setSearchResults(null);
+          return;
+        }
       }
       if (!response.ok) {
         throw new Error("Search failed.");
@@ -512,7 +512,7 @@ function MatchesPageContent() {
     <div className="flex h-[calc(100vh-8rem)] flex-col overflow-hidden rounded-lg bg-gray-100">
       {/* Header - ZipRecruiter style */}
       <header className="z-10 shrink-0 border-b border-gray-200 bg-white shadow-sm">
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3">
           <div className="flex items-center gap-4">
             <h1 className="text-xl font-semibold text-gray-900">Job Matches</h1>
             <span className="rounded-full bg-green-100 px-2.5 py-0.5 text-sm font-medium text-green-800">
@@ -527,7 +527,7 @@ function MatchesPageContent() {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") handleSearch(); }}
                 placeholder="Search jobs..."
-                className="w-56 rounded-md border border-gray-300 py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500"
+                className="w-40 rounded-md border border-gray-300 py-1.5 pl-8 pr-8 text-sm text-gray-900 placeholder:text-gray-400 focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500 sm:w-56"
               />
               <svg className="pointer-events-none absolute left-2 h-4 w-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
@@ -597,7 +597,7 @@ function MatchesPageContent() {
       {/* Two-column layout - ZipRecruiter style */}
       <div className="flex min-h-0 flex-1">
         {/* Left column - Job list */}
-        <div className="w-[340px] shrink-0 overflow-y-auto border-r border-gray-200 bg-white">
+        <div className={`w-full shrink-0 overflow-y-auto border-r border-gray-200 bg-white md:w-[340px] ${selectedMatch ? "hidden md:block" : ""}`}>
           {matchesLoading ? (
             <MatchListSkeleton />
           ) : searchResults !== null ? (
@@ -698,11 +698,22 @@ function MatchesPageContent() {
         </div>
 
         {/* Right column - Job details */}
-        <div className="relative flex min-w-0 flex-1 flex-col">
+        <div className={`relative flex min-w-0 flex-1 flex-col ${selectedMatch ? "" : "hidden md:flex"}`}>
           {matchesLoading ? (
             <MatchDetailSkeleton />
           ) : selectedMatch ? (
             <>
+              {/* Mobile back button */}
+              <button
+                type="button"
+                onClick={() => setSelectedMatchId(null)}
+                className="flex items-center gap-1 border-b border-gray-200 bg-white px-4 py-2 text-sm font-medium text-green-700 hover:bg-gray-50 md:hidden"
+              >
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+                Back to matches
+              </button>
               {/* Scrollable content */}
               <div className="flex-1 overflow-y-auto">
                 <div className="p-6">
@@ -1131,6 +1142,7 @@ function MatchesPageContent() {
         </div>
       </div>
     </div>
+    <UpgradeModal {...upgradeModalProps} onClose={closeUpgradeModal} />
     </CandidateLayout>
   );
 }
