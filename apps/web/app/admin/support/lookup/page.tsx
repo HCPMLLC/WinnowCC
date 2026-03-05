@@ -365,6 +365,13 @@ function UserCard({ result }: { result: UserResult }) {
           >
             Reset Monthly Usage
           </button>
+
+          <button
+            onClick={() => doAction(`trigger-matching/${user.id}`)}
+            className="rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white"
+          >
+            Trigger Matching
+          </button>
         </div>
       </div>
     </div>

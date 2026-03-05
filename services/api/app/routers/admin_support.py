@@ -974,6 +974,37 @@ def reset_monthly_usage(
     return {"success": True, "message": "No usage record found for current period"}
 
 
+@router.post("/actions/trigger-matching/{user_id}", response_model=ActionResponse)
+def trigger_matching(
+    user_id: int,
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+    db: Session = Depends(get_session),  # noqa: B008
+):
+    from app.models.candidate_profile import CandidateProfile
+    from app.services.job_pipeline import match_jobs_job
+    from app.services.queue import get_queue
+
+    user = db.get(User, user_id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    profile = db.scalar(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == user_id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    )
+    if not profile:
+        raise HTTPException(status_code=404, detail="No candidate profile found")
+
+    queue = get_queue("critical")
+    queue.enqueue(match_jobs_job, user_id, profile.version)
+    return {
+        "success": True,
+        "message": f"Matching triggered for user {user_id} (profile v{profile.version})",
+    }
+
+
 # ---------------------------------------------------------------------------
 # Endpoint 8: GET /match-diagnostics
 # ---------------------------------------------------------------------------
