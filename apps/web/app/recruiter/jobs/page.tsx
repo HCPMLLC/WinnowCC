@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { parseApiError } from "../../lib/api-error";
+import { useProgress } from "../../hooks/useProgress";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -67,6 +68,7 @@ export default function RecruiterJobsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkAction, setBulkAction] = useState<"idle" | "deleting" | "updating">("idle");
   const [bulkStatus, setBulkStatus] = useState("active");
+  const syncProgress = useProgress();
 
   // Form state
   const [form, setForm] = useState({
@@ -311,6 +313,7 @@ export default function RecruiterJobsPage() {
   async function handleUpload() {
     if (uploadFiles.length === 0) return;
     setUploading(true);
+    syncProgress.start();
     setError("");
     setUploadBatchStatus(null);
 
@@ -325,6 +328,7 @@ export default function RecruiterJobsPage() {
       if (!res.ok) {
         const body = await res.json().catch(() => null);
         setError(body?.detail || `Upload failed (${res.status})`);
+        syncProgress.complete();
         setUploading(false);
         return;
       }
@@ -344,9 +348,11 @@ export default function RecruiterJobsPage() {
           })),
         });
         setUploadFiles([]);
+        syncProgress.complete();
         startUploadPolling(data.batch_id);
       } else {
         // Synchronous response — results are already available
+        syncProgress.complete();
         setUploadBatchStatus({
           batch_id: "",
           status: "completed",
@@ -367,6 +373,7 @@ export default function RecruiterJobsPage() {
       }
     } catch {
       setError("Network error during upload");
+      syncProgress.complete();
       setUploading(false);
     }
   }
@@ -505,12 +512,12 @@ export default function RecruiterJobsPage() {
                     <span className="font-medium text-slate-700">
                       {uploadBatchStatus && uploadBatchStatus.total_files > 0
                         ? `Processing ${uploadBatchStatus.files_completed} of ${uploadBatchStatus.total_files}...`
-                        : "Uploading & parsing — this may take 30–60 seconds..."}
+                        : `Uploading & parsing — ${syncProgress.pct}%`}
                     </span>
                     <span className="text-slate-500">
                       {uploadBatchStatus && uploadBatchStatus.total_files > 0
                         ? `${Math.round((uploadBatchStatus.files_completed / uploadBatchStatus.total_files) * 100)}%`
-                        : ""}
+                        : `${syncProgress.pct}%`}
                     </span>
                   </div>
                   <div className="h-3 overflow-hidden rounded-full bg-slate-100">
@@ -522,7 +529,10 @@ export default function RecruiterJobsPage() {
                         }}
                       />
                     ) : (
-                      <div className="h-full w-1/3 animate-pulse rounded-full bg-blue-400" />
+                      <div
+                        className="h-full rounded-full bg-blue-600 transition-all duration-300 ease-out"
+                        style={{ width: `${Math.max(2, syncProgress.pct)}%` }}
+                      />
                     )}
                   </div>
                   <p className="mt-2 text-center text-xs text-slate-500">
