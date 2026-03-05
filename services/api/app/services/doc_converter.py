@@ -190,6 +190,51 @@ def _text_quality_score(text: str) -> float:
     return len(words) * word_quality
 
 
+def _extract_text_html_fallback(doc_path: Path) -> str:
+    """Extract text from an HTML file masquerading as .doc.
+
+    Government portals often serve HTML with a .doc extension.
+    Uses BeautifulSoup to strip tags and return clean text.
+    """
+    raw = doc_path.read_bytes()
+
+    # Detect encoding from meta charset or BOM; default to utf-8
+    text = None
+    for enc in ("utf-8", "utf-16", "latin-1"):
+        try:
+            text = raw.decode(enc)
+            break
+        except (UnicodeDecodeError, ValueError):
+            continue
+    if not text:
+        return ""
+
+    # Quick sniff: if it doesn't look like HTML, bail
+    if "<html" not in text[:2000].lower() and "<body" not in text[:2000].lower():
+        return ""
+
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(text, "html.parser")
+
+    # Remove script/style elements
+    for tag in soup(["script", "style"]):
+        tag.decompose()
+
+    body_text = soup.get_text(separator="\n")
+
+    # Collapse whitespace
+    lines = [line.strip() for line in body_text.splitlines()]
+    lines = [line for line in lines if line]
+    result = "\n".join(lines)
+
+    if len(result) < 50:
+        return ""
+
+    logger.info("HTML fallback extracted %d chars from %s", len(result), doc_path.name)
+    return result
+
+
 def extract_text_from_doc(doc_path: Path) -> str:
     """Extract text from a .doc file.
 
@@ -213,4 +258,11 @@ def extract_text_from_doc(doc_path: Path) -> str:
         )
 
     # Fallback to olefile
-    return _extract_text_olefile(doc_path)
+    try:
+        return _extract_text_olefile(doc_path)
+    except Exception as e:
+        logger.warning("olefile failed for %s: %s — trying HTML fallback", doc_path.name, e)
+
+    # Many government portals (DIR ITSAC, SAM.gov, etc.) serve HTML files
+    # with a .doc extension. Try parsing as HTML.
+    return _extract_text_html_fallback(doc_path)
