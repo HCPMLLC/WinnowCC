@@ -268,6 +268,34 @@ export default function RecruiterMigrationWizard() {
     }, 2000);
   }
 
+  const [cancelling, setCancelling] = useState(false);
+  async function cancelMigration() {
+    if (
+      !migration.jobId ||
+      !confirm("Cancel this migration? You can start a new one afterwards.")
+    )
+      return;
+    setCancelling(true);
+    try {
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      await apiFetch(`/api/recruiter/migration/${migration.jobId}/cancel`, {
+        method: "POST",
+      });
+      setMigration((prev) => ({
+        ...prev,
+        status: "failed",
+        errors: [{ error: "Cancelled by user", cancelled: true }],
+      }));
+      setStep("summary");
+    } catch (e: unknown) {
+      setError((e as Error).message);
+    }
+    setCancelling(false);
+  }
+
   const [rolling, setRolling] = useState(false);
   async function rollback() {
     if (
@@ -610,6 +638,14 @@ export default function RecruiterMigrationWizard() {
                 </div>
               </div>
             ) : null}
+
+            <button
+              onClick={cancelMigration}
+              disabled={cancelling}
+              className="mt-6 w-full rounded-lg bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+            >
+              {cancelling ? "Cancelling..." : "Cancel Migration"}
+            </button>
           </div>
         );
       })()}

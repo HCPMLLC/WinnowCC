@@ -340,6 +340,55 @@ def rollback_recruiter(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
+@router.post("/{job_id}/cancel")
+def cancel_recruiter_migration(
+    job_id: int,
+    user: User = Depends(require_recruiter),
+    db: Session = Depends(get_session),
+):
+    """Cancel a stuck or in-progress migration job so it can be retried."""
+    job = db.execute(
+        select(MigrationJob).where(
+            MigrationJob.id == job_id,
+            MigrationJob.user_id == user.id,
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Migration job not found")
+
+    if job.status in ("completed", "rolled_back"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot cancel a {job.status} job",
+        )
+
+    # Cancel any associated upload batch
+    if job.stats_json and job.stats_json.get("batch_id"):
+        from app.models.upload_batch import UploadBatch
+
+        batch = db.execute(
+            select(UploadBatch).where(
+                UploadBatch.batch_id == job.stats_json["batch_id"],
+            )
+        ).scalar_one_or_none()
+        if batch and batch.status in ("pending", "processing"):
+            batch.status = "cancelled"
+
+    old_status = job.status
+    job.status = "failed"
+    job.error_log = [
+        {"error": f"Cancelled by user (was {old_status})", "cancelled": True}
+    ]
+    job.updated_at = datetime.now(UTC)
+    db.commit()
+
+    return {
+        "job_id": job_id,
+        "status": "failed",
+        "message": "Migration cancelled. You can start a new migration.",
+    }
+
+
 @router.get("/{job_id}/errors")
 def get_recruiter_migration_errors(
     job_id: int,
