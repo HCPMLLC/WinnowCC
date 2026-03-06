@@ -262,7 +262,7 @@ function ApplicationsPageContent() {
       ) : (
         <>
           {/* Funnel summary bar */}
-          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="mb-6 overflow-x-auto rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex items-center gap-3">
               {funnelStages.map((stage, i) => {
                 const colors = FUNNEL_COLORS[stage];
@@ -311,7 +311,7 @@ function ApplicationsPageContent() {
               return (
                 <div
                   key={status}
-                  className={`w-72 shrink-0 rounded-lg border border-slate-200 border-t-4 bg-slate-50 ${COLUMN_COLORS[status]}`}
+                  className={`w-64 shrink-0 rounded-lg border border-slate-200 border-t-4 bg-slate-50 sm:w-72 ${COLUMN_COLORS[status]}`}
                 >
                   {/* Column header */}
                   <div className="flex items-center justify-between px-3 py-2.5">

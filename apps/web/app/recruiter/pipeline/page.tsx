@@ -377,7 +377,7 @@ export default function RecruiterPipeline() {
 
       {/* Bulk action toolbar */}
       {selected.size > 0 && (
-        <div className="sticky top-0 z-10 flex items-center gap-4 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-md">
+        <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 py-3 shadow-md sm:gap-4">
           <span className="text-sm font-medium text-slate-700">{selected.size} selected</span>
           <select
             defaultValue=""
@@ -432,7 +432,7 @@ export default function RecruiterPipeline() {
           {entries.map((entry) => (
             <div
               key={entry.id}
-              className={`flex items-start gap-4 rounded-xl border bg-white p-5 shadow-sm transition-colors ${selected.has(entry.id) ? "border-slate-400 bg-slate-50" : "border-slate-200"} ${entry.candidate_profile_id ? "cursor-pointer hover:border-slate-300 hover:bg-slate-50/50" : ""}`}
+              className={`flex flex-col gap-3 rounded-xl border bg-white p-4 shadow-sm transition-colors sm:flex-row sm:items-start sm:gap-4 sm:p-5 ${selected.has(entry.id) ? "border-slate-400 bg-slate-50" : "border-slate-200"} ${entry.candidate_profile_id ? "cursor-pointer hover:border-slate-300 hover:bg-slate-50/50" : ""}`}
               onClick={() => {
                 if (entry.candidate_profile_id) router.push(`/recruiter/candidates/${entry.candidate_profile_id}`);
               }}
@@ -448,7 +448,7 @@ export default function RecruiterPipeline() {
               </div>
 
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                   <h3 className="text-base font-semibold text-slate-900">{entry.candidate_name || entry.external_name || `Candidate #${entry.id}`}</h3>
                   {entry.match_score != null && (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{Math.round(entry.match_score)}% match</span>
@@ -496,7 +496,7 @@ export default function RecruiterPipeline() {
                   </div>
                 )}
               </div>
-              <div className="ml-2 flex shrink-0 items-center gap-3" onClick={(ev) => ev.stopPropagation()}>
+              <div className="flex shrink-0 flex-wrap items-center gap-2 sm:ml-2 sm:gap-3" onClick={(ev) => ev.stopPropagation()}>
                 {entry.candidate_profile_id && entry.is_platform_candidate && (
                   <button
                     onClick={() => setIntroTarget({ id: entry.candidate_profile_id!, name: entry.candidate_name || entry.external_name || `Candidate #${entry.id}` })}

@@ -171,14 +171,14 @@ export default function RecruiterCandidates() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900">Candidates</h1>
           <p className="mt-1 text-sm text-slate-500">
             {candidates.length} candidate{candidates.length !== 1 ? "s" : ""} sourced
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Link
             href="/recruiter/candidates/upload"
             className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white transition-colors hover:bg-slate-800"
@@ -252,7 +252,7 @@ export default function RecruiterCandidates() {
           {filtered.map((c) => (
             <div
               key={c.id}
-              className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-colors hover:border-slate-300"
+              className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition-colors hover:border-slate-300 sm:p-5"
             >
               {/* Checkbox */}
               <div className="flex items-center pt-1">
@@ -269,9 +269,9 @@ export default function RecruiterCandidates() {
                 href={`/recruiter/candidates/${c.id}`}
                 className="min-w-0 flex-1"
               >
-                <div className="flex items-start justify-between">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <h3 className="text-base font-semibold text-slate-900 truncate">
                         {c.name}
                       </h3>
@@ -319,7 +319,7 @@ export default function RecruiterCandidates() {
                       </div>
                     )}
                   </div>
-                  <div className="ml-3 flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2 sm:ml-3">
                     {c.linkedin_url && (
                       <span
                         onClick={(e) => { e.preventDefault(); window.open(c.linkedin_url!, "_blank"); }}

@@ -69,12 +69,12 @@ export default function RecruiterDashboard() {
     <div className="space-y-6">
       {/* Trial banner */}
       {profile?.is_trial_active && (
-        <div className="flex items-center justify-between rounded-xl border border-amber-200 bg-amber-50 px-6 py-4">
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div>
             <p className="font-semibold text-amber-900">Free trial: {profile.trial_days_remaining} day{profile.trial_days_remaining !== 1 ? "s" : ""} remaining</p>
             <p className="mt-0.5 text-sm text-amber-700">Upgrade to keep full access after your trial ends.</p>
           </div>
-          <Link href="/recruiter/pricing" className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-400">View Plans</Link>
+          <Link href="/recruiter/pricing" className="self-start rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 transition-colors hover:bg-amber-400 sm:self-auto">View Plans</Link>
         </div>
       )}
 
@@ -82,7 +82,7 @@ export default function RecruiterDashboard() {
       <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
         <h1 className="text-2xl font-bold text-slate-900">Welcome{profile?.company_name ? `, ${profile.company_name}` : ""}</h1>
         <p className="mt-1 text-slate-600">Source candidates, manage your pipeline, and close placements faster.</p>
-        <div className="mt-6 flex gap-3">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link href="/recruiter/candidates" className="rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800">Source Candidates</Link>
           <Link href="/recruiter/pipeline" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">View Pipeline</Link>
           <Link href="/recruiter/clients" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50">Manage Clients</Link>
@@ -90,7 +90,7 @@ export default function RecruiterDashboard() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
           <p className="text-sm font-medium text-slate-500">Active Jobs</p>
           <p className="mt-2 text-3xl font-bold text-slate-900">{stats?.total_active_jobs ?? 0}</p>

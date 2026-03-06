@@ -303,9 +303,9 @@ function DashboardPageContent() {
             {submissions.map((sub) => (
               <div
                 key={sub.id}
-                className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm"
+                className="flex flex-col gap-2 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm sm:flex-row sm:items-center sm:justify-between"
               >
-                <div>
+                <div className="min-w-0">
                   <p className="font-medium text-slate-900">
                     {sub.job_title || "Untitled Position"}
                     {sub.company_name && (
@@ -329,7 +329,7 @@ function DashboardPageContent() {
                   </p>
                 </div>
                 <span
-                  className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                  className={`self-start whitespace-nowrap rounded-full px-2.5 py-0.5 text-xs font-medium capitalize sm:self-auto ${
                     sub.status === "accepted"
                       ? "bg-emerald-100 text-emerald-800"
                       : sub.status === "rejected"

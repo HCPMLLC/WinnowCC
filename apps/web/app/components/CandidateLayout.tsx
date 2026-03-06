@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { SidebarSection, type NavSection } from "./SidebarSection";
 
@@ -37,24 +38,77 @@ export default function CandidateLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  // Close mobile sidebar on navigation
+  useEffect(() => {
+    setSidebarOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when sidebar is open
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = ""; };
+    }
+  }, [sidebarOpen]);
 
   const isActive = (href: string, exact?: boolean) =>
     exact ? pathname === href : pathname === href || pathname.startsWith(href + "/");
 
+  const sidebarContent = (
+    <>
+      {CANDIDATE_SECTIONS.map((section) => (
+        <SidebarSection
+          key={section.label}
+          section={section}
+          isActive={isActive}
+        />
+      ))}
+    </>
+  );
+
   return (
     <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      {/* Mobile sidebar toggle */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm lg:hidden"
+      >
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+        Navigation
+      </button>
+
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-40 bg-black/50 lg:hidden"
+            onClick={() => setSidebarOpen(false)}
+          />
+          <aside className="fixed inset-y-0 left-0 z-50 w-72 overflow-y-auto bg-white p-5 shadow-xl lg:hidden">
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-900">Navigation</span>
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <nav className="space-y-2">{sidebarContent}</nav>
+          </aside>
+        </>
+      )}
+
       <div className="flex gap-8">
-        {/* Sidebar nav */}
+        {/* Desktop sidebar */}
         <aside className="hidden w-56 flex-shrink-0 lg:block">
-          <nav className="sticky top-6 space-y-2">
-            {CANDIDATE_SECTIONS.map((section) => (
-              <SidebarSection
-                key={section.label}
-                section={section}
-                isActive={isActive}
-              />
-            ))}
-          </nav>
+          <nav className="sticky top-6 space-y-2">{sidebarContent}</nav>
         </aside>
 
         {/* Main content */}

@@ -210,9 +210,9 @@ export default function CandidateSearchPage() {
               key={candidate.id}
               className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2 sm:gap-3">
                     <Link
                       href={`/employer/candidates/${candidate.id}`}
                       className="text-lg font-semibold text-slate-900 hover:text-blue-600"
@@ -277,7 +277,7 @@ export default function CandidateSearchPage() {
                     </div>
                   )}
                 </div>
-                <div className="ml-4 flex gap-2">
+                <div className="flex gap-2 sm:ml-4">
                   <Link
                     href={`/employer/candidates/${candidate.id}`}
                     className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50"

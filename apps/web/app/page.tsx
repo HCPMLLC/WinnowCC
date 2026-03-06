@@ -336,7 +336,7 @@ function AudienceToggle({
         <button
           key={opt.key}
           onClick={() => onChange(opt.key)}
-          className={`rounded-full px-5 py-2 text-sm font-semibold transition-all ${
+          className={`rounded-full px-3 py-2 text-xs font-semibold transition-all sm:px-5 sm:text-sm ${
             audience === opt.key
               ? `${COLORS[opt.key].accent} text-white shadow`
               : "text-white/70 hover:text-white"
@@ -546,7 +546,7 @@ function HowItWorksSection({ audience }: { audience: Audience }) {
             {content.heading}
           </h2>
         </div>
-        <div className="mx-auto mt-16 grid max-w-4xl gap-8 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mx-auto mt-16 grid max-w-4xl gap-8 grid-cols-2 sm:grid-cols-2 lg:grid-cols-4">
           {content.steps.map((item, i) => (
             <div key={i} className="text-center">
               <div className={`mx-auto flex h-14 w-14 items-center justify-center rounded-full ${COLORS[audience].accent} text-xl font-bold text-white`}>
@@ -589,7 +589,7 @@ function PricingSection({ audience }: { audience: Audience }) {
           </h2>
           <p className="mt-4 text-lg text-slate-600">{content.sub}</p>
         </div>
-        <div className={`mx-auto mt-16 grid max-w-4xl gap-8 lg:grid-cols-3`}>
+        <div className={`mx-auto mt-16 grid max-w-4xl gap-8 sm:grid-cols-2 lg:grid-cols-3`}>
           {content.tiers.map((tier) => (
             <div
               key={tier.name}
@@ -666,7 +666,7 @@ function Footer() {
   return (
     <footer className="border-t border-slate-200 bg-white">
       <div className="mx-auto flex max-w-7xl flex-col items-center gap-4 px-6 py-8 sm:flex-row sm:justify-between lg:px-8">
-        <div className="flex items-center gap-6 text-sm text-slate-500">
+        <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-slate-500 sm:gap-6">
           <Link href="/privacy" className="transition-colors hover:text-slate-700">Privacy</Link>
           <Link href="/terms" className="transition-colors hover:text-slate-700">Terms</Link>
           <Link href="/privacy#california-privacy-rights-(ccpa)" className="transition-colors hover:text-slate-700">Do Not Sell My Info</Link>

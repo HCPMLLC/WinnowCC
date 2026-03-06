@@ -293,6 +293,7 @@ function Tip({ text, children }: { text: string; children: React.ReactNode }) {
       style={{ position: "relative" }}
       onMouseEnter={() => setShow(true)}
       onMouseLeave={() => setShow(false)}
+      onClick={(e) => { e.stopPropagation(); setShow((prev) => !prev); }}
     >
       {children}
       {show && (
@@ -307,7 +308,8 @@ function Tip({ text, children }: { text: string; children: React.ReactNode }) {
             lineHeight: 1.55,
             padding: "10px 14px",
             borderRadius: 10,
-            width: 280,
+            width: 260,
+            maxWidth: "80vw",
             zIndex: 200,
             boxShadow: "0 12px 40px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.05)",
             pointerEvents: "none",
@@ -381,7 +383,7 @@ export default function CompetitiveComparison() {
 
       <div style={{ maxWidth: 1320, margin: "0 auto", padding: "40px 24px 60px" }}>
         {/* Tab navigation */}
-        <div style={{ display: "flex", gap: 0, marginBottom: 28 }}>
+        <div style={{ display: "flex", gap: 0, marginBottom: 28, overflowX: "auto" }}>
           <div
             style={{
               padding: "10px 24px",
@@ -462,7 +464,7 @@ export default function CompetitiveComparison() {
           </div>
           <h1
             style={{
-              fontSize: 34,
+              fontSize: "clamp(22px, 5vw, 34px)",
               fontWeight: 800,
               color: "#0f172a",
               margin: "0 0 8px",
@@ -549,12 +551,13 @@ export default function CompetitiveComparison() {
         </div>
 
         {/* Score cards */}
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", marginBottom: 28 }}>
         <div
           style={{
             display: "grid",
             gridTemplateColumns: `repeat(${visibleComps.length}, 1fr)`,
             gap: 6,
-            marginBottom: 28,
+            minWidth: visibleComps.length * 130,
           }}
         >
           {visibleComps.map((comp) => {
@@ -704,6 +707,7 @@ export default function CompetitiveComparison() {
               </div>
             );
           })}
+        </div>
         </div>
 
         {/* Main table */}

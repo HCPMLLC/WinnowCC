@@ -226,11 +226,11 @@ function ScenarioBlock({ title, steps }: { title: string; steps: { label: string
   return (
     <div className="bg-white rounded-xl p-5 mt-5 border border-gray-100">
       <h4 className="font-serif text-base mb-3 text-[#1B3025]">{title}</h4>
-      <div className="flex flex-wrap items-center gap-0">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-0">
         {steps.map((step, i) => (
           <div key={i} className="flex items-center">
-            {i > 0 && <span className="text-[#8FB5A0] text-lg px-1.5">→</span>}
-            <div className={`rounded-lg px-3 py-2 border text-xs font-medium max-w-[160px] text-center ${colors[step.type]}`}>
+            {i > 0 && <span className="hidden text-[#8FB5A0] text-lg px-1.5 sm:inline">→</span>}
+            <div className={`w-full rounded-lg px-3 py-2 border text-xs font-medium text-center sm:w-auto sm:max-w-[160px] ${colors[step.type]}`}>
               {step.label}
             </div>
           </div>

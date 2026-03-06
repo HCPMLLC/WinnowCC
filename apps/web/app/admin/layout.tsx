@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "../hooks/useAuth";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type AdminNavItem = {
   href: string;
@@ -27,6 +27,7 @@ export default function AdminLayout({
   const router = useRouter();
   const pathname = usePathname();
   const [failedCount, setFailedCount] = useState(0);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const fetchFailedCount = useCallback(async () => {
     try {
@@ -58,6 +59,14 @@ export default function AdminLayout({
     const interval = setInterval(fetchFailedCount, 60_000);
     return () => clearInterval(interval);
   }, [isAdmin, fetchFailedCount]);
+
+  useEffect(() => { setSidebarOpen(false); }, [pathname]);
+  useEffect(() => {
+    if (sidebarOpen) {
+      document.body.style.overflow = "hidden";
+      return () => { document.body.style.overflow = ""; };
+    }
+  }, [sidebarOpen]);
 
   if (loading) {
     return (
@@ -110,41 +119,65 @@ export default function AdminLayout({
     },
   ];
 
+  const sidebarContent = ADMIN_SECTIONS.map((section) => (
+    <div key={section.label}>
+      <p className="mb-1 px-3 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400 first:pt-0">
+        {section.label}
+      </p>
+      {section.items.map((item) => (
+        <Link
+          key={item.href}
+          href={item.href}
+          className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+            isActive(item.href, item.exact)
+              ? "bg-slate-900 text-white"
+              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+          }`}
+        >
+          {item.label}
+          {item.badge != null && item.badge > 0 && (
+            <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
+              {item.badge}
+            </span>
+          )}
+        </Link>
+      ))}
+    </div>
+  ));
+
   return (
     <div className="mx-auto min-h-screen max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="flex gap-8">
-        {/* Sidebar nav */}
-        <aside className="hidden w-48 flex-shrink-0 lg:block">
-          <nav className="sticky top-6 space-y-1">
-            {ADMIN_SECTIONS.map((section) => (
-              <div key={section.label}>
-                <p className="mb-1 px-3 pt-4 text-xs font-semibold uppercase tracking-wider text-slate-400 first:pt-0">
-                  {section.label}
-                </p>
-                {section.items.map((item) => (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-                      isActive(item.href, item.exact)
-                        ? "bg-slate-900 text-white"
-                        : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                    }`}
-                  >
-                    {item.label}
-                    {item.badge != null && item.badge > 0 && (
-                      <span className="ml-auto inline-flex min-w-[1.25rem] items-center justify-center rounded-full bg-red-600 px-1.5 py-0.5 text-xs font-semibold leading-none text-white">
-                        {item.badge}
-                      </span>
-                    )}
-                  </Link>
-                ))}
-              </div>
-            ))}
-          </nav>
-        </aside>
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="mb-4 flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm lg:hidden"
+      >
+        <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
+        </svg>
+        Navigation
+      </button>
 
-        {/* Main content */}
+      {sidebarOpen && (
+        <>
+          <div className="fixed inset-0 z-40 bg-black/50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+          <aside className="fixed inset-y-0 left-0 z-50 w-72 overflow-y-auto bg-white p-5 shadow-xl lg:hidden">
+            <div className="mb-4 flex items-center justify-between">
+              <span className="text-sm font-semibold text-slate-900">Admin Navigation</span>
+              <button onClick={() => setSidebarOpen(false)} className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <nav className="space-y-1">{sidebarContent}</nav>
+          </aside>
+        </>
+      )}
+
+      <div className="flex gap-8">
+        <aside className="hidden w-48 flex-shrink-0 lg:block">
+          <nav className="sticky top-6 space-y-1">{sidebarContent}</nav>
+        </aside>
         <main className="min-w-0 flex-1">{children}</main>
       </div>
     </div>

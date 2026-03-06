@@ -108,7 +108,7 @@ export default function JobsPage() {
 
       {/* Tabs */}
       <div className="mb-6 border-b border-slate-200">
-        <nav className="-mb-px flex gap-8">
+        <nav className="-mb-px flex gap-4 overflow-x-auto sm:gap-8">
           <button
             onClick={() => setViewTab("active")}
             className={`border-b-2 py-3 px-1 text-sm font-medium ${
