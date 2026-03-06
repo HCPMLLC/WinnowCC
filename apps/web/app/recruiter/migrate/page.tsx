@@ -50,11 +50,73 @@ export default function RecruiterMigrationWizard() {
   });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // On mount, check for existing in-progress migration jobs
+  const resumeChecked = useRef(false);
   useEffect(() => {
+    if (resumeChecked.current) return;
+    resumeChecked.current = true;
+
+    (async () => {
+      try {
+        const res = await fetch(`${API}/api/recruiter/migration/history/list`, {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const jobs = await res.json();
+        // Find most recent active job
+        const active = jobs.find(
+          (j: { status: string }) =>
+            j.status === "pending" ||
+            j.status === "queued" ||
+            j.status === "importing",
+        );
+        if (!active) return;
+
+        // Fetch full status
+        const statusRes = await fetch(
+          `${API}/api/recruiter/migration/${active.id}`,
+          { credentials: "include" },
+        );
+        if (!statusRes.ok) return;
+        const data = await statusRes.json();
+
+        const batchId = (data.stats?.batch_id as string) || null;
+        setMigration((prev) => ({
+          ...prev,
+          jobId: data.id,
+          platform: data.source_platform_detected || data.source_platform,
+          confidence: 0,
+          evidence: [],
+          rowCount: data.stats?.total_files ?? 0,
+          status: data.status,
+          stats: data.stats,
+          errors: data.errors,
+          batchId,
+        }));
+
+        if (data.status === "pending") {
+          setStep("detection");
+        } else {
+          setStep("progress");
+          // Will start polling after state update via the effect below
+        }
+      } catch {
+        // Ignore — user may not be authenticated or no prior jobs
+      }
+    })();
+
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
     };
   }, []);
+
+  // Start polling when we enter progress step with a jobId (covers both fresh start and resume)
+  useEffect(() => {
+    if (step === "progress" && migration.jobId && !pollRef.current) {
+      startPolling();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, migration.jobId]);
 
   async function apiFetch(path: string, options: RequestInit = {}) {
     const res = await fetch(`${API}${path}`, {
@@ -147,7 +209,6 @@ export default function RecruiterMigrationWizard() {
         method: "POST",
       });
       setStep("progress");
-      startPolling();
     } catch (e: unknown) {
       setError((e as Error).message);
     }
