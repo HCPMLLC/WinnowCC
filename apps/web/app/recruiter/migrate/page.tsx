@@ -215,58 +215,53 @@ export default function RecruiterMigrationWizard() {
     setStarting(false);
   }
 
+  // Use a ref to read latest migration state without re-creating the interval
+  const migrationRef = useRef(migration);
+  migrationRef.current = migration;
+
   function startPolling() {
     if (pollRef.current) clearInterval(pollRef.current);
     pollRef.current = setInterval(async () => {
+      const cur = migrationRef.current;
       try {
-        setMigration((prev) => {
-          // Use batch polling for resume archives once we have a batch_id
-          if (prev.batchId) {
-            (async () => {
-              try {
-                const batch = await apiFetch(
-                  `/api/upload-batches/${prev.batchId}/status`,
-                );
-                setMigration((p) => ({
-                  ...p,
-                  batchStatus: batch,
-                  status: batch.status === "completed" ? "completed" : p.status,
-                }));
-                if (batch.status === "completed") {
-                  if (pollRef.current) clearInterval(pollRef.current);
-                  setStep("summary");
-                }
-              } catch {
-                // Ignore transient errors
-              }
-            })();
-            return prev;
+        if (cur.batchId) {
+          // Poll batch endpoint for per-file progress
+          const batch = await apiFetch(
+            `/api/upload-batches/${cur.batchId}/status`,
+          );
+          setMigration((p) => ({
+            ...p,
+            batchStatus: batch,
+            status: batch.status === "completed" ? "completed" : p.status,
+          }));
+          if (batch.status === "completed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setStep("summary");
           }
-
+        } else {
           // Poll migration endpoint to discover batch_id
-          (async () => {
-            try {
-              const data = await apiFetch(
-                `/api/recruiter/migration/${prev.jobId}`,
-              );
-              setMigration((p) => ({
-                ...p,
-                status: data.status,
-                stats: data.stats,
-                errors: data.errors,
-                batchId:
-                  p.batchId || (data.stats?.batch_id as string) || null,
-              }));
-              if (data.status === "completed" || data.status === "failed") {
-                if (pollRef.current) clearInterval(pollRef.current);
-                setStep("summary");
-              }
-            } catch {
-              // Ignore transient errors
-            }
-          })();
-          return prev;
-        });
+          const data = await apiFetch(
+            `/api/recruiter/migration/${cur.jobId}`,
+          );
+          setMigration((p) => ({
+            ...p,
+            status: data.status,
+            stats: data.stats
+              ? { ...data.stats, worker_stale: data.worker_stale }
+              : data.worker_stale
+                ? { worker_stale: true }
+                : null,
+            errors: data.errors,
+            batchId:
+              p.batchId || (data.stats?.batch_id as string) || null,
+          }));
+          if (data.status === "completed" || data.status === "failed") {
+            if (pollRef.current) clearInterval(pollRef.current);
+            pollRef.current = null;
+            setStep("summary");
+          }
+        }
       } catch {
         // Ignore transient polling errors
       }
@@ -502,6 +497,8 @@ export default function RecruiterMigrationWizard() {
         const stats = migration.stats as Record<string, number> | null;
         const batch = migration.batchStatus;
         const isResume = migration.platform === "resume_archive";
+        const workerStale = (migration.stats as Record<string, unknown> | null)?.worker_stale;
+        const waitingForWorker = isResume && !batch && !stats;
 
         // For resume archives with batch tracking, use granular per-file data
         const processed = batch
@@ -514,9 +511,9 @@ export default function RecruiterMigrationWizard() {
         const total = batch
           ? batch.total_files
           : isResume
-            ? (stats?.total_files ?? migration.rowCount || 1)
+            ? ((stats?.total_files ?? migration.rowCount) || 1)
             : (migration.rowCount || 1);
-        const pct = Math.min(100, Math.round((processed / total) * 100));
+        const pct = waitingForWorker ? 0 : Math.min(100, Math.round((processed / total) * 100));
         const unit = isResume ? "files" : "rows";
 
         return (
@@ -532,24 +529,49 @@ export default function RecruiterMigrationWizard() {
               </div>
             )}
 
+            {workerStale ? (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                The background worker appears to be starting up. This can take a
+                few minutes on first use. If this persists beyond 10 minutes,
+                please contact support.
+              </div>
+            ) : null}
+
+            {waitingForWorker && !workerStale && (
+              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                Preparing your files for processing. This usually takes a minute
+                or two&hellip;
+              </div>
+            )}
+
             {/* Progress bar */}
             <div className="mb-1 flex items-center justify-between text-sm">
-              <span className="font-medium text-slate-700">{pct}% complete</span>
-              <span className="text-slate-500">
-                {processed.toLocaleString()} / {total.toLocaleString()} {unit}
+              <span className="font-medium text-slate-700">
+                {waitingForWorker ? "Starting..." : `${pct}% complete`}
               </span>
+              {!waitingForWorker && (
+                <span className="text-slate-500">
+                  {processed.toLocaleString()} / {total.toLocaleString()} {unit}
+                </span>
+              )}
             </div>
             <div className="mb-6 h-3 overflow-hidden rounded-full bg-slate-100">
               <div
-                className="h-full rounded-full bg-blue-600 transition-all duration-500 ease-out"
-                style={{ width: `${pct}%` }}
+                className={`h-full rounded-full transition-all duration-500 ease-out ${
+                  waitingForWorker
+                    ? "w-full animate-pulse bg-slate-300"
+                    : "bg-blue-600"
+                }`}
+                style={waitingForWorker ? undefined : { width: `${pct}%` }}
               />
             </div>
 
             <div className="flex items-center gap-3">
               <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
               <span className="text-sm text-slate-600">
-                Processing... Status: {batch?.status || migration.status}
+                {waitingForWorker
+                  ? "Queued for processing..."
+                  : `Processing... Status: ${batch?.status || migration.status}`}
               </span>
             </div>
 
@@ -568,7 +590,7 @@ export default function RecruiterMigrationWizard() {
                   <div className="text-xs text-slate-600">Remaining</div>
                 </div>
               </div>
-            ) : stats ? (
+            ) : stats && !waitingForWorker ? (
               <div className="mt-4 grid grid-cols-4 gap-3">
                 <div className="rounded-lg bg-green-50 p-3 text-center">
                   <div className="text-lg font-bold text-green-700">{stats.imported ?? 0}</div>

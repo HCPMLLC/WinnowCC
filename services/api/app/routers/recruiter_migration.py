@@ -173,6 +173,16 @@ def get_recruiter_migration_status(
 
         result.update(get_import_queue_info(db, job.id))
 
+        # If importing but no batch created yet, the expand_zip_batch_job
+        # hasn't been picked up by a worker. Detect stale state.
+        if job.status == "importing" and not job.stats_json:
+            from datetime import timedelta
+
+            age = datetime.now(UTC) - (job.started_at or job.created_at)
+            if age > timedelta(minutes=5):
+                result["worker_stale"] = True
+                result["stale_minutes"] = int(age.total_seconds() / 60)
+
     return result
 
 

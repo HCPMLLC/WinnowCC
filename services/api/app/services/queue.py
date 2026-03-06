@@ -1,7 +1,11 @@
+import logging
 import os
+import threading
 
 import redis
 from rq import Queue, Retry
+
+logger = logging.getLogger(__name__)
 
 _redis_connection = None
 _queues: dict[str, Queue] = {}
@@ -22,6 +26,49 @@ _RETRY_POLICIES: dict[str, tuple[int, list[int]]] = {
 _FAILURE_TTL = 604800
 
 
+def _wake_worker() -> None:
+    """Fire-and-forget ping to the worker's health endpoint.
+
+    On Cloud Run the worker service may be slow to pick up new jobs if
+    its instances are cold.  Hitting its health endpoint encourages
+    Cloud Run to keep the instance warm.
+
+    Set WORKER_HEALTH_URL to the worker's internal Cloud Run URL, e.g.
+    https://winnow-worker-xxxxx-uc.a.run.app
+    For authenticated services, also set WORKER_HEALTH_TOKEN (or use
+    a Google ID token via metadata server).
+    """
+    worker_url = os.getenv("WORKER_HEALTH_URL")
+    if not worker_url:
+        return
+    try:
+        import urllib.request
+
+        req = urllib.request.Request(worker_url, method="GET")
+        token = os.getenv("WORKER_HEALTH_TOKEN")
+        if token:
+            req.add_header("Authorization", f"Bearer {token}")
+        elif os.getenv("K_SERVICE"):
+            # Running on Cloud Run — fetch ID token from metadata server
+            try:
+                meta_url = (
+                    "http://metadata.google.internal/computeMetadata/v1/"
+                    f"instance/service-accounts/default/identity?audience={worker_url}"
+                )
+                meta_req = urllib.request.Request(
+                    meta_url, headers={"Metadata-Flavor": "Google"}
+                )
+                with urllib.request.urlopen(meta_req, timeout=3) as resp:
+                    id_token = resp.read().decode()
+                req.add_header("Authorization", f"Bearer {id_token}")
+            except Exception:
+                pass  # Fall through and try without auth
+        with urllib.request.urlopen(req, timeout=5):
+            pass
+    except Exception:
+        logger.debug("Worker wake ping failed (non-fatal)", exc_info=True)
+
+
 class RetryQueue(Queue):
     """Queue subclass that injects retry and failure_ttl defaults."""
 
@@ -31,7 +78,10 @@ class RetryQueue(Queue):
             kwargs["retry"] = Retry(max=max_retries, interval=intervals)
         if "failure_ttl" not in kwargs:
             kwargs["failure_ttl"] = _FAILURE_TTL
-        return super().enqueue(*args, **kwargs)
+        result = super().enqueue(*args, **kwargs)
+        # Wake the worker in a background thread (non-blocking)
+        threading.Thread(target=_wake_worker, daemon=True).start()
+        return result
 
 
 def get_redis_connection() -> redis.Redis:
