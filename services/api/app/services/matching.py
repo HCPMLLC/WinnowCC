@@ -293,7 +293,10 @@ def _score_job(
     parsed_job_skills: list[str] | None = None,
     preference_weights=None,
 ) -> MatchResult:
-    skills = [s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)]
+    from app.services.skill_taxonomy import extract_skills_from_text, normalize_skill
+
+    raw_skills = [s for s in profile_json.get("skills", []) if isinstance(s, str)]
+    skills = [normalize_skill(s).lower() for s in raw_skills]
     skills_set = set(skills)
     preferences = (
         profile_json.get("preferences", {}) if isinstance(profile_json, dict) else {}
@@ -309,20 +312,31 @@ def _score_job(
         )
         title_score = int(max_overlap * 20)
 
+    job_text_lower = (job.description_text or "").lower()
     job_tokens = _tokenize(job.description_text)
-    matched_skills = [s for s in skills if s in job_tokens]
+    # Start with description-token matches (existing logic)
+    matched_set: set[str] = {
+        s for s in skills
+        if s in job_tokens or (" " in s and s in job_text_lower)
+    }
+
+    # Also match against normalized parsed job skills for deeper matching
+    if parsed_job_skills:
+        normalized_job_skills = {normalize_skill(s).lower() for s in parsed_job_skills}
+        matched_set |= skills_set & normalized_job_skills
+
+    matched_skills = sorted(matched_set)
 
     # Use parsed skills from JobParsedDetail when available —
     # these are real skill names extracted during job ingestion.
     # Fall back to taxonomy extraction from description if needed.
     if parsed_job_skills:
+        normalized_job_set = {normalize_skill(s).lower() for s in parsed_job_skills}
         missing_skills = [
             s for s in parsed_job_skills
-            if s.lower() not in skills_set
+            if normalize_skill(s).lower() not in skills_set
         ][:7]
     else:
-        from app.services.skill_taxonomy import extract_skills_from_text
-
         fallback_skills = extract_skills_from_text(job.description_text or "")
         missing_skills = [
             s for s in fallback_skills if s.lower() not in skills_set

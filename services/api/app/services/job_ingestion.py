@@ -165,7 +165,7 @@ def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
             total_skills = len(detail.required_skills or []) + len(
                 detail.preferred_skills or []
             )
-            if total_skills < 3:
+            if total_skills < 6:
                 low_skill_jobs.append(job.id)
             if parsed_count % 50 == 0:
                 session.commit()

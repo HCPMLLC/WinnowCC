@@ -565,6 +565,27 @@ for _alias in _SORTED_ALIASES:
     _ALIAS_PATTERNS.append((_pattern, _canonical))
 
 
+def normalize_skill(raw: str) -> str:
+    """Return the canonical skill name for *raw*, or the cleaned original."""
+    if not raw:
+        return raw
+    key = raw.strip().lower()
+    return _ALIAS_TO_CANONICAL.get(key, raw.strip())
+
+
+def normalize_skills(skills: list[str]) -> list[str]:
+    """Normalize a list of skill strings, deduplicate, preserve order."""
+    seen: set[str] = set()
+    result: list[str] = []
+    for s in skills:
+        n = normalize_skill(s)
+        key = n.lower()
+        if key not in seen:
+            seen.add(key)
+            result.append(n)
+    return result
+
+
 def extract_skills_from_text(text: str) -> list[str]:
     """Extract real skill names from free text using the taxonomy dictionary.
 

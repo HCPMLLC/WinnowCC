@@ -40,71 +40,6 @@ EXPERIENCE_HEADINGS = {
     "relevant experience",
 }
 
-SKILL_KEYWORDS = [
-    "python",
-    "java",
-    "javascript",
-    "typescript",
-    "react",
-    "angular",
-    "vue",
-    "node",
-    "express",
-    "django",
-    "flask",
-    "fastapi",
-    "spring",
-    "ruby",
-    "rails",
-    "php",
-    "laravel",
-    "go",
-    "golang",
-    "rust",
-    "swift",
-    "kotlin",
-    "c#",
-    "c++",
-    "scala",
-    "r",
-    "matlab",
-    "sql",
-    "nosql",
-    "postgres",
-    "postgresql",
-    "mysql",
-    "mongodb",
-    "redis",
-    "elasticsearch",
-    "dynamodb",
-    "oracle",
-    "aws",
-    "azure",
-    "gcp",
-    "docker",
-    "kubernetes",
-    "terraform",
-    "ansible",
-    "jenkins",
-    "git",
-    "linux",
-    "jira",
-    "confluence",
-    "salesforce",
-    "sap",
-    "excel",
-    "tableau",
-    "power bi",
-    "snowflake",
-    "spark",
-    "hadoop",
-    "kafka",
-    "graphql",
-    "rest",
-    "agile",
-    "scrum",
-    "ci/cd",
-]
 
 EMAIL_RE = re.compile(r"[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}", re.IGNORECASE)
 PHONE_RE = re.compile(r"(\+?\d[\d().\-\s]{7,}\d)")
@@ -246,25 +181,14 @@ def _extract_skills(lines: list[str], text: str) -> list[str]:
                     if item:
                         skills.append(item)
 
-    # 4. Keyword matching
-    lowered_text = text.lower()
-    for keyword in SKILL_KEYWORDS:
-        if re.search(rf"\b{re.escape(keyword)}\b", lowered_text):
-            skills.append(keyword)
+    # 4. Taxonomy matching (~600 skills with aliases)
+    from app.services.skill_taxonomy import extract_skills_from_text, normalize_skills
 
-    # Deduplicate
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for skill in skills:
-        normalized = skill.strip()
-        if not normalized:
-            continue
-        key = normalized.lower()
-        if key in seen:
-            continue
-        seen.add(key)
-        deduped.append(normalized)
-    return deduped
+    taxonomy_hits = extract_skills_from_text(text)
+    skills.extend(taxonomy_hits)
+
+    # Normalize all skills to canonical names and deduplicate
+    return normalize_skills(skills)
 
 
 def _extract_experience(lines: list[str]) -> list[dict]:

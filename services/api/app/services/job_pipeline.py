@@ -458,7 +458,7 @@ def parse_board_job_skills(job_id: int) -> bool:
 
         # Skip if already has enough skills
         existing_skills = (parsed.required_skills or []) + (parsed.preferred_skills or [])
-        if len(existing_skills) >= 3:
+        if len(existing_skills) >= 6:
             return True
 
         description = (job.description_text or "")[:3000]  # Cap to limit tokens
@@ -501,8 +501,14 @@ def parse_board_job_skills(job_id: int) -> bool:
             text = text.strip()
 
         data = json.loads(text)
-        req = [s for s in data.get("required_skills", []) if isinstance(s, str)][:15]
-        pref = [s for s in data.get("preferred_skills", []) if isinstance(s, str)][:15]
+        from app.services.skill_taxonomy import normalize_skills
+
+        req = normalize_skills(
+            [s for s in data.get("required_skills", []) if isinstance(s, str)][:15]
+        )
+        pref = normalize_skills(
+            [s for s in data.get("preferred_skills", []) if isinstance(s, str)][:15]
+        )
 
         if req or pref:
             parsed.required_skills = req
@@ -555,7 +561,7 @@ def backfill_board_job_parsing() -> dict:
                 total_skills = len(detail.required_skills or []) + len(
                     detail.preferred_skills or []
                 )
-                if total_skills < 3:
+                if total_skills < 6:
                     try:
                         q.enqueue(
                             "app.services.job_pipeline.parse_board_job_skills",
