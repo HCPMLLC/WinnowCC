@@ -21,7 +21,9 @@ interface MatchCardProps {
 
 export default function MatchCard({ match }: MatchCardProps) {
   const router = useRouter();
-  const skills = match.reasons?.matched_skills?.slice(0, 3) || [];
+  const allSkills = match.reasons?.matched_skills || [];
+  const skills = allSkills.slice(0, 3);
+  const extraSkillCount = allSkills.length - 3;
 
   return (
     <TouchableOpacity
@@ -51,6 +53,9 @@ export default function MatchCard({ match }: MatchCardProps) {
           {skills.map((s) => (
             <SkillTag key={s} name={s} />
           ))}
+          {extraSkillCount > 0 && (
+            <Text style={styles.extraSkills}>+{extraSkillCount} more</Text>
+          )}
         </View>
       )}
 
@@ -110,6 +115,11 @@ const styles = StyleSheet.create({
     paddingTop: spacing.sm,
     borderTopWidth: 1,
     borderTopColor: colors.gray100,
+  },
+  extraSkills: {
+    fontSize: fontSize.xs,
+    color: colors.gray400,
+    alignSelf: "center",
   },
   statusText: {
     fontSize: fontSize.xs,

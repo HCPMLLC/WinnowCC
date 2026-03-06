@@ -24,7 +24,7 @@ export default function InterviewPrepPanel({ matchId }: Props) {
 
   const fetchPrep = useCallback(async () => {
     const res = await api.get(`/api/matches/${matchId}/interview-prep`);
-    if (handleFeatureGateResponse(res)) {
+    if (await handleFeatureGateResponse(res)) {
       setLoading(false);
       return { status: "gated" } as InterviewPrepData;
     }
@@ -46,7 +46,7 @@ export default function InterviewPrepPanel({ matchId }: Props) {
     setRetrying(true);
     try {
       const res = await api.post(`/api/matches/${matchId}/interview-prep/retry`);
-      if (!handleFeatureGateResponse(res) && res.ok) {
+      if (!(await handleFeatureGateResponse(res)) && res.ok) {
         setData({ status: "pending" });
       }
     } catch {

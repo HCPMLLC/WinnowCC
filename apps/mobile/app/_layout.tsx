@@ -351,8 +351,8 @@ export default function RootLayout() {
   }
 
   return (
+    <ErrorBoundary>
     <AuthContext.Provider value={{ ...authState, login, signup, logout, markOnboardingComplete, verifyOtp, resendOtp, mfaPendingEmail, mfaDeliveryMethod, mfaHasPhone, cancelMfa }}>
-      <ErrorBoundary>
       <StatusBar style="light" />
       <Stack
         screenOptions={{
@@ -477,7 +477,7 @@ export default function RootLayout() {
           options={{ title: "Settings", presentation: "card" }}
         />
       </Stack>
-      </ErrorBoundary>
     </AuthContext.Provider>
+    </ErrorBoundary>
   );
 }

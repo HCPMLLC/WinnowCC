@@ -37,7 +37,7 @@ export default function EmployerDistributionScreen() {
   const loadData = async () => {
     try {
       const res = await api.get("/api/distribution/connections");
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const data = await res.json();
         setConnections(Array.isArray(data) ? data : data.connections ?? []);
@@ -63,7 +63,7 @@ export default function EmployerDistributionScreen() {
     setDistributing(jobId);
     try {
       const res = await api.post(`/api/distribution/jobs/${jobId}/distribute`);
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         Alert.alert("Success", "Job distributed to connected boards.");
       } else {

@@ -78,7 +78,7 @@ export default function RecruiterMigrateScreen() {
         file.mimeType || "text/csv",
       );
 
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
 
       if (res.ok) {
         const data = await res.json();
@@ -99,7 +99,7 @@ export default function RecruiterMigrateScreen() {
     if (!preview) return;
     try {
       const res = await api.post(`/api/recruiter/migration/${preview.migration_id}/start`);
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         setStep("importing");
         setPolling(true);

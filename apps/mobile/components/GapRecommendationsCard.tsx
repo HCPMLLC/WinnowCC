@@ -31,7 +31,7 @@ export default function GapRecommendationsCard({ matchId }: Props) {
 
   const fetchRecs = useCallback(async () => {
     const res = await api.get(`/api/matches/${matchId}/gap-recs`);
-    if (handleFeatureGateResponse(res)) return { status: "gated" } as GapRecommendations;
+    if (await handleFeatureGateResponse(res)) return { status: "gated" } as GapRecommendations;
     const d = await res.json();
     setData(d);
     return d as GapRecommendations;
@@ -52,7 +52,7 @@ export default function GapRecommendationsCard({ matchId }: Props) {
     setRequesting(true);
     try {
       const res = await api.get(`/api/matches/${matchId}/gap-recs`);
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const d = await res.json();
         setData(d);
@@ -71,7 +71,7 @@ export default function GapRecommendationsCard({ matchId }: Props) {
     setRequesting(true);
     try {
       const res = await api.post(`/api/matches/${matchId}/gap-recs/retry`);
-      if (!handleFeatureGateResponse(res) && res.ok) {
+      if (!(await handleFeatureGateResponse(res)) && res.ok) {
         setData({ status: "pending" });
         setPolling(true);
       }

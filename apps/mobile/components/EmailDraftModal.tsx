@@ -39,7 +39,7 @@ export default function EmailDraftModal({ visible, onClose, matchId }: Props) {
     setLoading(true);
     try {
       const res = await api.get(`/api/matches/${matchId}/draft-email`);
-      if (handleFeatureGateResponse(res)) {
+      if (await handleFeatureGateResponse(res)) {
         onClose();
         return;
       }
@@ -61,7 +61,7 @@ export default function EmailDraftModal({ visible, onClose, matchId }: Props) {
     setRegenerating(true);
     try {
       const res = await api.post(`/api/matches/${matchId}/draft-email`);
-      if (!handleFeatureGateResponse(res) && res.ok) {
+      if (!(await handleFeatureGateResponse(res)) && res.ok) {
         setDraft(await res.json());
       }
     } catch {

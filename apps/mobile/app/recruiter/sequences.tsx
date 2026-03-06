@@ -24,7 +24,7 @@ export default function RecruiterSequencesScreen() {
   const loadData = async () => {
     try {
       const res = await api.get("/api/recruiter/sequences");
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const data = await res.json();
         setSequences(Array.isArray(data) ? data : data.sequences ?? []);

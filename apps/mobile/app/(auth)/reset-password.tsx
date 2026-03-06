@@ -11,9 +11,7 @@ import {
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
-
-const API_BASE =
-  process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
+import { API_BASE } from "../../lib/api";
 
 export default function ResetPasswordScreen() {
   const router = useRouter();

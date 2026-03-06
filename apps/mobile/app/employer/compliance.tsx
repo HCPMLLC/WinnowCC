@@ -40,7 +40,7 @@ export default function EmployerComplianceScreen() {
   const loadData = async () => {
     try {
       const res = await api.get("/api/employer/compliance/log");
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const data = await res.json();
         setLogs(Array.isArray(data) ? data : data.logs ?? []);
@@ -57,7 +57,7 @@ export default function EmployerComplianceScreen() {
     setReportLoading(true);
     try {
       const res = await api.get("/api/employer/compliance/report/ofccp");
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         setReport(await res.json());
       } else {

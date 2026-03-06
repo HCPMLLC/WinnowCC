@@ -27,7 +27,7 @@ export default function EnhancementSuggestionsCard() {
 
   const fetchSuggestions = useCallback(async () => {
     const res = await api.get("/api/profile/enhancement-suggestions");
-    if (handleFeatureGateResponse(res)) return { status: "gated" } as EnhancementSuggestionsData;
+    if (await handleFeatureGateResponse(res)) return { status: "gated" } as EnhancementSuggestionsData;
     const d = await res.json();
     setData(d);
     return d as EnhancementSuggestionsData;
@@ -48,7 +48,7 @@ export default function EnhancementSuggestionsCard() {
     setLoading(true);
     try {
       const res = await api.get("/api/profile/enhancement-suggestions");
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const d = await res.json();
         setData(d);
@@ -67,7 +67,7 @@ export default function EnhancementSuggestionsCard() {
     setLoading(true);
     try {
       const res = await api.post("/api/profile/enhancement-suggestions/regenerate");
-      if (!handleFeatureGateResponse(res) && res.ok) {
+      if (!(await handleFeatureGateResponse(res)) && res.ok) {
         setData({ status: "generating" });
         setPolling(true);
       }

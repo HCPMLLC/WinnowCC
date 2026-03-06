@@ -44,7 +44,7 @@ export default function EmployerAnalyticsScreen() {
         api.get("/api/employer/analytics/cost").catch(() => null),
         api.get("/api/employer/analytics/recommendations").catch(() => null),
         api.get("/api/employer/analytics/funnel").catch(() => null),
-        api.get("/api/employer/analytics/recommendations").catch(() => null),
+        api.get("/api/employer/analytics/ai-recommendations").catch(() => null),
       ]);
 
       if (overviewRes.ok) {

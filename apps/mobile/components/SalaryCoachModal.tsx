@@ -42,16 +42,23 @@ export default function SalaryCoachModal({ visible, onClose, matchId }: Props) {
       Alert.alert("Required", "Enter the offered salary.");
       return;
     }
+    const parsedSalary = parseInt(salary, 10);
+    if (isNaN(parsedSalary) || parsedSalary <= 0) {
+      Alert.alert("Invalid", "Enter a valid salary amount.");
+      return;
+    }
     setLoading(true);
     try {
       const body: Record<string, number> = {
-        salary: parseInt(salary, 10),
+        salary: parsedSalary,
       };
-      if (bonus.trim()) body.bonus = parseInt(bonus, 10);
-      if (equity.trim()) body.equity = parseInt(equity, 10);
+      const parsedBonus = parseInt(bonus, 10);
+      const parsedEquity = parseInt(equity, 10);
+      if (bonus.trim() && !isNaN(parsedBonus)) body.bonus = parsedBonus;
+      if (equity.trim() && !isNaN(parsedEquity)) body.equity = parsedEquity;
 
       const res = await api.post(`/api/matches/${matchId}/salary-coaching`, body);
-      if (handleFeatureGateResponse(res)) {
+      if (await handleFeatureGateResponse(res)) {
         onClose();
         return;
       }

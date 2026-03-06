@@ -38,7 +38,7 @@ export default function SequenceDetailScreen() {
         api.get(`/api/recruiter/sequences/${id}`),
         api.get(`/api/recruiter/sequences/${id}/enrollments`).catch(() => null),
       ]);
-      if (handleFeatureGateResponse(seqRes)) return;
+      if (await handleFeatureGateResponse(seqRes)) return;
       if (seqRes.ok) {
         const s = await seqRes.json();
         setSequence(s);

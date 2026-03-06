@@ -1,13 +1,14 @@
 import { Platform } from "react-native";
 import { getToken, removeToken } from "./auth";
 
-const API_BASE =
+export const API_BASE =
   Platform.OS === "web"
-    ? "http://localhost:8000"
+    ? (process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000")
     : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
+const REQUEST_TIMEOUT_MS = 30000;
 
 interface RequestOptions extends Omit<RequestInit, "headers"> {
   headers?: Record<string, string>;
@@ -57,11 +58,16 @@ export async function apiFetch(
   let lastError: Error | null = null;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
       const response = await fetch(url, {
         ...options,
         headers,
+        signal: controller.signal,
       });
+
+      clearTimeout(timeoutId);
 
       if (response.status === 401) {
         await removeToken();
@@ -70,6 +76,7 @@ export async function apiFetch(
 
       return response;
     } catch (err: any) {
+      clearTimeout(timeoutId);
       if (err instanceof AuthError) throw err;
       lastError = err;
       if (attempt < MAX_RETRIES) {

@@ -24,7 +24,7 @@ export default function RejectionFeedbackCard({ matchId }: Props) {
 
   const fetchFeedback = useCallback(async () => {
     const res = await api.get(`/api/matches/${matchId}/rejection-feedback`);
-    if (handleFeatureGateResponse(res)) return { status: "gated" } as RejectionFeedbackData;
+    if (await handleFeatureGateResponse(res)) return { status: "gated" } as RejectionFeedbackData;
     const d = await res.json();
     setData(d);
     return d as RejectionFeedbackData;
@@ -45,7 +45,7 @@ export default function RejectionFeedbackCard({ matchId }: Props) {
     setRequesting(true);
     try {
       const res = await api.post(`/api/matches/${matchId}/rejection-feedback`);
-      if (handleFeatureGateResponse(res)) return;
+      if (await handleFeatureGateResponse(res)) return;
       if (res.ok) {
         const d = await res.json();
         setData(d);
@@ -64,7 +64,7 @@ export default function RejectionFeedbackCard({ matchId }: Props) {
     setRequesting(true);
     try {
       const res = await api.post(`/api/matches/${matchId}/rejection-feedback/retry`);
-      if (!handleFeatureGateResponse(res) && res.ok) {
+      if (!(await handleFeatureGateResponse(res)) && res.ok) {
         setData({ status: "pending" });
         setPolling(true);
       }

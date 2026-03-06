@@ -204,7 +204,7 @@ export default function JobDetailScreen() {
           job.salary_max ? `$${job.salary_max.toLocaleString()}` : null,
         ]
           .filter(Boolean)
-          .join(" - ") + ` ${job.salary_currency}`
+          .join(" - ") + ` ${job.salary_currency || "USD"}`
       : null;
 
   return (

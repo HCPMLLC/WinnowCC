@@ -2,14 +2,23 @@ import { Alert } from "react-native";
 
 /**
  * Check if an API response indicates a feature gate (402/403/429).
- * Shows a generic alert and returns true if gated.
+ * Parses the response body for a specific error message and shows an alert.
+ * Returns true if gated.
  */
-export function handleFeatureGateResponse(res: Response): boolean {
+export async function handleFeatureGateResponse(res: Response): Promise<boolean> {
   if (res.status === 402 || res.status === 403 || res.status === 429) {
-    Alert.alert(
-      "Feature Unavailable",
-      "This feature is not available on your current plan.",
-    );
+    let message = "This feature is not available on your current plan.";
+    try {
+      const body = await res.clone().json();
+      if (body?.detail && typeof body.detail === "string") {
+        message = body.detail;
+      }
+    } catch {
+      // Use default message
+    }
+
+    const title = res.status === 429 ? "Limit Reached" : "Upgrade Required";
+    Alert.alert(title, message);
     return true;
   }
   return false;

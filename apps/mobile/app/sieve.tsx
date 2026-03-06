@@ -14,18 +14,13 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import { api } from "../lib/api";
+import { api, API_BASE } from "../lib/api";
 import { getToken } from "../lib/auth";
 
 const GoldenSieveStatic = require("../assets/golden-sieve-static.png");
 
 const GREETING =
   "Greetings. I\u2019m Sieve, your personal concierge. Ask me anything and I\u2019ll start sifting.";
-
-const API_BASE =
-  Platform.OS === "web"
-    ? "http://localhost:8000"
-    : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 const ESCALATION_PHRASES = [
   "talk to a person",
@@ -380,11 +375,12 @@ export default function SieveScreen() {
           }
         } else {
           let errorContent = "Sorry, I couldn\u2019t process that.";
-          if (res.status === 403 || res.status === 429) {
-            errorContent =
-              "For the best experience with all features, please visit WinnowCC.ai.";
+          const err = await res.json().catch(() => ({}));
+          if (res.status === 429) {
+            errorContent = (err as any)?.detail || "You\u2019ve reached your daily message limit. Upgrade your plan for more messages.";
+          } else if (res.status === 403) {
+            errorContent = (err as any)?.detail || "This feature requires a higher plan tier.";
           } else {
-            const err = await res.json().catch(() => ({}));
             errorContent = (err as any)?.detail || errorContent;
           }
           setMessages((prev) => [

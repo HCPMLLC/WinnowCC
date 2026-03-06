@@ -189,9 +189,9 @@ export default function CandidateSearchScreen() {
               )}
             </View>
 
-            {item.top_skills.length > 0 && (
+            {(item.top_skills ?? []).length > 0 && (
               <View style={styles.skillsRow}>
-                {item.top_skills.slice(0, 5).map((s) => (
+                {(item.top_skills ?? []).slice(0, 5).map((s) => (
                   <SkillTag key={s} name={s} />
                 ))}
               </View>

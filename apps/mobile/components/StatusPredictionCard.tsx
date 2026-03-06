@@ -29,7 +29,7 @@ export default function StatusPredictionCard({ matchId }: Props) {
     (async () => {
       try {
         const res = await api.get(`/api/matches/${matchId}/status-prediction`);
-        if (handleFeatureGateResponse(res)) return;
+        if (await handleFeatureGateResponse(res)) return;
         if (res.ok) setData(await res.json());
       } catch {
         // Silently fail

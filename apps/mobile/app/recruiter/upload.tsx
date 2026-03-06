@@ -6,17 +6,12 @@ import {
   StyleSheet,
   ScrollView,
   Alert,
-  Platform,
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { Ionicons } from "@expo/vector-icons";
 import { getToken } from "../../lib/auth";
+import { API_BASE } from "../../lib/api";
 import { colors, spacing, fontSize, borderRadius } from "../../lib/theme";
-
-const API_BASE =
-  Platform.OS === "web"
-    ? "http://localhost:8000"
-    : process.env.EXPO_PUBLIC_API_BASE_URL || "http://localhost:8000";
 
 interface FileResult {
   filename: string;
