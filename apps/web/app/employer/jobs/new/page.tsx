@@ -242,12 +242,12 @@ export default function CreateJobPage() {
 
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700">
-              Choose Files (.doc, .docx, .pdf, .txt)
+              Choose Files (.docx or .pdf)
             </label>
             <input
               type="file"
               multiple
-              accept=".doc,.docx,.pdf,.txt"
+              accept=".docx,.pdf"
               onChange={handleBulkFileChange}
               className="block w-full text-sm text-slate-500 file:mr-4 file:rounded-md file:border-0 file:bg-slate-100 file:px-4 file:py-2 file:text-sm file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
             />
@@ -393,7 +393,7 @@ export default function CreateJobPage() {
           <div className="text-xs text-slate-500">
             <p className="mb-1 font-medium">Supported:</p>
             <ul className="list-inside list-disc space-y-0.5">
-              <li>.doc, .docx, .pdf, .txt files up to 10 MB each</li>
+              <li>.docx or .pdf files up to 10 MB each</li>
               <li>Batch limits depend on your subscription tier</li>
               <li>Creates draft postings for review before publishing</li>
             </ul>

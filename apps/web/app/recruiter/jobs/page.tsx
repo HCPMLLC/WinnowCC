@@ -269,7 +269,7 @@ export default function RecruiterJobsPage() {
   function handleFileDrop(e: React.DragEvent) {
     e.preventDefault();
     setDragOver(false);
-    const allowed = [".doc", ".docx", ".pdf", ".txt"];
+    const allowed = [".docx", ".pdf"];
     const valid = Array.from(e.dataTransfer.files).filter((f) =>
       allowed.some((ext) => f.name.toLowerCase().endsWith(ext)),
     );
@@ -277,7 +277,7 @@ export default function RecruiterJobsPage() {
       setUploadFiles((prev) => [...prev, ...valid]);
       setError("");
     } else {
-      setError("Supported formats: .doc, .docx, .pdf, .txt");
+      setError("Supported formats: .docx, .pdf");
     }
   }
 
@@ -420,8 +420,8 @@ export default function RecruiterJobsPage() {
             Upload Job Documents
           </h2>
           <p className="mb-4 text-sm text-slate-500">
-            Upload .doc, .docx, .pdf, or .txt job descriptions. Our AI will
-            parse them and create draft job postings automatically.
+            Upload .docx or .pdf job descriptions. Our AI will parse them and
+            create draft job postings automatically.
           </p>
           {error && (
             <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
@@ -458,14 +458,14 @@ export default function RecruiterJobsPage() {
             <p className="mb-2 text-sm font-medium text-slate-600">
               {uploadFiles.length > 0
                 ? `${uploadFiles.length} file(s) selected`
-                : "Drop files here, or click to browse"}
+                : "Drag files here, or click to browse"}
             </p>
             <p className="mb-3 text-xs text-slate-400">
-              .doc, .docx, .pdf, .txt (max 10 MB each)
+              .docx or .pdf files only (max 10 MB each)
             </p>
             <input
               type="file"
-              accept=".doc,.docx,.pdf,.txt"
+              accept=".docx,.pdf"
               multiple
               onChange={handleFileSelect}
               className="hidden"

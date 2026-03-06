@@ -1086,7 +1086,7 @@ export default function RecruiterJobDetailPage() {
                   {reparsing ? "Re-parsing..." : "Re-upload Document"}
                   <input
                     type="file"
-                    accept=".doc,.docx,.pdf,.txt"
+                    accept=".docx,.pdf"
                     className="hidden"
                     disabled={reparsing}
                     onChange={(e) => {

@@ -189,7 +189,7 @@ export default function EditJobPage() {
               </span>
               <input
                 type="file"
-                accept=".doc,.docx,.pdf,.txt"
+                accept=".docx,.pdf"
                 onChange={handleReparse}
                 disabled={reparse.isActive}
                 className="hidden"
