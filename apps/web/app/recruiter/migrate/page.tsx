@@ -255,9 +255,9 @@ export default function RecruiterMigrationWizard() {
             ...p,
             status: data.status,
             stats: data.stats
-              ? { ...data.stats, worker_stale: data.worker_stale }
+              ? { ...data.stats, worker_stale: data.worker_stale, stale_minutes: data.stale_minutes }
               : data.worker_stale
-                ? { worker_stale: true }
+                ? { worker_stale: true, stale_minutes: data.stale_minutes }
                 : null,
             errors: data.errors,
             batchId:
@@ -529,11 +529,13 @@ export default function RecruiterMigrationWizard() {
 
       {/* Step 3: Progress */}
       {step === "progress" && (() => {
+        const rawStats = migration.stats as Record<string, unknown> | null;
         const stats = migration.stats as Record<string, number> | null;
         const batch = migration.batchStatus;
         const isResume = migration.platform === "resume_archive";
-        const workerStale = (migration.stats as Record<string, unknown> | null)?.worker_stale;
-        const waitingForWorker = isResume && !batch && !stats;
+        const workerStale = !!rawStats?.worker_stale;
+        const staleMinutes = Number(rawStats?.stale_minutes ?? 0);
+        const waitingForWorker = isResume && !batch && (!stats || workerStale);
 
         // For resume archives with batch tracking, use granular per-file data
         const processed = batch
@@ -554,39 +556,59 @@ export default function RecruiterMigrationWizard() {
         return (
           <div className="rounded-xl border border-slate-200 bg-white p-8">
             <h2 className="mb-4 text-lg font-semibold text-slate-800">
-              {isResume ? "Resume Parsing in Progress" : "Import in Progress"}
+              {isResume ? "Resume Parsing" : "Import in Progress"}
             </h2>
 
-            {isResume && (
+            {/* Error: stale for a long time */}
+            {workerStale && staleMinutes >= 10 ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <div className="mb-1 font-semibold">Processing has not started</div>
+                <p>
+                  Your import has been waiting for {staleMinutes} minutes but the
+                  background processor has not picked it up. This usually means
+                  the processing service needs to be restarted.
+                </p>
+                <p className="mt-2">
+                  Please <strong>cancel</strong> this migration and try again. If
+                  the problem persists, contact support.
+                </p>
+              </div>
+            ) : workerStale ? (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+                <div className="mb-1 font-semibold">Waiting for processor ({staleMinutes} min)</div>
+                <p>
+                  The background processor is starting up. This should begin
+                  shortly. If nothing changes in a few more minutes, cancel and
+                  retry.
+                </p>
+              </div>
+            ) : waitingForWorker ? (
+              <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-700">
+                <div className="mb-1 font-semibold">
+                  Preparing {migration.rowCount} {migration.rowCount === 1 ? "file" : "files"}
+                </div>
+                <p>
+                  Your files are being extracted and queued. This usually takes
+                  under a minute.
+                </p>
+              </div>
+            ) : isResume ? (
               <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
                 Processing continues in the background. You&apos;ll receive an
                 email when complete &mdash; feel free to close this page.
               </div>
-            )}
-
-            {workerStale ? (
-              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
-                The background worker appears to be starting up. This can take a
-                few minutes on first use. If this persists beyond 10 minutes,
-                please contact support.
-              </div>
             ) : null}
 
-            {waitingForWorker && !workerStale && (
-              <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                Preparing your files for processing. This usually takes a minute
-                or two&hellip;
-              </div>
-            )}
-
-            {/* Progress bar */}
+            {/* Progress bar — always visible with concrete numbers */}
             <div className="mb-1 flex items-center justify-between text-sm">
               <span className="font-medium text-slate-700">
-                {waitingForWorker ? "Starting..." : `${pct}% complete`}
+                {waitingForWorker
+                  ? `0% — 0 / ${migration.rowCount} ${unit}`
+                  : `${pct}% — ${processed.toLocaleString()} / ${total.toLocaleString()} ${unit}`}
               </span>
-              {!waitingForWorker && (
-                <span className="text-slate-500">
-                  {processed.toLocaleString()} / {total.toLocaleString()} {unit}
+              {!waitingForWorker && batch && batch.total_files > batch.files_completed && (
+                <span className="text-slate-400 text-xs">
+                  ~{Math.max(1, Math.ceil((batch.total_files - batch.files_completed) * 4 / 60))} min remaining
                 </span>
               )}
             </div>
@@ -601,17 +623,17 @@ export default function RecruiterMigrationWizard() {
               />
             </div>
 
-            <div className="flex items-center gap-3">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
-              <span className="text-sm text-slate-600">
-                {waitingForWorker
-                  ? "Queued for processing..."
-                  : `Processing... Status: ${batch?.status || migration.status}`}
-              </span>
-            </div>
+            {!waitingForWorker && (
+              <div className="flex items-center gap-3 mb-4">
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent" />
+                <span className="text-sm text-slate-600">
+                  Processing {unit}...
+                </span>
+              </div>
+            )}
 
             {batch ? (
-              <div className="mt-4 grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div className="rounded-lg bg-green-50 p-3 text-center">
                   <div className="text-lg font-bold text-green-700">{batch.files_succeeded}</div>
                   <div className="text-xs text-green-600">Succeeded</div>
@@ -626,7 +648,7 @@ export default function RecruiterMigrationWizard() {
                 </div>
               </div>
             ) : stats && !waitingForWorker ? (
-              <div className="mt-4 grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-4 gap-3">
                 <div className="rounded-lg bg-green-50 p-3 text-center">
                   <div className="text-lg font-bold text-green-700">{stats.imported ?? 0}</div>
                   <div className="text-xs text-green-600">Imported</div>
