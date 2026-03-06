@@ -26,8 +26,6 @@ interface UploadResponse {
   total_submitted: number;
   total_succeeded: number;
   total_failed: number;
-  remaining_monthly_quota: number;
-  upgrade_recommendation: string | null;
 }
 
 interface PickedFile {
@@ -188,17 +186,6 @@ export default function RecruiterUploadScreen() {
             </View>
           </View>
 
-          {response.remaining_monthly_quota >= 0 && (
-            <Text style={styles.quotaText}>
-              {response.remaining_monthly_quota} uploads remaining this month
-            </Text>
-          )}
-
-          {response.upgrade_recommendation && (
-            <Text style={styles.upgradeText}>
-              {response.upgrade_recommendation}
-            </Text>
-          )}
 
           {response.results.map((r, i) => (
             <View key={i} style={styles.resultRow}>
@@ -328,19 +315,6 @@ const styles = StyleSheet.create({
     fontSize: fontSize.xs,
     color: colors.gray500,
     marginTop: 2,
-  },
-  quotaText: {
-    fontSize: fontSize.sm,
-    color: colors.gray500,
-    textAlign: "center",
-    marginBottom: spacing.sm,
-  },
-  upgradeText: {
-    fontSize: fontSize.sm,
-    color: colors.gold,
-    textAlign: "center",
-    marginBottom: spacing.md,
-    fontWeight: "500",
   },
   resultRow: {
     flexDirection: "row",

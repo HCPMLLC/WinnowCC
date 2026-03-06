@@ -141,7 +141,7 @@ export default function EmployerSettingsScreen() {
       <ProfileMenuItem
         icon="create-outline"
         label="Edit Profile"
-        subtitle="Company info, billing email"
+        subtitle="Company info, contact email"
         onPress={() => setShowEditProfile(!showEditProfile)}
       />
 
@@ -195,12 +195,12 @@ export default function EmployerSettingsScreen() {
             autoCapitalize="none"
           />
 
-          <Text style={styles.label}>Billing Email</Text>
+          <Text style={styles.label}>Contact Email</Text>
           <TextInput
             style={styles.input}
             value={editBillingEmail}
             onChangeText={setEditBillingEmail}
-            placeholder="billing@company.com"
+            placeholder="contact@company.com"
             placeholderTextColor={colors.gray400}
             keyboardType="email-address"
             autoCapitalize="none"

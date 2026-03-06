@@ -414,7 +414,7 @@ export default function ProfileScreen() {
       </TouchableOpacity>
 
       <Text style={styles.webManageText}>
-        Manage your account and subscription at WinnowCC.ai
+        Manage your account at WinnowCC.ai
       </Text>
 
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>

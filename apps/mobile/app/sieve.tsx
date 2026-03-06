@@ -16,6 +16,8 @@ import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { api, API_BASE } from "../lib/api";
 import { getToken } from "../lib/auth";
+import { sanitizeMessage } from "../lib/featureGate";
+import { colors } from "../lib/theme";
 
 const GoldenSieveStatic = require("../assets/golden-sieve-static.png");
 
@@ -97,7 +99,7 @@ export default function SieveScreen() {
               {
                 id: `agent-${Date.now()}`,
                 role: "assistant",
-                content: data.content,
+                content: sanitizeMessage(data.content),
                 senderName: data.sender_name,
                 isAgent: true,
               },
@@ -112,7 +114,7 @@ export default function SieveScreen() {
               {
                 id: `sys-${Date.now()}`,
                 role: "assistant",
-                content: data.content,
+                content: sanitizeMessage(data.content),
                 isSystem: true,
               },
             ]);
@@ -166,7 +168,7 @@ export default function SieveScreen() {
           {
             id: `sys-${Date.now()}`,
             role: "assistant",
-            content: data.message,
+            content: sanitizeMessage(data.message),
             isSystem: true,
           },
         ]);
@@ -377,11 +379,11 @@ export default function SieveScreen() {
           let errorContent = "Sorry, I couldn\u2019t process that.";
           const err = await res.json().catch(() => ({}));
           if (res.status === 429) {
-            errorContent = (err as any)?.detail || "You\u2019ve reached your daily message limit. Upgrade your plan for more messages.";
+            errorContent = sanitizeMessage((err as any)?.detail || "You\u2019ve reached your daily message limit. Please try again later.");
           } else if (res.status === 403) {
-            errorContent = (err as any)?.detail || "This feature requires a higher plan tier.";
+            errorContent = sanitizeMessage((err as any)?.detail || "This feature is not currently available.");
           } else {
-            errorContent = (err as any)?.detail || errorContent;
+            errorContent = sanitizeMessage((err as any)?.detail || errorContent);
           }
           setMessages((prev) => [
             ...prev,
