@@ -205,10 +205,17 @@ export default function RecruiterMigrationWizard() {
     setStarting(true);
     setError(null);
     try {
-      await apiFetch(`/api/recruiter/migration/${migration.jobId}/start`, {
-        method: "POST",
-      });
-      setStep("progress");
+      const data = await apiFetch(
+        `/api/recruiter/migration/${migration.jobId}/start`,
+        { method: "POST" },
+      );
+      if (data.status === "completed") {
+        // Small archives are processed synchronously — go straight to summary
+        setMigration((prev) => ({ ...prev, status: "completed", stats: data.stats ?? prev.stats }));
+        setStep("summary");
+      } else {
+        setStep("progress");
+      }
     } catch (e: unknown) {
       setError((e as Error).message);
     }

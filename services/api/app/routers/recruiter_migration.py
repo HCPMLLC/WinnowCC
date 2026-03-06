@@ -33,6 +33,89 @@ router = APIRouter(
 UPLOAD_DIR = os.getenv("MIGRATION_UPLOAD_DIR", "/tmp/winnow_migrations")
 
 
+def _process_resume_archive_sync(
+    job: MigrationJob,
+    user: User,
+    profile: RecruiterProfile,
+    db: Session,
+) -> dict:
+    """Process a small resume ZIP synchronously within the HTTP request.
+
+    For archives with ≤50 files this completes in seconds, avoiding the
+    dependency on the background RQ worker picking up the job.
+    """
+    from app.services.batch_upload import (
+        create_upload_batch_from_zip,
+        process_batch_resume_file,
+    )
+
+    job.status = "importing"
+    job.started_at = datetime.now(UTC)
+    db.commit()
+
+    try:
+        result = create_upload_batch_from_zip(
+            user_id=user.id,
+            owner_profile_id=profile.id,
+            zip_stored_path=job.source_file_path,
+            session=db,
+            enqueue_workers=False,
+        )
+        batch_id = result["batch_id"]
+
+        job.stats_json = {"batch_id": batch_id, "status": "processing"}
+        db.commit()
+
+        # Process each file inline instead of via RQ
+        from app.models.upload_batch import UploadBatchFile
+
+        batch_files = (
+            db.execute(
+                select(UploadBatchFile)
+                .where(UploadBatchFile.batch_id == batch_id)
+                .order_by(UploadBatchFile.file_index)
+            )
+            .scalars()
+            .all()
+        )
+
+        for bf in batch_files:
+            try:
+                process_batch_resume_file(bf.id, batch_id, profile.id)
+            except Exception:
+                logger.warning(
+                    "Sync resume process failed for file %s", bf.original_filename,
+                    exc_info=True,
+                )
+
+        # Finalize
+        from app.services.batch_upload import _finalize_batch
+
+        _finalize_batch(db, batch_id, "completed")
+
+        job.status = "completed"
+        job.completed_at = datetime.now(UTC)
+        job.stats_json = {"batch_id": batch_id, "status": "completed"}
+        db.commit()
+
+        return {
+            "job_id": job.id,
+            "status": "completed",
+            "message": f"Successfully processed {len(batch_files)} resume files.",
+        }
+
+    except Exception as exc:
+        logger.exception("Sync resume archive processing failed for job %d", job.id)
+        job.status = "failed"
+        job.error_log = [{"error": str(exc)[:500], "fatal": True}]
+        job.updated_at = datetime.now(UTC)
+        db.commit()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Resume processing failed: {exc}",
+        ) from None
+
+
 @router.post("/upload")
 async def upload_recruiter_migration_file(
     file: UploadFile,
@@ -207,7 +290,7 @@ def start_recruiter_migration(
             detail=f"Cannot start job in {job.status} status",
         )
 
-    # Resume archives — agency tier only, processed async via RQ
+    # Resume archives — agency tier only
     if job.source_platform_detected == "resume_archive":
         profile = db.execute(
             select(RecruiterProfile).where(
@@ -220,6 +303,15 @@ def start_recruiter_migration(
                 detail="Bulk resume archive import is available on the Agency plan. "
                 "Upgrade at /recruiter/pricing to unlock this feature.",
             )
+
+        detection = (job.config_json or {}).get("detection", {})
+        file_count = detection.get("row_count", 0)
+
+        # Small archives (≤50 files): process synchronously so the user
+        # sees immediate results without depending on the background worker.
+        SYNC_THRESHOLD = 50
+        if file_count <= SYNC_THRESHOLD:
+            return _process_resume_archive_sync(job, user, profile, db)
 
         from app.models.upload_batch import UploadBatch
         from app.services.batch_upload import (
@@ -261,7 +353,7 @@ def start_recruiter_migration(
                 **queue_info,
             }
 
-        # No active import — start immediately
+        # No active import — start immediately (async for large archives)
         job.status = "importing"
         job.started_at = datetime.now(UTC)
         db.commit()

@@ -149,6 +149,7 @@ def create_upload_batch_from_zip(
     owner_profile_id: int,
     zip_stored_path: str,
     session,
+    enqueue_workers: bool = True,
 ) -> dict:
     """Stream files from a ZIP in storage one at a time, stage each to
     cloud storage, create tracking rows with chunked commits, and enqueue
@@ -247,14 +248,15 @@ def create_upload_batch_from_zip(
             session.commit()
 
         # Enqueue per-file worker jobs (after all rows committed)
-        for bf_id in batch_file_ids:
-            bulk_queue.enqueue(
-                process_batch_resume_file,
-                bf_id,
-                batch_id,
-                owner_profile_id,
-                job_timeout="10m",
-            )
+        if enqueue_workers:
+            for bf_id in batch_file_ids:
+                bulk_queue.enqueue(
+                    process_batch_resume_file,
+                    bf_id,
+                    batch_id,
+                    owner_profile_id,
+                    job_timeout="10m",
+                )
 
         batch.status = "processing"
         session.commit()
