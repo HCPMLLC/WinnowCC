@@ -350,7 +350,7 @@ def _do_parse_and_create(
             job = RecruiterJob(
                 recruiter_profile_id=profile_id,
                 title=parsed_data.get("title", "Untitled Position"),
-                description=parsed_data.get("description", ""),
+                description=parsed_data.get("description") or "",
                 requirements=parsed_data.get("requirements", ""),
                 nice_to_haves=parsed_data.get("nice_to_haves"),
                 location=parsed_data.get("location", ""),
@@ -375,7 +375,7 @@ def _do_parse_and_create(
             job = EmployerJob(
                 employer_id=profile_id,
                 title=parsed_data.get("title", "Untitled Position"),
-                description=parsed_data.get("description", ""),
+                description=parsed_data.get("description") or "",
                 requirements=parsed_data.get("requirements", ""),
                 nice_to_haves=parsed_data.get("nice_to_haves"),
                 location=parsed_data.get("location", ""),
