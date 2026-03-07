@@ -52,7 +52,7 @@ export default function RecruiterMigrationWizard() {
   });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [history, setHistory] = useState<
-    { id: number; source_platform: string; status: string; stats: Record<string, unknown> | null; created_at: string; completed_at: string | null }[]
+    { id: number; source_platform: string; status: string; stats: Record<string, unknown> | null; created_at: string; started_at: string | null; completed_at: string | null }[]
   >([]);
 
   // Fetch migration history on mount and when a migration finishes
@@ -923,9 +923,10 @@ export default function RecruiterMigrationWizard() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="py-2 pr-4">Date</th>
                   <th className="py-2 pr-4">Platform</th>
                   <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4">Started</th>
+                  <th className="py-2 pr-4">Finished</th>
                   <th className="py-2 pr-4 text-right">Imported</th>
                   <th className="py-2 pr-4 text-right">Merged</th>
                   <th className="py-2 pr-4 text-right">Skipped</th>
@@ -947,9 +948,6 @@ export default function RecruiterMigrationWizard() {
                           : "bg-slate-100 text-slate-600";
                   return (
                     <tr key={j.id} className="border-b border-slate-100">
-                      <td className="py-2 pr-4 text-slate-600">
-                        {new Date(j.created_at).toLocaleDateString()}
-                      </td>
                       <td className="py-2 pr-4 capitalize text-slate-700">
                         {j.source_platform.replace(/_/g, " ")}
                       </td>
@@ -959,6 +957,16 @@ export default function RecruiterMigrationWizard() {
                         >
                           {j.status.replace(/_/g, " ")}
                         </span>
+                      </td>
+                      <td className="py-2 pr-4 text-slate-600 whitespace-nowrap">
+                        {j.started_at
+                          ? new Date(j.started_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
+                          : "—"}
+                      </td>
+                      <td className="py-2 pr-4 text-slate-600 whitespace-nowrap">
+                        {j.completed_at
+                          ? new Date(j.completed_at).toLocaleString([], { dateStyle: "short", timeStyle: "short" })
+                          : "—"}
                       </td>
                       <td className="py-2 pr-4 text-right text-slate-700">
                         {s?.imported ?? "—"}

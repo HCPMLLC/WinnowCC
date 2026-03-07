@@ -640,6 +640,7 @@ def recruiter_migration_history(
             "status": j.status,
             "stats": j.stats_json,
             "created_at": j.created_at,
+            "started_at": j.started_at,
             "completed_at": j.completed_at,
         }
         for j in jobs
