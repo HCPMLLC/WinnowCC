@@ -898,11 +898,13 @@ export default function RecruiterMigrationWizard() {
                   <th className="py-2 pr-4 text-right">Merged</th>
                   <th className="py-2 pr-4 text-right">Skipped</th>
                   <th className="py-2 text-right">Errors</th>
+                  <th className="py-2 pl-4"></th>
                 </tr>
               </thead>
               <tbody>
                 {history.map((j) => {
                   const s = j.stats as Record<string, number> | null;
+                  const canCancel = j.status === "pending" || j.status === "queued" || j.status === "importing";
                   const statusColor =
                     j.status === "completed"
                       ? "bg-green-100 text-green-700"
@@ -937,6 +939,28 @@ export default function RecruiterMigrationWizard() {
                       </td>
                       <td className="py-2 text-right text-slate-700">
                         {s?.errors ?? "—"}
+                      </td>
+                      <td className="py-2 pl-4 text-right">
+                        {canCancel && (
+                          <button
+                            onClick={async () => {
+                              if (!confirm("Cancel this migration?")) return;
+                              try {
+                                await apiFetch(`/api/recruiter/migration/${j.id}/cancel`, { method: "POST" });
+                                setHistory((prev) => prev.map((h) => h.id === j.id ? { ...h, status: "failed" } : h));
+                              } catch {
+                                // Refresh history to get actual state
+                                fetch(`${API}/api/recruiter/migration/history/list`, { credentials: "include" })
+                                  .then((r) => (r.ok ? r.json() : []))
+                                  .then(setHistory)
+                                  .catch(() => {});
+                              }
+                            }}
+                            className="rounded bg-red-50 px-2 py-1 text-xs font-medium text-red-600 hover:bg-red-100"
+                          >
+                            Cancel
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
