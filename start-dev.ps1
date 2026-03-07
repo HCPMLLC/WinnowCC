@@ -11,12 +11,22 @@ function Ensure-Command($name) {
 }
 
 function Start-NewPSWindow($title, $workingDir, $command) {
-  # Opens a new PowerShell window and runs the command, keeping it open.
-  $args = @(
-    "-NoExit",
-    "-Command",
-    "Set-Location `"$workingDir`"; `$Host.UI.RawUI.WindowTitle = `"$title`"; $command"
-  )
+  # Opens a new PowerShell window that auto-restarts the command on crash.
+  # Waits 3 seconds between restarts to avoid tight crash loops.
+  $loopCmd = @"
+Set-Location "$workingDir"
+`$Host.UI.RawUI.WindowTitle = "$title"
+while (`$true) {
+  Write-Host "[$title] Starting..." -ForegroundColor Cyan
+  try { $command } catch { Write-Host "[$title] ERROR: `$_" -ForegroundColor Red }
+  `$code = `$LASTEXITCODE
+  Write-Host ""
+  Write-Host "[$title] Process exited (code `$code). Restarting in 3 seconds..." -ForegroundColor Yellow
+  Write-Host "    Press Ctrl+C to stop." -ForegroundColor DarkGray
+  Start-Sleep -Seconds 3
+}
+"@
+  $args = @("-NoExit", "-Command", $loopCmd)
   Start-Process -FilePath "powershell.exe" -ArgumentList $args | Out-Null
 }
 
