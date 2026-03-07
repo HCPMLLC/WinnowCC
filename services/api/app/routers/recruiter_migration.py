@@ -178,25 +178,44 @@ def register_gcs_upload(
 ):
     """Register a file uploaded directly to GCS via signed URL.
 
-    Downloads to a temp file for platform detection, then creates
-    the MigrationJob pointing at the GCS path.
+    Uses lightweight filename-based detection to avoid downloading
+    the full file (which can be 1+ GB and would OOM the API container).
+    Full detection runs in the background worker if needed.
     """
-    from app.services.storage import (
-        download_to_tempfile,
-        is_gcs_path,
-    )
+    from app.services.storage import is_gcs_path
 
     if not is_gcs_path(body.gcs_path):
         raise HTTPException(400, "Invalid GCS path")
 
-    tmp_path = download_to_tempfile(body.gcs_path, suffix=".zip")
-    try:
-        detection = detect_platform(str(tmp_path))
-    finally:
-        try:
-            tmp_path.unlink()
-        except OSError:
-            pass
+    # Lightweight detection by filename pattern — avoids downloading
+    # the multi-GB file into the API container's limited memory.
+    fname = body.filename.lower()
+    if "attachments" in fname and fname.endswith(".zip"):
+        detection = {
+            "platform": "recruitcrm_attachments",
+            "confidence": 0.90,
+            "evidence": [
+                "Filename pattern matches Recruit CRM attachments export"
+            ],
+            "entity_types_found": ["resumes"],
+            "row_count": 0,  # Will be determined by background worker
+            "field_mapping": {},
+        }
+    elif fname.endswith(".zip"):
+        detection = {
+            "platform": "resume_archive",
+            "confidence": 0.70,
+            "evidence": ["ZIP file uploaded via signed URL"],
+            "entity_types_found": ["resumes"],
+            "row_count": 0,
+            "field_mapping": {},
+        }
+    else:
+        raise HTTPException(
+            400,
+            "Signed URL upload only supports ZIP files. "
+            "Use the standard upload for CSV/JSON/XLSX.",
+        )
 
     platform = detection["platform"]
 
