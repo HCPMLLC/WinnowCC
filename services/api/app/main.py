@@ -52,6 +52,7 @@ from app.routers.admin_support import router as admin_support_router  # noqa: E4
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
 from app.routers.billing import router as billing_router  # noqa: E402
+from app.routers.bulk_attach import router as bulk_attach_router  # noqa: E402
 from app.routers.candidate_insights import (
     router as candidate_insights_router,  # noqa: E402
 )
@@ -244,6 +245,7 @@ app.include_router(employer_compliance_router)
 app.include_router(employer_introductions_router)
 app.include_router(talent_pipeline_router)
 app.include_router(recruiter_router)
+app.include_router(bulk_attach_router)
 app.include_router(recruiter_actions_router)
 app.include_router(recruiter_migration_router)
 app.include_router(outreach_router)

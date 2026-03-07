@@ -185,6 +185,12 @@ export default function RecruiterCandidates() {
           >
             Upload Resumes
           </Link>
+          <Link
+            href="/recruiter/candidates/bulk-attach"
+            className="rounded-lg border border-slate-900 bg-white px-3 py-2 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
+          >
+            Attach Resumes
+          </Link>
           <button
             onClick={() => handleExport("csv")}
             disabled={exporting || candidates.length === 0}

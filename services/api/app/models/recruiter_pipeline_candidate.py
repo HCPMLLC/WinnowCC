@@ -44,6 +44,15 @@ class RecruiterPipelineCandidate(Base):
     tags: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    # Bulk attach tracking
+    bulk_attach_batch_id: Mapped[str | None] = mapped_column(
+        String(36), nullable=True, index=True
+    )
+    bulk_attach_status: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    bulk_attach_matched_by: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
+
     match_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     outreach_count: Mapped[int] = mapped_column(Integer, server_default="0")
     last_outreach_at: Mapped[datetime | None] = mapped_column(
