@@ -199,7 +199,7 @@ export default function CandidateDetailPage() {
       headline: derivedHeadline,
       location: pj.location || (basics.location as string) || "",
       current_company: derivedCompany,
-      about: pj.about || pj.professional_summary || "",
+      about: pj.about || pj.professional_summary || (basics.summary as string) || "",
       open_to_work: pj.open_to_work ?? true,
       recommendations_count: pj.recommendations_count || 0,
       notes: pj.notes || "",
@@ -352,7 +352,7 @@ export default function CandidateDetailPage() {
   const basics = pj.basics || {};
   const displayName = pj.name || (basics.name as string) || "Unknown";
   const displayLocation = pj.location || (basics.location as string) || "";
-  const displayAbout = pj.about || pj.professional_summary || "";
+  const displayAbout = pj.about || pj.professional_summary || (basics.summary as string) || "";
   const displaySkills = pj.skills || [];
   const displayExperience = pj.experience || [];
   const displayEducation = pj.education || [];
