@@ -58,30 +58,54 @@ PLATFORM_SIGNATURES: dict[str, dict[str, dict]] = {
     },
     "recruitcrm": {
         "candidates": {
-            "required": ["First Name", "Last Name", "Email"],
+            "required": ["First Name", "Last Name", "Slug"],
             "optional": [
-                "Phone",
-                "Current Company",
-                "Current Title",
+                "Email",
+                "Contact Number",
+                "Current Organisation",
+                "Position",
                 "Source",
-                "Tags",
-                "Resume",
-                "Created At",
+                "Profile Linkedin",
+                "City",
+                "State",
+                "Country",
             ],
         },
         "jobs": {
-            "required": ["Job Title", "Company", "Status"],
+            "required": ["Name", "Slug", "Job Status"],
             "optional": [
-                "Location",
                 "Job Type",
-                "Salary Min",
-                "Salary Max",
-                "Created At",
+                "Minimum Annual Salary",
+                "Maximum Annual Salary",
+                "Number Of Openings",
+                "Company Slug",
+                "Department",
+                "Close Date",
             ],
         },
         "contacts": {
-            "required": ["First Name", "Last Name", "Email", "Company"],
-            "optional": ["Phone", "Title", "Tags"],
+            "required": ["First Name", "Last Name", "Slug"],
+            "optional": [
+                "Email",
+                "Contact Number",
+                "Designation",
+                "Company Slug",
+            ],
+        },
+        "companies": {
+            "required": ["Company", "Slug"],
+            "optional": [
+                "Industry",
+                "Website",
+                "Parent Company Slug",
+            ],
+        },
+        "assignments": {
+            "required": ["Candidate Slug", "Job Slug", "Candidate Status"],
+            "optional": [
+                "Stage Date",
+                "Slug",
+            ],
         },
     },
     "catsone": {
@@ -155,21 +179,39 @@ FIELD_MAPPINGS: dict[str, dict[str, str]] = {
         "employmentType": "employment_type",
     },
     "recruitcrm": {
+        "Slug": "external_id",
         "First Name": "first_name",
         "Last Name": "last_name",
         "Email": "email",
-        "Phone": "phone",
-        "Current Company": "company",
-        "Current Title": "job_title",
+        "Contact Number": "phone",
+        "Current Organisation": "company",
+        "Position": "job_title",
+        "City": "city",
+        "State": "state",
+        "Country": "country",
         "Source": "source",
-        "Tags": "tags",
-        "Job Title": "job_title",
-        "Company": "company",
-        "Status": "status",
-        "Location": "location",
+        "Profile Linkedin": "linkedin_url",
+        "Company": "company_name",
+        "Industry": "industry",
+        "Website": "website",
+        "Parent Company Slug": "parent_company_slug",
+        "Designation": "job_title",
+        "Company Slug": "company_slug",
+        "Name": "job_title",
+        "Job Status": "status",
         "Job Type": "employment_type",
-        "Salary Min": "salary_min",
-        "Salary Max": "salary_max",
+        "Minimum Annual Salary": "salary_min",
+        "Maximum Annual Salary": "salary_max",
+        "Number Of Openings": "positions_to_fill",
+        "Department": "department",
+        "Job Category": "job_category",
+        "Close Date": "closes_at",
+        "Start Date": "start_at",
+        "Contact Slug": "contact_slug",
+        "Candidate Slug": "candidate_slug",
+        "Job Slug": "job_slug",
+        "Candidate Status": "status",
+        "Stage Date": "stage_date",
     },
     "catsone": {
         "First Name": "first_name",
@@ -343,6 +385,52 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
     names_lower = [n.lower() for n in names]
     evidence: list[str] = []
     entity_types: list[str] = []
+
+    # Check for Recruit CRM multi-CSV export
+    recruitcrm_zip_files = {
+        "candidate_data.csv": "candidates",
+        "company_data.csv": "companies",
+        "contact_data.csv": "contacts",
+        "job_data.csv": "jobs",
+        "assignment_data.csv": "assignments",
+    }
+    rcrm_matches = {}
+    for zn in names:
+        basename = zn.split("/")[-1].lower()
+        for expected, etype in recruitcrm_zip_files.items():
+            if basename == expected:
+                rcrm_matches[expected] = etype
+    if len(rcrm_matches) >= 3:
+        rcrm_entity_types = list(rcrm_matches.values())
+        # Count total rows across matched CSVs
+        total_rows = 0
+        with zipfile.ZipFile(path) as zf2:
+            for zn in names:
+                basename = zn.split("/")[-1].lower()
+                if basename in rcrm_matches:
+                    try:
+                        import csv as csv_mod
+                        import io
+
+                        with zf2.open(zn) as f:
+                            text = io.TextIOWrapper(f, encoding="utf-8-sig")
+                            reader = csv_mod.reader(text)
+                            next(reader, None)  # skip header
+                            total_rows += sum(1 for _ in reader)
+                    except Exception:
+                        pass
+        rcrm_evidence = [
+            f"ZIP contains {len(rcrm_matches)} Recruit CRM entity files: "
+            + ", ".join(sorted(rcrm_matches.keys()))
+        ]
+        return {
+            "platform": "recruitcrm",
+            "confidence": round(min(0.3 + 0.15 * len(rcrm_matches), 1.0), 2),
+            "evidence": rcrm_evidence,
+            "entity_types_found": rcrm_entity_types,
+            "row_count": total_rows,
+            "field_mapping": FIELD_MAPPINGS.get("recruitcrm", {}),
+        }
 
     # Check for Bullhorn multi-file export
     bullhorn_files = ["candidate", "clientcorporation", "joborder", "placement"]

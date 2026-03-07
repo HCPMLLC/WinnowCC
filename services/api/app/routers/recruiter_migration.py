@@ -387,6 +387,23 @@ def start_recruiter_migration(
             "You'll receive an email when it's complete.",
         }
 
+    # Recruit CRM multi-CSV ZIP — use dedicated orchestrator
+    if job.source_platform_detected == "recruitcrm" and (
+        job.source_file_path or ""
+    ).lower().endswith(".zip"):
+        from app.services.migration.recruitcrm_orchestrator import (
+            run_recruitcrm_zip_migration,
+        )
+
+        result = run_recruitcrm_zip_migration(job.id, db)
+        if result.get("status") == "completed":
+            return result
+        raise HTTPException(
+            status_code=500,
+            detail="Migration failed: "
+            f"{result.get('stats', {}).get('errors', 0)} errors",
+        )
+
     return run_recruiter_migration(job_id, db)
 
 

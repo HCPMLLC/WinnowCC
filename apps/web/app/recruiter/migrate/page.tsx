@@ -11,6 +11,7 @@ interface MigrationState {
   platform: string;
   confidence: number;
   evidence: string[];
+  entityTypesFound: string[];
   rowCount: number;
   status: string;
   stats: Record<string, unknown> | null;
@@ -41,6 +42,7 @@ export default function RecruiterMigrationWizard() {
     platform: "",
     confidence: 0,
     evidence: [],
+    entityTypesFound: [],
     rowCount: 0,
     status: "",
     stats: null,
@@ -182,6 +184,7 @@ export default function RecruiterMigrationWizard() {
           platform: data.detected_platform,
           confidence: data.confidence,
           evidence: data.evidence,
+          entityTypesFound: data.entity_types_found || [],
           rowCount: data.row_count,
           status: "pending",
         }));
@@ -466,6 +469,7 @@ export default function RecruiterMigrationWizard() {
       {/* Step 2: Detection */}
       {step === "detection" && (() => {
         const isResume = migration.platform === "resume_archive";
+        const isMultiEntity = migration.platform === "recruitcrm" && migration.entityTypesFound.length > 1;
         const estHours = Math.max(1, Math.ceil((migration.rowCount * 1.5) / 3600));
         return (
           <div className="rounded-xl border border-slate-200 bg-white p-8">
@@ -487,6 +491,19 @@ export default function RecruiterMigrationWizard() {
                   : `${migration.rowCount.toLocaleString()} rows detected`}
               </div>
             </div>
+
+            {isMultiEntity && (
+              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <div className="mb-1 font-semibold">Recruit CRM export detected</div>
+                <p>
+                  Will import{" "}
+                  {migration.entityTypesFound
+                    .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
+                    .join(", ")}
+                  .
+                </p>
+              </div>
+            )}
 
             {isResume && (
               <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -712,6 +729,40 @@ export default function RecruiterMigrationWizard() {
                   <div>Failed: {migration.batchStatus.files_failed} files</div>
                   <div>Total: {migration.batchStatus.total_files} files</div>
                 </div>
+              ) : migration.stats && (migration.stats as Record<string, unknown>).by_type ? (
+                <div className="mt-3">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-green-200 text-left text-xs font-semibold uppercase text-green-700">
+                        <th className="py-1">Entity</th>
+                        <th className="py-1 text-right">Imported</th>
+                        <th className="py-1 text-right">Merged</th>
+                        <th className="py-1 text-right">Skipped</th>
+                        <th className="py-1 text-right">Errors</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-green-600">
+                      {Object.entries(
+                        (migration.stats as Record<string, unknown>).by_type as Record<string, Record<string, number>>,
+                      ).map(([entityType, s]) => (
+                        <tr key={entityType} className="border-b border-green-100">
+                          <td className="py-1 capitalize">{entityType}</td>
+                          <td className="py-1 text-right">{s.imported ?? 0}</td>
+                          <td className="py-1 text-right">{s.merged ?? 0}</td>
+                          <td className="py-1 text-right">{s.skipped ?? 0}</td>
+                          <td className="py-1 text-right">{s.errors ?? 0}</td>
+                        </tr>
+                      ))}
+                      <tr className="font-semibold text-green-700">
+                        <td className="py-1">Total</td>
+                        <td className="py-1 text-right">{String((migration.stats as Record<string, unknown>).imported ?? 0)}</td>
+                        <td className="py-1 text-right">{String((migration.stats as Record<string, unknown>).merged ?? 0)}</td>
+                        <td className="py-1 text-right">{String((migration.stats as Record<string, unknown>).skipped ?? 0)}</td>
+                        <td className="py-1 text-right">{String((migration.stats as Record<string, unknown>).errors ?? 0)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
               ) : migration.stats ? (
                 <div className="mt-2 space-y-1 text-sm text-green-600">
                   <div>
@@ -773,6 +824,7 @@ export default function RecruiterMigrationWizard() {
                   platform: "",
                   confidence: 0,
                   evidence: [],
+                  entityTypesFound: [],
                   rowCount: 0,
                   status: "",
                   stats: null,
