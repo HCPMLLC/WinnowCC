@@ -498,17 +498,18 @@ export default function RecruiterMigrationWizard() {
       {/* Step 2: Detection */}
       {step === "detection" && (() => {
         const isResume = migration.platform === "resume_archive";
+        const isAttachments = migration.platform === "recruitcrm_attachments";
         const isMultiEntity = migration.platform === "recruitcrm" && migration.entityTypesFound.length > 1;
         const estHours = Math.max(1, Math.ceil((migration.rowCount * 1.5) / 3600));
         return (
           <div className="rounded-xl border border-slate-200 bg-white p-8">
             <h2 className="mb-4 text-lg font-semibold text-slate-800">
-              {isResume ? "Resume Archive Detected" : "Platform Detected"}
+              {isResume ? "Resume Archive Detected" : isAttachments ? "Recruit CRM Resume Attachments" : "Platform Detected"}
             </h2>
             <div className="mb-6 rounded-lg bg-blue-50 p-4">
               <div className="flex items-center gap-3">
                 <div className="text-2xl font-bold capitalize text-blue-700">
-                  {isResume ? "Resume Archive" : migration.platform.replace("_", " ")}
+                  {isResume ? "Resume Archive" : isAttachments ? "Recruit CRM Attachments" : migration.platform.replace("_", " ")}
                 </div>
                 <div className="rounded-full bg-blue-100 px-3 py-1 text-xs font-semibold text-blue-700">
                   {Math.round(migration.confidence * 100)}% confidence
@@ -517,7 +518,9 @@ export default function RecruiterMigrationWizard() {
               <div className="mt-2 text-sm text-blue-600">
                 {isResume
                   ? `${migration.rowCount.toLocaleString()} resume files detected (PDF/DOCX)`
-                  : `${migration.rowCount.toLocaleString()} rows detected`}
+                  : isAttachments
+                    ? `${migration.rowCount.toLocaleString()} candidate resumes found`
+                    : `${migration.rowCount.toLocaleString()} rows detected`}
               </div>
             </div>
 
@@ -530,6 +533,18 @@ export default function RecruiterMigrationWizard() {
                     .map((t) => t.charAt(0).toUpperCase() + t.slice(1))
                     .join(", ")}
                   .
+                </p>
+              </div>
+            )}
+
+            {isAttachments && (
+              <div className="mb-6 rounded-lg border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800">
+                <div className="mb-1 font-semibold">How it works</div>
+                <p>
+                  Resumes will be matched to your previously imported candidates
+                  by slug and parsed in the background. You&apos;ll receive an
+                  email when complete. Estimated time: ~{estHours}{" "}
+                  {estHours === 1 ? "hour" : "hours"}.
                 </p>
               </div>
             )}
@@ -582,7 +597,9 @@ export default function RecruiterMigrationWizard() {
                   ? "Cannot import — unrecognized file format"
                   : isResume
                     ? "Start Resume Import"
-                    : "Start Import"}
+                    : isAttachments
+                      ? "Start Resume Attachment Import"
+                      : "Start Import"}
             </button>
             <button
               onClick={() => {
@@ -605,30 +622,32 @@ export default function RecruiterMigrationWizard() {
         const stats = migration.stats as Record<string, number> | null;
         const batch = migration.batchStatus;
         const isResume = migration.platform === "resume_archive";
+        const isAttachments = migration.platform === "recruitcrm_attachments";
+        const isResumeType = isResume || isAttachments;
         const workerStale = !!rawStats?.worker_stale;
         const staleMinutes = Number(rawStats?.stale_minutes ?? 0);
-        const waitingForWorker = isResume && !batch && (!stats || workerStale);
+        const waitingForWorker = isResumeType && !batch && (!stats || workerStale);
 
         // For resume archives with batch tracking, use granular per-file data
         const processed = batch
           ? batch.files_completed
-          : isResume
+          : isResumeType
             ? (stats?.processed_files ?? 0)
             : stats
               ? (stats.imported ?? 0) + (stats.merged ?? 0) + (stats.skipped ?? 0) + (stats.errors ?? 0)
               : 0;
         const total = batch
           ? batch.total_files
-          : isResume
+          : isResumeType
             ? ((stats?.total_files ?? migration.rowCount) || 1)
             : ((stats?.total_rows ?? migration.rowCount) || 1);
         const pct = waitingForWorker ? 0 : Math.min(100, Math.round((processed / total) * 100));
-        const unit = isResume ? "files" : "rows";
+        const unit = isResumeType ? "files" : "rows";
 
         return (
           <div className="rounded-xl border border-slate-200 bg-white p-8">
             <h2 className="mb-4 text-lg font-semibold text-slate-800">
-              {isResume ? "Resume Parsing" : "Import in Progress"}
+              {isResumeType ? "Resume Parsing" : "Import in Progress"}
             </h2>
 
             {/* Error: stale for a long time */}
@@ -664,7 +683,7 @@ export default function RecruiterMigrationWizard() {
                   under a minute.
                 </p>
               </div>
-            ) : isResume ? (
+            ) : isResumeType ? (
               <div className="mb-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-700">
                 Processing continues in the background. You&apos;ll receive an
                 email when complete &mdash; feel free to close this page.
@@ -845,7 +864,7 @@ export default function RecruiterMigrationWizard() {
             </div>
           )}
 
-          {migration.status === "completed" && migration.platform === "resume_archive" && (
+          {migration.status === "completed" && (migration.platform === "resume_archive" || migration.platform === "recruitcrm_attachments") && (
             <a
               href="/recruiter/candidates"
               className="mb-4 block rounded-lg bg-blue-50 p-3 text-center text-sm font-medium text-blue-700 hover:bg-blue-100"

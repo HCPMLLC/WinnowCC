@@ -258,8 +258,9 @@ def get_recruiter_migration_status(
         "created_at": job.created_at,
     }
 
-    # Add queue info for resume archive imports
-    if job.source_platform == "resume_archive" and job.status in (
+    # Add queue info for resume archive and attachments imports
+    resume_platforms = ("resume_archive", "recruitcrm_attachments")
+    if job.source_platform in resume_platforms and job.status in (
         "queued",
         "importing",
     ):
@@ -276,6 +277,14 @@ def get_recruiter_migration_status(
             if age > timedelta(minutes=5):
                 result["worker_stale"] = True
                 result["stale_minutes"] = int(age.total_seconds() / 60)
+
+    # For attachments imports, expose batch_id from stats for frontend polling
+    if (
+        job.source_platform_detected == "recruitcrm_attachments"
+        and job.stats_json
+        and job.stats_json.get("batch_id")
+    ):
+        result["batch_id"] = job.stats_json["batch_id"]
 
     return result
 
@@ -300,6 +309,63 @@ def start_recruiter_migration(
             status_code=400,
             detail=f"Cannot start job in {job.status} status",
         )
+
+    # Recruit CRM attachments ZIP — requires prior CSV import
+    if job.source_platform_detected == "recruitcrm_attachments":
+        prior = db.execute(
+            select(MigrationJob).where(
+                MigrationJob.user_id == user.id,
+                MigrationJob.source_platform_detected == "recruitcrm",
+                MigrationJob.status == "completed",
+            ).order_by(MigrationJob.completed_at.desc())
+        ).scalar_one_or_none()
+        if not prior:
+            raise HTTPException(
+                status_code=400,
+                detail="Import your Recruit CRM CSV data export first, "
+                "then upload the attachments ZIP.",
+            )
+
+        job.status = "importing"
+        job.started_at = datetime.now(UTC)
+        job.config_json = {
+            **(job.config_json or {}),
+            "csv_migration_job_id": prior.id,
+        }
+        db.commit()
+
+        try:
+            from app.services.migration.recruitcrm_orchestrator import (
+                _stage_attachments_job,
+            )
+            from app.services.queue import get_queue
+
+            queue = get_queue("low")
+            queue.enqueue(
+                _stage_attachments_job,
+                migration_job_id=job.id,
+                job_timeout="60m",
+            )
+        except Exception:
+            logger.exception(
+                "Failed to enqueue attachments migration job %d", job_id
+            )
+            job.status = "failed"
+            job.error_log = [
+                {"error": "Failed to enqueue job. Is Redis running?", "fatal": True}
+            ]
+            db.commit()
+            raise HTTPException(
+                status_code=503,
+                detail="Queue not available. Ensure Redis is running.",
+            ) from None
+
+        return {
+            "job_id": job_id,
+            "status": "importing",
+            "message": "Extracting and staging resume files. "
+            "You'll receive an email when processing is complete.",
+        }
 
     # Resume archives — agency tier only
     if job.source_platform_detected == "resume_archive":

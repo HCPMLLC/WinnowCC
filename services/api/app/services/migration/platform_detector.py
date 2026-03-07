@@ -6,6 +6,7 @@ Includes AI-assisted mapping for unknown formats.
 """
 
 import csv
+import io
 import json as json_mod
 import logging
 import os
@@ -386,6 +387,38 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
     evidence: list[str] = []
     entity_types: list[str] = []
 
+    # Check for Recruit CRM attachments ZIP (nested ZIP with Candidates/ folder)
+    inner_zips = [n for n in names if n.lower().endswith(".zip")]
+    if inner_zips and any("readme.txt" == n.lower() for n in names):
+        try:
+            with zipfile.ZipFile(path) as zf2:
+                with zf2.open(inner_zips[0]) as inner_f:
+                    inner_bytes = io.BytesIO(inner_f.read())
+                with zipfile.ZipFile(inner_bytes) as izf:
+                    inner_names = izf.namelist()
+                    cand_resumes = [
+                        n
+                        for n in inner_names
+                        if n.startswith("Candidates/")
+                        and "/resumefilename/" in n
+                        and not n.endswith("/")
+                    ]
+                    if cand_resumes:
+                        n = len(cand_resumes)
+                        return {
+                            "platform": "recruitcrm_attachments",
+                            "confidence": 0.95,
+                            "evidence": [
+                                f"Nested ZIP with {n} "
+                                "candidate resume files"
+                            ],
+                            "entity_types_found": ["resumes"],
+                            "row_count": len(cand_resumes),
+                            "field_mapping": {},
+                        }
+        except Exception:
+            pass  # Fall through to other checks
+
     # Check for Recruit CRM multi-CSV export
     recruitcrm_zip_files = {
         "candidate_data.csv": "candidates",
@@ -410,7 +443,6 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
                 if basename in rcrm_matches:
                     try:
                         import csv as csv_mod
-                        import io
 
                         with zf2.open(zn) as f:
                             text = io.TextIOWrapper(f, encoding="utf-8-sig")

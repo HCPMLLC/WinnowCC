@@ -232,8 +232,8 @@ def build_pdf():
     pdf.set_text_color(*GRAY)
     for line in [
         "Platform: Winnow (winnowcc.ai)",
-        "Source: Recruit CRM (CSV Data Export)",
-        "Version: Phase 1 -- Core Entity Import",
+        "Source: Recruit CRM (CSV + Attachments Export)",
+        "Version: Complete -- CRM Data + Resume Attachments",
         "Date: March 2026",
     ]:
         pdf.cell(0, 7, line, align="C", new_x="LMARGIN", new_y="NEXT")
@@ -252,8 +252,8 @@ def build_pdf():
     pdf.multi_cell(140, 5.5,
         "Step-by-step instructions for exporting your data from Recruit CRM, "
         "uploading it to Winnow, verifying the import, and getting productive "
-        "in your new recruiter workspace. Covers Companies, Contacts, Jobs, "
-        "Candidates, and Assignments."
+        "in your new recruiter workspace. Covers CRM data (Companies, Contacts, "
+        "Jobs, Candidates, Assignments) and resume attachments import."
     )
     pdf.set_y(y0 + 44)
 
@@ -266,10 +266,12 @@ def build_pdf():
         ("2", "Export from Recruit CRM", "How to download your CSV data export"),
         ("3", "Upload to Winnow", "The migration wizard step by step"),
         ("4", "What Gets Imported", "Entity mapping and data details"),
-        ("5", "Verify Your Data", "Post-import checklist"),
-        ("6", "Your Recruiter Workflow", "Using Winnow day-to-day after migration"),
-        ("7", "Troubleshooting", "Common issues and how to resolve them"),
-        ("8", "FAQ", "Frequently asked questions"),
+        ("5", "Resume Attachments Import", "Phase 2: import resumes and enable matching"),
+        ("6", "Verify Your Data", "Post-import checklist"),
+        ("7", "Your Recruiter Workflow", "Using Winnow day-to-day after migration"),
+        ("8", "Troubleshooting", "Common issues and how to resolve them"),
+        ("9", "FAQ", "Frequently asked questions"),
+        ("10", "Ask Sieve for Help", "Your AI concierge knows migration inside out"),
     ]
     for num, title, desc in toc:
         pdf.set_font("Helvetica", "B", 11)
@@ -293,51 +295,53 @@ def build_pdf():
                "(usually named csv-data-export-<date>.zip)")
     pdf.bullet("A modern web browser (Chrome, Edge, Firefox, or Safari)")
 
+    pdf.bullet("(Phase 2) The attachments-data-export ZIP from Recruit CRM "
+               "(contains candidate resumes, typically 1-2 GB)")
+
     pdf.sub_heading("What to Expect")
     pdf.body(
-        "The migration imports five entity types from your Recruit CRM export "
-        "in dependency order: Companies, Contacts, Jobs, Candidates, and "
-        "Assignments. The entire process typically completes in under 30 "
-        "seconds for most datasets."
+        "The migration has two phases. Phase 1 imports five entity types from "
+        "your CSV export in dependency order: Companies, Contacts, Jobs, "
+        "Candidates, and Assignments. This completes in under 30 seconds. "
+        "Phase 2 imports resume attachments and matches them to the candidates "
+        "from Phase 1, enabling Winnow's match scoring engine."
     )
 
     pdf.table(
-        ["Entity", "Approx. Count", "Winnow Destination"],
+        ["Phase", "Entity", "Winnow Destination"],
         [
-            ["Companies", "~430", "Clients"],
-            ["Contacts", "~387", "Client contacts (merged)"],
-            ["Jobs", "~413", "Recruiter Jobs"],
-            ["Candidates", "~8,800+", "Pipeline Candidates"],
-            ["Assignments", "~11,000+", "Candidate-Job links + stages"],
+            ["1 (CSV)", "Companies (~430)", "Clients"],
+            ["1 (CSV)", "Contacts (~387)", "Client contacts (merged)"],
+            ["1 (CSV)", "Jobs (~413)", "Recruiter Jobs"],
+            ["1 (CSV)", "Candidates (~8,800+)", "Pipeline Candidates"],
+            ["1 (CSV)", "Assignments (~11,000+)", "Candidate-Job links"],
+            ["2 (Attach.)", "Resumes (~8,900)", "CandidateProfile + matching"],
         ],
-        col_widths=[45, 40, 105],
+        col_widths=[30, 65, 95],
     )
 
     pdf.tip_box(
         "TIP: Timing",
-        "The import runs synchronously -- you will see results immediately "
-        "after clicking Start Import. No background processing is needed for "
-        "CRM data exports."
+        "Phase 1 (CSV) runs synchronously -- results appear in seconds. "
+        "Phase 2 (attachments) runs in the background because of the large "
+        "file size. You can close the browser and come back later."
     )
 
-    pdf.sub_heading("What Is NOT Imported (Phase 1)")
+    pdf.sub_heading("What Is NOT Yet Imported")
     pdf.body("The following data will be imported in a future update:")
     pdf.bullet("Skills and tags")
     pdf.bullet("Work history and education history")
     pdf.bullet("Notes and activity logs")
-    pdf.bullet("Resume file attachments (requires the separate "
-               "attachments-data-export.zip)")
 
     # ===== SECTION 2: EXPORT FROM RECRUIT CRM ============================
     pdf.add_page()
     pdf.section_title("2.  Export from Recruit CRM")
 
-    pdf.sub_heading("Step-by-Step Export")
+    pdf.sub_heading("Export 1: CSV Data Export (Phase 1)")
     pdf.step(1, "Log in to Recruit CRM as an administrator.")
     pdf.step(2, 'Navigate to Settings (gear icon) then select "Data Export" '
                 'from the left sidebar.')
-    pdf.step(3, 'Select "CSV Data Export" (not the attachments export -- '
-                "that's a separate step for Phase 2).")
+    pdf.step(3, 'Select "CSV Data Export".')
     pdf.step(4, 'Click "Export All Data". Recruit CRM will package all your '
                 "entities into a single ZIP file.")
     pdf.step(5, "Wait for the export to complete. You will receive an email "
@@ -345,11 +349,24 @@ def build_pdf():
     pdf.step(6, "Save the ZIP file to your computer. The filename is usually "
                 "csv-data-export-<date-time>.zip.")
 
+    pdf.sub_heading("Export 2: Attachments Export (Phase 2)")
+    pdf.step(7, 'In the same Data Export page, select "Attachments Data Export".')
+    pdf.step(8, 'Click "Export All Attachments". This is a much larger file '
+                "(typically 1-2 GB) and may take several minutes to prepare.")
+    pdf.step(9, "Download the ZIP file. The filename is usually "
+                "attachments-data-export-<date-time>.zip.")
+
     pdf.warn_box(
-        "IMPORTANT: Do Not Unzip",
-        "Upload the ZIP file directly to Winnow. Do not extract it first. "
-        "Winnow's migration wizard reads all five CSV files from inside "
+        "IMPORTANT: Do Not Unzip Either File",
+        "Upload both ZIP files directly to Winnow. Do not extract them first. "
+        "Winnow's migration wizard reads the files from inside "
         "the ZIP automatically."
+    )
+    pdf.tip_box(
+        "TIP: Order Matters",
+        "Always import the CSV data export first (Phase 1), then the "
+        "attachments export (Phase 2). The attachments import needs the "
+        "candidate records from Phase 1 to match resumes correctly."
     )
 
     pdf.sub_heading("What's Inside the ZIP")
@@ -368,7 +385,7 @@ def build_pdf():
 
     # ===== SECTION 3: UPLOAD TO WINNOW ===================================
     pdf.add_page()
-    pdf.section_title("3.  Upload to Winnow")
+    pdf.section_title("3.  Upload CSV Data to Winnow (Phase 1)")
 
     pdf.sub_heading("Navigate to the Migration Wizard")
     pdf.step(1, "Log in to Winnow at winnowcc.ai with your recruiter account.")
@@ -437,7 +454,7 @@ def build_pdf():
 
     # ===== SECTION 4: WHAT GETS IMPORTED =================================
     pdf.add_page()
-    pdf.section_title("4.  What Gets Imported")
+    pdf.section_title("4.  What Gets Imported (Phase 1)")
 
     pdf.sub_heading("Companies -> Clients")
     pdf.body(
@@ -530,9 +547,81 @@ def build_pdf():
         col_widths=[105, 85],
     )
 
-    # ===== SECTION 5: VERIFY YOUR DATA ===================================
+    # ===== SECTION 5: RESUME ATTACHMENTS IMPORT ==========================
     pdf.add_page()
-    pdf.section_title("5.  Verify Your Data")
+    pdf.section_title("5.  Resume Attachments Import (Phase 2)")
+
+    pdf.sub_heading("Why This Step Matters")
+    pdf.body(
+        "After Phase 1, your candidates are imported as contact-info shells -- "
+        "names, emails, and phone numbers. Without parsed resumes, Winnow's "
+        "matching engine cannot compute Interview Probability Scores (IPS) "
+        "between candidates and jobs. Phase 2 imports the actual resume files "
+        "and links them to the candidates you already imported."
+    )
+
+    pdf.sub_heading("Prerequisites")
+    pdf.bullet("Phase 1 (CSV import) must be completed first")
+    pdf.bullet("The attachments-data-export ZIP from Recruit CRM "
+               "(downloaded in Section 2)")
+    pdf.bullet("A stable internet connection (the file is 1-2 GB)")
+
+    pdf.sub_heading("Step-by-Step Import")
+    pdf.step(1, "Go to Migration (/recruiter/migrate) in Winnow.")
+    pdf.step(2, "Upload the attachments-data-export ZIP file. Winnow detects "
+                'it as "Recruit CRM Resume Attachments" and shows the number '
+                "of candidate resumes found (typically ~8,900).")
+    pdf.step(3, 'Review the detection summary. You should see an info box '
+                'explaining that resumes will be matched by slug to your '
+                'previously imported candidates.')
+    pdf.step(4, 'Click "Start Resume Attachment Import".')
+    pdf.step(5, "The import begins in the background. A progress bar shows "
+                "how many files have been processed. You can safely close the "
+                "browser and come back later.")
+    pdf.step(6, "When complete, the summary shows succeeded/failed/total. "
+                "Navigate to any job to see matched candidates with IPS scores.")
+
+    pdf.sub_heading("How It Works (Behind the Scenes)")
+    pdf.body(
+        "The attachments ZIP has a nested structure: an outer ZIP containing "
+        "an inner ZIP, which contains folders for each candidate organized by "
+        "slug. Winnow extracts each candidate's resume from the resumefilename/ "
+        "subfolder, matches it to the pipeline candidate using the same slug "
+        "from Phase 1, parses the resume into structured data, and creates a "
+        "CandidateProfile. This enables the match scoring engine."
+    )
+
+    pdf.table(
+        ["Step", "What Happens"],
+        [
+            ["Extract", "Inner ZIP extracted to temp (avoids 1.4GB in RAM)"],
+            ["Match", "Each Candidates/{slug}/resumefilename/ matched by slug"],
+            ["Parse", "PDF/DOCX text extracted and parsed into profile data"],
+            ["Link", "CandidateProfile linked to pipeline candidate"],
+            ["Score", "Candidate now eligible for IPS match scoring"],
+        ],
+        col_widths=[35, 155],
+    )
+
+    pdf.warn_box(
+        "IMPORTANT: Processing Time",
+        "With ~8,900 resumes, Phase 2 takes approximately 3-6 hours to "
+        "complete (each resume is individually parsed). The import runs in "
+        "the background -- you do not need to keep the browser open. Check "
+        "the progress at any time by visiting the Migration page."
+    )
+
+    pdf.tip_box(
+        "TIP: Multiple Files per Candidate",
+        "Some candidates may have multiple files in their folder (cover "
+        "letters, certifications, etc.). Winnow picks the largest file in "
+        "the resumefilename/ subfolder, which is typically the most "
+        "complete resume."
+    )
+
+    # ===== SECTION 6: VERIFY YOUR DATA ===================================
+    pdf.add_page()
+    pdf.section_title("6.  Verify Your Data")
 
     pdf.sub_heading("Post-Import Checklist")
     pdf.body("After the import completes, walk through these checks to "
@@ -552,6 +641,13 @@ def build_pdf():
         ("Assignments", "Open a job and verify candidates are linked to it. "
          "Check that pipeline stages (Sourced, Contacted, Screening, etc.) "
          "match what you expect from Recruit CRM."),
+        ("Resumes", "(After Phase 2) Open a candidate and verify their "
+         "profile shows parsed resume data. Check that the experience, "
+         "skills, and education sections are populated."),
+        ("Match Scores", "(After Phase 2) Go to a job and check the Matched "
+         "Candidates tab. Candidates with parsed resumes should now show "
+         "IPS scores. If scores are missing, the resume may have failed "
+         "to parse -- check the migration summary for failed files."),
         ("Rollback", "If anything looks wrong, use the Rollback button on "
          "the migration summary page. This cleanly removes all imported "
          "entities so you can start fresh."),
@@ -575,9 +671,9 @@ def build_pdf():
         "any data you created manually in Winnow."
     )
 
-    # ===== SECTION 6: RECRUITER WORKFLOW ==================================
+    # ===== SECTION 7: RECRUITER WORKFLOW ==================================
     pdf.add_page()
-    pdf.section_title("6.  Your Recruiter Workflow After Migration")
+    pdf.section_title("7.  Your Recruiter Workflow After Migration")
 
     pdf.body(
         "Once your data is imported, here is how to use Winnow day-to-day "
@@ -634,9 +730,9 @@ def build_pdf():
     pdf.bullet("Fraud Detection -- Winnow flags suspicious job postings "
                "with its 14-signal fraud detector.")
 
-    # ===== SECTION 7: TROUBLESHOOTING ====================================
+    # ===== SECTION 8: TROUBLESHOOTING ====================================
     pdf.add_page()
-    pdf.section_title("7.  Troubleshooting")
+    pdf.section_title("8.  Troubleshooting")
 
     issues = [
         ('"Unknown platform" after upload',
@@ -666,14 +762,34 @@ def build_pdf():
          "is not found in the import. This can happen if Recruit CRM "
          "exported a partial dataset. The skipped count is shown in the "
          "summary."),
+        ('"Import CSV data first" error on attachments upload',
+         "Phase 2 (attachments) requires Phase 1 (CSV) to be completed "
+         "first. Upload the csv-data-export ZIP and complete that import "
+         "before uploading the attachments ZIP."),
+        ("Attachments import stuck or stale",
+         "The attachments import runs in the background. If the progress "
+         "bar has not moved for 10+ minutes, the background worker may "
+         "need restarting. Cancel the migration from the progress page "
+         "and try again. If the problem persists, contact support."),
+        ("Most resumes show as 'unmatched'",
+         "Resumes are matched by candidate slug. If a slug mismatch occurs "
+         "(e.g., the CSV and attachments exports were done at very different "
+         "times), some candidates may not be found. Re-export both files "
+         "from Recruit CRM at the same time to ensure slug consistency."),
+        ("Candidates still show no match scores after Phase 2",
+         "Match scores require both a parsed resume (CandidateProfile) and "
+         "a linked job. Verify the candidate has a profile by clicking on "
+         "them in the pipeline. If the resume failed to parse, the file may "
+         "be corrupted or in an unsupported format. Try manually uploading "
+         "the resume for that candidate."),
     ]
     for title, desc in issues:
         pdf.sub_sub_heading(title)
         pdf.body(desc)
 
-    # ===== SECTION 8: FAQ ================================================
+    # ===== SECTION 9: FAQ ================================================
     pdf.add_page()
-    pdf.section_title("8.  Frequently Asked Questions")
+    pdf.section_title("9.  Frequently Asked Questions")
 
     faqs = [
         ("Can I run the migration more than once?",
@@ -689,10 +805,11 @@ def build_pdf():
          "import completes in under 30 seconds. It runs synchronously -- "
          "you see results immediately."),
         ("What about my resume files?",
-         "Resume file attachments (the attachments-data-export.zip) will be "
-         "supported in Phase 2. For now, you can manually upload resumes for "
-         "individual candidates or use the bulk resume upload feature on the "
-         "Agency plan."),
+         "Upload the attachments-data-export.zip from Recruit CRM as Phase 2 "
+         "(see Section 5). Winnow automatically matches resumes to the "
+         "candidates imported in Phase 1, parses them, and enables match "
+         "scoring. Processing ~8,900 resumes takes approximately 3-6 hours "
+         "in the background."),
         ("Can I import from multiple CRM platforms?",
          "Yes. Winnow supports Bullhorn, CATSOne, Zoho Recruit, and generic "
          "CSV exports in addition to Recruit CRM. Each import is tracked as "
@@ -715,6 +832,76 @@ def build_pdf():
         pdf.set_text_color(*DARK)
         pdf.multi_cell(0, 5.5, a)
         pdf.ln(4)
+
+    # Add Phase 2 FAQs
+    phase2_faqs = [
+        ("How long does the attachments import take?",
+         "For ~8,900 resumes, expect 3-6 hours. Each resume is individually "
+         "parsed and scored. The import runs in the background -- you can "
+         "close the browser and check back later."),
+        ("Do I need the CSV import before the attachments import?",
+         "Yes. Phase 1 (CSV) must complete first. The attachments import "
+         "matches resumes to candidates using slugs from the CSV import. "
+         "If you try to upload attachments first, you will see an error "
+         "message asking you to complete the CSV import first."),
+        ("What file formats are supported for resumes?",
+         "PDF, DOCX, and DOC files. Other attachment types (images, "
+         "spreadsheets, etc.) are skipped. Winnow picks the largest "
+         "resume file per candidate for the best parsing results."),
+        ("Can I ask Sieve for help during the migration?",
+         "Absolutely! Sieve (the AI concierge) knows every step of the "
+         "migration process. Click the Sieve chat icon and ask anything: "
+         "'How do I export from Recruit CRM?', 'Why are my candidates not "
+         "showing match scores?', or 'What should I do after the import?'"),
+    ]
+    for q, a in phase2_faqs:
+        pdf.set_font("Helvetica", "B", 10)
+        pdf.set_text_color(*NAVY)
+        pdf.multi_cell(0, 5.5, "Q: " + q)
+        pdf.ln(1)
+        pdf.set_font("Helvetica", "", 10)
+        pdf.set_text_color(*DARK)
+        pdf.multi_cell(0, 5.5, a)
+        pdf.ln(4)
+
+    # ===== SECTION 10: ASK SIEVE FOR HELP ================================
+    pdf.add_page()
+    pdf.section_title("10.  Ask Sieve for Help")
+
+    pdf.body(
+        "Sieve is Winnow's AI concierge, and she knows the entire migration "
+        "process inside and out. You can ask her for help at any point -- "
+        "before, during, or after your migration."
+    )
+
+    pdf.sub_heading("What Sieve Can Help With")
+    pdf.bullet("Walking you through the export steps in Recruit CRM")
+    pdf.bullet("Explaining what gets imported and what to expect")
+    pdf.bullet("Troubleshooting errors during import")
+    pdf.bullet("Diagnosing why candidates aren't showing match scores")
+    pdf.bullet("Suggesting next steps after migration completes")
+    pdf.bullet("Explaining Phase 2 (attachments) and when to do it")
+    pdf.bullet("Answering any platform question about Winnow")
+
+    pdf.sub_heading("How to Access Sieve")
+    pdf.step(1, "Click the Sieve chat icon in the bottom-right corner of "
+                "any page in Winnow, or go to /recruiter/sieve.")
+    pdf.step(2, "Type your question naturally. Examples:")
+    pdf.ln(1)
+    pdf.bullet('"How do I export my data from Recruit CRM?"', indent=9)
+    pdf.bullet('"I uploaded the CSV but where are my candidates?"', indent=9)
+    pdf.bullet('"Why are there no match scores for my candidates?"', indent=9)
+    pdf.bullet('"How do I import my resume attachments?"', indent=9)
+    pdf.bullet('"My attachments import seems stuck -- what do I do?"', indent=9)
+    pdf.bullet('"What should I do now that migration is complete?"', indent=9)
+
+    pdf.tip_box(
+        "TIP: Sieve Knows Your Data",
+        "Sieve can see your current migration state, pipeline counts, and "
+        "plan details. She will give personalized advice based on where "
+        "you are in the process. For example, if you have candidates "
+        "without resumes, she'll proactively suggest the attachments import."
+    )
 
     # ===== OUTPUT =========================================================
     output_path = "tasks/Recruit_CRM_Migration_Guide.pdf"

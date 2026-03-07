@@ -1656,6 +1656,71 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     context["intro_requests_used"] = profile.intro_requests_used or 0
     context["job_uploads_used"] = profile.job_uploads_used or 0
 
+    # Migration state
+    try:
+        from app.models.migration import MigrationJob
+
+        migrations = (
+            session.execute(
+                select(MigrationJob)
+                .where(MigrationJob.user_id == user_id)
+                .order_by(MigrationJob.created_at.desc())
+                .limit(5)
+            )
+            .scalars()
+            .all()
+        )
+        if migrations:
+            mig_list = []
+            for m in migrations:
+                mig_info: dict = {
+                    "id": m.id,
+                    "platform": m.source_platform_detected
+                    or m.source_platform,
+                    "status": m.status,
+                }
+                if m.stats_json:
+                    mig_info["stats"] = {
+                        k: v
+                        for k, v in m.stats_json.items()
+                        if k
+                        in (
+                            "imported",
+                            "merged",
+                            "skipped",
+                            "errors",
+                            "matched",
+                            "unmatched",
+                            "batch_id",
+                        )
+                    }
+                mig_list.append(mig_info)
+            context["migrations"] = mig_list
+
+            # Check for candidates without profiles
+            # (imported via CSV but no resume attached)
+            cands_no_profile = (
+                session.execute(
+                    select(
+                        func.count(
+                            RecruiterPipelineCandidate.id
+                        )
+                    ).where(
+                        RecruiterPipelineCandidate.recruiter_profile_id
+                        == profile.id,
+                        RecruiterPipelineCandidate.candidate_profile_id.is_(
+                            None
+                        ),
+                    )
+                ).scalar()
+                or 0
+            )
+            context["candidates_without_resume"] = (
+                cands_no_profile
+            )
+    except Exception:
+        pass
+
     # Outreach sequences
     try:
         from app.models.outreach_enrollment import OutreachEnrollment
@@ -1696,6 +1761,30 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
         context["sequences"] = {"total": 0, "active": 0, "active_enrollments": 0}
 
     return context
+
+
+def _format_migration_state(ctx: dict) -> str:
+    """Format migration history for the system prompt."""
+    migrations = ctx.get("migrations")
+    if not migrations:
+        return "- Migrations: none\n"
+    lines = ["- Migrations:"]
+    for m in migrations:
+        status = m["status"]
+        platform = m["platform"]
+        stats = m.get("stats", {})
+        detail = ""
+        if stats:
+            parts = []
+            if stats.get("imported"):
+                parts.append(f"{stats['imported']} imported")
+            if stats.get("matched"):
+                parts.append(f"{stats['matched']} matched")
+            if stats.get("errors"):
+                parts.append(f"{stats['errors']} errors")
+            detail = f" ({', '.join(parts)})" if parts else ""
+        lines.append(f"  #{m['id']} {platform} — {status}{detail}")
+    return "\n".join(lines) + "\n"
 
 
 def build_recruiter_system_prompt(ctx: dict) -> str:
@@ -1939,9 +2028,54 @@ the right feature.
    Source candidates directly from LinkedIn profiles into your Winnow \
 candidate database.
 
-10. MIGRATION TOOLKIT (/recruiter/migrate)
+10. MIGRATION TOOLKIT (/recruiter/migrate) ★ KEY FEATURE
     Import candidates and data from other recruiting tools (Bullhorn, \
 Recruit CRM, CATSOne, Zoho Recruit).
+
+    TWO-PHASE RECRUIT CRM MIGRATION:
+
+    Phase 1 — CSV Data Import:
+    1. In Recruit CRM, go to Settings → Data Export → CSV Data Export
+    2. Download the csv-data-export ZIP (do NOT unzip it)
+    3. Go to [Migration](/recruiter/migrate) and upload the ZIP
+    4. Winnow auto-detects "Recruit CRM" and shows entity counts
+    5. Click Start Import — completes in seconds
+    6. Imports: Companies → Clients, Contacts → merged into Clients, \
+Jobs → Recruiter Jobs, Candidates → Pipeline Candidates, \
+Assignments → Candidate-Job links with stage mapping
+
+    Phase 2 — Resume Attachments Import:
+    1. In Recruit CRM, go to Settings → Data Export → Attachments Export
+    2. Download the attachments-data-export ZIP (1-2 GB, contains resumes)
+    3. Go to [Migration](/recruiter/migrate) and upload the attachments ZIP
+    4. Winnow detects "Recruit CRM Resume Attachments" with resume count
+    5. Click Start Resume Attachment Import
+    6. Resumes are matched to Phase 1 candidates by slug, parsed in \
+the background, and linked as CandidateProfile records
+    7. Once parsed, Winnow's match scoring (IPS) activates for those \
+candidates — they appear in job match results with scores
+
+    IMPORTANT: Phase 1 (CSV) MUST complete before Phase 2 (attachments). \
+The attachments import matches resumes to candidates by their slug from \
+the CSV import. If someone tries Phase 2 first, Winnow will show an error \
+asking them to import CSV data first.
+
+    POST-MIGRATION:
+    - Verify data: check Clients, Jobs, Pipeline counts
+    - Rollback is available on the summary page if anything looks wrong
+    - Candidates without resumes show no match scores. Upload the \
+attachments ZIP (Phase 2) to enable matching.
+    - After Phase 2, go to any job → Matched Candidates to see IPS scores
+
+    WHAT GETS IMPORTED:
+    Companies (→ Clients), Contacts (→ merged into Clients), \
+Jobs (→ Recruiter Jobs with status/salary/location), \
+Candidates (→ Pipeline Candidates with email/phone/LinkedIn), \
+Assignments (→ candidate-job links with stage mapping: \
+Applied→Sourced, Interviewing→Interviewing, Selected→Placed, etc.)
+
+    NOT YET IMPORTED: Skills/tags, work/education history, notes, \
+activity logs. These are planned for future updates.
 
 11. OUTREACH SEQUENCES (/recruiter/sequences)
     Automated multi-step email outreach campaigns for candidate engagement.
@@ -2104,7 +2238,8 @@ management, please visit WinnowCC.ai."
 - Pipeline: {pipeline_summary} (total: {ctx.get("pipeline_total", 0)})
 - Auto-populate pipeline: {"on" if ctx.get("auto_populate_pipeline") else "off"}
 - Sequences: {seq_summary}
-
+- Candidates without resume: {ctx.get("candidates_without_resume", "unknown")}
+{_format_migration_state(ctx)}
 ═══ RESPONSE GUIDELINES ═══
 
 CLIENT SUBMITTAL WORKFLOW — when a recruiter asks to write a submittal:
@@ -2130,6 +2265,27 @@ candidates who are in the "sourced" or "screening" stages.
 first email send.
 5. Remind them: sequences require Team or Agency plan. If on Solo, \
 mention the upgrade.
+
+MIGRATION WORKFLOW — when a recruiter asks about importing data or migration:
+1. Determine where they are in the process:
+   - Haven't started → Walk them through Phase 1 (CSV export from \
+Recruit CRM, upload to [Migration](/recruiter/migrate))
+   - Phase 1 done, no resumes → Suggest Phase 2 (attachments export \
+from Recruit CRM, upload to Migration)
+   - Phase 2 done or in progress → Check status and help troubleshoot
+   - Using a different CRM → Guide them to export CSV/ZIP and upload
+2. If they have {ctx.get("candidates_without_resume", 0)} candidates \
+without resumes and a completed recruitcrm CSV migration, proactively \
+suggest the attachments import: "You have candidates without parsed \
+resumes, which means they won't show up in job match results. Upload \
+your Recruit CRM attachments ZIP to fix this."
+3. If they ask "why aren't candidates showing match scores?" — the most \
+likely cause is missing resumes. Check their migration state and suggest \
+Phase 2 if applicable.
+4. For migration errors or stuck imports, point them to the Cancel button \
+on the migration page and suggest retrying. If the worker seems stale, \
+suggest cancelling and re-uploading.
+5. Always include a link to [Migration](/recruiter/migrate).
 
 GENERAL GUIDELINES:
 - Always point to the specific Winnow feature that solves their need — \

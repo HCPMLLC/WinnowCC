@@ -7,22 +7,32 @@ Handles the Recruit CRM multi-file export format:
   candidate_data.csv → RecruiterPipelineCandidate
   assignment_data.csv → link candidates to jobs
 
+Also handles Recruit CRM attachments ZIP (nested ZIP with candidate resumes):
+  outer.zip → inner.zip → Candidates/{slug}/resumefilename/{file}
+
 Uses in-memory slug_map for O(1) cross-referencing between entities.
 """
 
 import csv
+import hashlib
 import io
+import json
 import logging
+import os
+import tempfile
 import zipfile
 from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.migration import MigrationJob
+from app.models.migration import MigrationEntityMap, MigrationJob
 from app.models.recruiter_client import RecruiterClient
 from app.models.recruiter_job import RecruiterJob
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+from app.models.upload_batch import UploadBatch, UploadBatchFile
 from app.services.migration.import_engine import BATCH_SIZE, _record_entity
 from app.services.migration.recruiter_import_engine import (
     _log_migration_activity,
@@ -625,3 +635,292 @@ def _add_type_stats(stats: dict, type_stats: dict) -> None:
     """Add type_stats counts to the top-level stats."""
     for key in ("imported", "merged", "skipped", "errors"):
         stats[key] += type_stats.get(key, 0)
+
+
+# ---------------------------------------------------------------------------
+# Attachments import (Phase 2)
+# ---------------------------------------------------------------------------
+
+RESUME_EXTENSIONS = {".pdf", ".docx", ".doc"}
+STAGE_BATCH_SIZE = 50
+
+
+def _stage_attachments_job(migration_job_id: int) -> None:
+    """RQ worker entry point for attachments import."""
+    from app.db.session import get_session_factory
+
+    session = get_session_factory()()
+    try:
+        stage_recruitcrm_attachments(migration_job_id, session)
+    finally:
+        session.close()
+
+
+def stage_recruitcrm_attachments(
+    migration_job_id: int, db: Session
+) -> dict:
+    """Extract resumes from attachments ZIP, match & enqueue.
+
+    Runs as a background RQ job. Creates UploadBatch +
+    UploadBatchFile rows and enqueues process_bulk_attach_file
+    workers for each matched resume.
+    """
+    from app.services.bulk_resume_attach import process_bulk_attach_file
+    from app.services.queue import get_queue
+    from app.services.storage import upload_bytes
+
+    job = db.execute(
+        select(MigrationJob).where(MigrationJob.id == migration_job_id)
+    ).scalar_one_or_none()
+    if not job:
+        raise ValueError(f"Migration job {migration_job_id} not found")
+
+    config = job.config_json or {}
+    recruiter_profile_id = config.get("recruiter_profile_id")
+    csv_migration_job_id = config.get("csv_migration_job_id")
+
+    if not recruiter_profile_id:
+        raise ValueError("recruiter_profile_id missing from job config")
+    if not csv_migration_job_id:
+        raise ValueError("csv_migration_job_id missing from job config")
+
+    try:
+        # Build slug → pipeline_candidate_id map from the prior CSV migration
+        slug_to_pc = _build_slug_map(csv_migration_job_id, db)
+        if not slug_to_pc:
+            raise ValueError(
+                "No candidate mappings found from prior CSV migration. "
+                "Ensure the CSV import completed successfully."
+            )
+
+        outer_path = job.source_file_path
+        if not outer_path or not os.path.exists(outer_path):
+            raise FileNotFoundError(f"Source file not found: {outer_path}")
+
+        # Extract inner ZIP to a temp file (avoid holding 1.4GB in RAM twice)
+        with tempfile.TemporaryDirectory() as temp_dir:
+            inner_path = _extract_inner_zip(outer_path, temp_dir)
+            if not inner_path:
+                raise ValueError("No inner ZIP found in attachments export")
+
+            # Scan for candidate resumes and match to slug map
+            matched, unmatched = _scan_and_match_resumes(inner_path, slug_to_pc)
+
+            if not matched:
+                job.status = "completed"
+                job.completed_at = datetime.now(UTC)
+                job.stats_json = {
+                    "total_resumes": 0,
+                    "matched": 0,
+                    "unmatched": len(unmatched),
+                    "message": "No resumes matched to imported candidates",
+                }
+                db.commit()
+                return {"job_id": migration_job_id, "status": "completed"}
+
+            # Create UploadBatch
+            batch_id = str(uuid4())
+            batch = UploadBatch(
+                batch_id=batch_id,
+                user_id=job.user_id,
+                batch_type="recruitcrm_attachments",
+                owner_profile_id=recruiter_profile_id,
+                status="pending",
+                total_files=len(matched),
+            )
+            db.add(batch)
+            db.flush()
+
+            # Update migration job with batch info early so frontend can poll
+            job.stats_json = {
+                "batch_id": batch_id,
+                "total_resumes": len(matched) + len(unmatched),
+                "matched": len(matched),
+                "unmatched": len(unmatched),
+            }
+            db.commit()
+
+            # Stage files in batches and enqueue workers
+            bulk_queue = get_queue("bulk")
+            staged_count = 0
+            stage_errors = 0
+
+            with zipfile.ZipFile(inner_path) as izf:
+                batch_files_to_enqueue: list[int] = []
+
+                for idx, (zip_entry, pc_id, slug) in enumerate(matched):
+                    try:
+                        file_bytes = izf.read(zip_entry)
+                        filename = Path(zip_entry).name
+                        file_hash = hashlib.sha256(file_bytes).hexdigest()
+
+                        staged_name = f"{idx}_{file_hash[:12]}_{filename}"
+                        staged_path = upload_bytes(
+                            file_bytes, f"staging/{batch_id}/", staged_name
+                        )
+
+                        bf = UploadBatchFile(
+                            batch_id=batch_id,
+                            file_index=idx,
+                            original_filename=filename,
+                            staged_path=staged_path,
+                            file_size_bytes=len(file_bytes),
+                            sha256=file_hash,
+                            status="pending",
+                            result_json=json.dumps({
+                                "candidate_id": pc_id,
+                                "matched_by": "slug",
+                            }),
+                        )
+                        db.add(bf)
+                        db.flush()
+                        batch_files_to_enqueue.append(bf.id)
+                        staged_count += 1
+                        del file_bytes
+
+                    except Exception as e:
+                        stage_errors += 1
+                        logger.warning(
+                            "Failed to stage resume %s for candidate %s: %s",
+                            zip_entry, slug, e,
+                        )
+
+                    # Commit + enqueue in batches
+                    if len(batch_files_to_enqueue) >= STAGE_BATCH_SIZE:
+                        db.commit()
+                        for bf_id in batch_files_to_enqueue:
+                            bulk_queue.enqueue(
+                                process_bulk_attach_file,
+                                bf_id,
+                                batch_id,
+                                recruiter_profile_id,
+                                job_timeout="10m",
+                            )
+                        batch_files_to_enqueue = []
+
+                # Flush remaining
+                if batch_files_to_enqueue:
+                    db.commit()
+                    for bf_id in batch_files_to_enqueue:
+                        bulk_queue.enqueue(
+                            process_bulk_attach_file,
+                            bf_id,
+                            batch_id,
+                            recruiter_profile_id,
+                            job_timeout="10m",
+                        )
+
+            # Activate batch
+            batch.status = "processing"
+            job.stats_json = {
+                **job.stats_json,
+                "staged": staged_count,
+                "stage_errors": stage_errors,
+            }
+            db.commit()
+
+            _log_migration_activity(
+                db, recruiter_profile_id, "attachments_staged",
+                f"Staged {staged_count} resumes from Recruit CRM attachments",
+                {
+                    "migration_job_id": migration_job_id,
+                    "batch_id": batch_id,
+                    "matched": len(matched),
+                    "unmatched": len(unmatched),
+                },
+            )
+
+        return {
+            "job_id": migration_job_id,
+            "status": "importing",
+            "batch_id": batch_id,
+            "matched": len(matched),
+        }
+
+    except Exception as e:
+        db.rollback()
+        job.status = "failed"
+        job.error_log = [{"error": str(e)[:1000], "fatal": True}]
+        job.updated_at = datetime.now(UTC)
+        db.commit()
+        logger.exception(
+            "Recruit CRM attachments migration job %d failed", migration_job_id
+        )
+        return {"job_id": migration_job_id, "status": "failed"}
+
+
+def _build_slug_map(csv_migration_job_id: int, db: Session) -> dict[str, int]:
+    """Build slug → pipeline_candidate_id from the prior CSV migration's entity map."""
+    rows = db.execute(
+        select(
+            MigrationEntityMap.source_entity_id,
+            MigrationEntityMap.winnow_entity_id,
+        ).where(
+            MigrationEntityMap.migration_job_id == csv_migration_job_id,
+            MigrationEntityMap.source_entity_type == "candidate",
+            MigrationEntityMap.winnow_entity_id.isnot(None),
+        )
+    ).all()
+    return {row.source_entity_id: row.winnow_entity_id for row in rows}
+
+
+def _extract_inner_zip(outer_path: str, temp_dir: str) -> str | None:
+    """Extract the inner ZIP from the outer attachments export to disk."""
+    with zipfile.ZipFile(outer_path) as zf:
+        inner_names = [n for n in zf.namelist() if n.lower().endswith(".zip")]
+        if not inner_names:
+            return None
+        inner_name = inner_names[0]
+        zf.extract(inner_name, temp_dir)
+        return os.path.join(temp_dir, inner_name)
+
+
+def _scan_and_match_resumes(
+    inner_zip_path: str,
+    slug_to_pc: dict[str, int],
+) -> tuple[list[tuple[str, int, str]], list[str]]:
+    """Scan inner ZIP for candidate resumes, match by slug.
+
+    Returns (matched, unmatched_slugs).
+    matched = [(zip_entry_name, pipeline_candidate_id, slug), ...]
+    """
+    # Group files by candidate slug, picking the largest resumefilename/ file
+    slug_files: dict[str, list[tuple[str, int]]] = {}  # slug -> [(entry, size)]
+
+    with zipfile.ZipFile(inner_zip_path) as izf:
+        for info in izf.infolist():
+            if info.is_dir():
+                continue
+            name = info.filename
+            # Expected: Candidates/{slug}/resumefilename/{file}
+            if not name.startswith("Candidates/"):
+                continue
+            if "/resumefilename/" not in name:
+                continue
+            ext = Path(name).suffix.lower()
+            if ext not in RESUME_EXTENSIONS:
+                continue
+
+            parts = name.split("/")
+            if len(parts) < 4:
+                continue
+            slug = parts[1]
+
+            if slug not in slug_files:
+                slug_files[slug] = []
+            slug_files[slug].append((name, info.file_size))
+
+    matched: list[tuple[str, int, str]] = []
+    unmatched: list[str] = []
+
+    for slug, files in slug_files.items():
+        pc_id = slug_to_pc.get(slug)
+        if not pc_id:
+            unmatched.append(slug)
+            continue
+
+        # Pick the largest file (most complete resume)
+        best_entry = max(files, key=lambda x: x[1])[0]
+        matched.append((best_entry, pc_id, slug))
+
+    return matched, unmatched
