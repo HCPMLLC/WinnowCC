@@ -179,6 +179,7 @@ export default function RecruiterMigrationWizard() {
       `${API}/api/recruiter/migration/upload?source_platform=auto`,
     );
     xhr.withCredentials = true;
+    xhr.timeout = 600000; // 10 minutes for large files
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -207,7 +208,12 @@ export default function RecruiterMigrationWizard() {
     };
 
     xhr.onerror = () => {
-      setError("Network error during upload");
+      setError("Network error during upload. For large files (1+ GB), ensure you have a stable connection and try again.");
+      setUploading(false);
+    };
+
+    xhr.ontimeout = () => {
+      setError("Upload timed out. The file may be too large for the current connection speed. Please try again.");
       setUploading(false);
     };
 
@@ -480,7 +486,7 @@ export default function RecruiterMigrationWizard() {
             <div className="mt-6">
               <div className="mb-1 flex items-center justify-between text-sm">
                 <span className="font-medium text-slate-700">
-                  {uploadPct < 100 ? "Uploading..." : "Detecting platform..."}
+                  {uploadPct < 100 ? "Uploading..." : "Analyzing file (large files may take a minute)..."}
                 </span>
                 <span className="text-slate-500">{uploadPct}%</span>
               </div>

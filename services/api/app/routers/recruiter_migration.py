@@ -2,7 +2,6 @@
 
 import logging
 import os
-import tempfile
 import uuid
 from datetime import UTC, datetime
 
@@ -149,44 +148,50 @@ async def upload_recruiter_migration_file(
             detail=f"Supported file types: {', '.join(allowed_extensions)}",
         )
 
-    # Read file bytes and write to temp for platform detection
-    contents = await file.read()
+    # Stream file to disk in chunks (supports multi-GB uploads)
     file_id = uuid.uuid4().hex[:12]
-    tmp = tempfile.NamedTemporaryFile(
-        delete=False,
-        suffix=os.path.splitext(file.filename)[1],
-        prefix=f"{user.id}_{file_id}_",
+    os.makedirs(UPLOAD_DIR, exist_ok=True)
+    local_dest = os.path.join(
+        UPLOAD_DIR, f"{user.id}_{file_id}_{file.filename}"
     )
     try:
-        tmp.write(contents)
-        tmp.close()
+        with open(local_dest, "wb") as f:
+            while True:
+                chunk = await file.read(8 * 1024 * 1024)  # 8 MB
+                if not chunk:
+                    break
+                f.write(chunk)
 
-        detection = detect_platform(tmp.name)
+        detection = detect_platform(local_dest)
         platform = (
             source_platform if source_platform != "auto" else detection["platform"]
         )
 
         # For resume archives, stage to cloud storage so async workers
         # can access the file even after this container restarts.
-        # CRM imports (Bullhorn, etc.) run synchronously and use a local path.
+        # CRM imports and attachments use the local path directly.
         if platform == "resume_archive" or detection["platform"] == "resume_archive":
             from app.services.storage import upload_bytes
 
             unique_name = f"{user.id}_{file_id}_{file.filename}"
-            stored_path = upload_bytes(contents, "staging/migration_zips/", unique_name)
-        else:
-            os.makedirs(UPLOAD_DIR, exist_ok=True)
-            local_dest = os.path.join(
-                UPLOAD_DIR, f"{user.id}_{file_id}_{file.filename}"
+            with open(local_dest, "rb") as f:
+                contents = f.read()
+            stored_path = upload_bytes(
+                contents, "staging/migration_zips/", unique_name
             )
-            with open(local_dest, "wb") as f:
-                f.write(contents)
+            del contents
+            try:
+                os.unlink(local_dest)
+            except OSError:
+                pass
+        else:
             stored_path = local_dest
-    finally:
+    except Exception:
         try:
-            os.unlink(tmp.name)
+            os.unlink(local_dest)
         except OSError:
             pass
+        raise
 
     job = MigrationJob(
         user_id=user.id,

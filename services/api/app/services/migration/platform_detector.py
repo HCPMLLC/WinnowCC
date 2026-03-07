@@ -10,6 +10,7 @@ import io
 import json as json_mod
 import logging
 import os
+import tempfile
 import zipfile
 from pathlib import Path
 
@@ -388,13 +389,15 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
     entity_types: list[str] = []
 
     # Check for Recruit CRM attachments ZIP (nested ZIP with Candidates/ folder)
+    # Extract inner ZIP to disk to avoid loading 1+ GB into memory.
     inner_zips = [n for n in names if n.lower().endswith(".zip")]
     if inner_zips and any("readme.txt" == n.lower() for n in names):
         try:
-            with zipfile.ZipFile(path) as zf2:
-                with zf2.open(inner_zips[0]) as inner_f:
-                    inner_bytes = io.BytesIO(inner_f.read())
-                with zipfile.ZipFile(inner_bytes) as izf:
+            with tempfile.TemporaryDirectory() as td:
+                with zipfile.ZipFile(path) as zf2:
+                    zf2.extract(inner_zips[0], td)
+                inner_path = os.path.join(td, inner_zips[0])
+                with zipfile.ZipFile(inner_path) as izf:
                     inner_names = izf.namelist()
                     cand_resumes = [
                         n
@@ -404,16 +407,16 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
                         and not n.endswith("/")
                     ]
                     if cand_resumes:
-                        n = len(cand_resumes)
+                        ct = len(cand_resumes)
                         return {
                             "platform": "recruitcrm_attachments",
                             "confidence": 0.95,
                             "evidence": [
-                                f"Nested ZIP with {n} "
+                                f"Nested ZIP with {ct} "
                                 "candidate resume files"
                             ],
                             "entity_types_found": ["resumes"],
-                            "row_count": len(cand_resumes),
+                            "row_count": ct,
                             "field_mapping": {},
                         }
         except Exception:
