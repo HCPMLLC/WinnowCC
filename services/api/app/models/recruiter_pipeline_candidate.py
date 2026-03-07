@@ -34,7 +34,7 @@ class RecruiterPipelineCandidate(Base):
     # External candidate fields (for candidates not on the platform)
     external_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     external_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    external_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    external_phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
     external_linkedin: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_resume_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 

@@ -165,6 +165,7 @@ def run_recruitcrm_zip_migration(migration_job_id: int, db: Session) -> dict:
         )
 
     except Exception as e:
+        db.rollback()
         job.status = "failed"
         errors.append({"error": str(e), "fatal": True})
         logger.exception("Recruit CRM ZIP migration job %d failed", migration_job_id)
@@ -267,6 +268,7 @@ def _import_companies(
                 db.commit()
 
         except Exception as e:
+            db.rollback()
             type_stats["errors"] += 1
             type_stats["_errors"].append(
                 {"row": i, "entity": "company", "error": str(e)}
@@ -363,6 +365,7 @@ def _import_contacts(
                 db.commit()
 
         except Exception as e:
+            db.rollback()
             type_stats["errors"] += 1
             type_stats["_errors"].append(
                 {"row": i, "entity": "contact", "error": str(e)}
@@ -442,6 +445,7 @@ def _import_jobs(
                 db.commit()
 
         except Exception as e:
+            db.rollback()
             type_stats["errors"] += 1
             type_stats["_errors"].append({"row": i, "entity": "job", "error": str(e)})
             logger.warning("Job row %d error: %s", i, e)
@@ -529,6 +533,7 @@ def _import_candidates(
                 db.commit()
 
         except Exception as e:
+            db.rollback()
             type_stats["errors"] += 1
             type_stats["_errors"].append(
                 {"row": i, "entity": "candidate", "error": str(e)}
@@ -600,6 +605,7 @@ def _import_assignments(
                 db.commit()
 
         except Exception as e:
+            db.rollback()
             type_stats["errors"] += 1
             type_stats["_errors"].append(
                 {"row": row_idx, "entity": "assignment",

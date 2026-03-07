@@ -214,6 +214,7 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
                     db.commit()
 
             except Exception as e:
+                db.rollback()
                 type_stats["errors"] += 1
                 stats["errors"] += 1
                 errors.append({"row": i, "error": str(e)})

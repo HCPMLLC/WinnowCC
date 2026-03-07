@@ -23,20 +23,20 @@ class RecruiterClient(Base):
 
     company_name: Mapped[str] = mapped_column(String(255), nullable=False)
     industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    company_size: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    company_size: Mapped[str | None] = mapped_column(String(100), nullable=True)
     website: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Legacy single-contact columns (kept for backward compat)
     contact_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     contact_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    contact_phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    contact_phone: Mapped[str | None] = mapped_column(String(100), nullable=True)
     contact_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # Multi-contact array [{name, email, phone, role}, ...]
     contacts: Mapped[list | None] = mapped_column(JSONB, nullable=True)
 
     # Contract terms
-    contract_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    contract_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
     fee_percentage: Mapped[float | None] = mapped_column(Float, nullable=True)
     flat_fee: Mapped[int | None] = mapped_column(Integer, nullable=True)
     contract_start: Mapped[datetime | None] = mapped_column(

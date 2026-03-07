@@ -37,8 +37,8 @@ class RecruiterJob(Base):
 
     # Location & type
     location: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    remote_policy: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    employment_type: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    remote_policy: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    employment_type: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
     # Compensation
     salary_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
