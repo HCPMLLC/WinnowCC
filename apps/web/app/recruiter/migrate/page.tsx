@@ -555,6 +555,17 @@ export default function RecruiterMigrationWizard() {
                     ? "Start Resume Import"
                     : "Start Import"}
             </button>
+            <button
+              onClick={() => {
+                setStep("upload");
+                setFile(null);
+                setError(null);
+                setMigration({ jobId: null, platform: "", confidence: 0, evidence: [], entityTypesFound: [], rowCount: 0, status: "", stats: null, errors: null, batchId: null, batchStatus: null });
+              }}
+              className="mt-3 w-full rounded-lg bg-slate-100 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-200"
+            >
+              Try Different File
+            </button>
           </div>
         );
       })()}
