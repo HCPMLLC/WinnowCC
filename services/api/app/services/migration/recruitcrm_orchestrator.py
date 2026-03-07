@@ -694,8 +694,22 @@ def stage_recruitcrm_attachments(
             )
 
         outer_path = job.source_file_path
-        if not outer_path or not os.path.exists(outer_path):
-            raise FileNotFoundError(f"Source file not found: {outer_path}")
+        if not outer_path:
+            raise FileNotFoundError("Source file path is empty")
+
+        # Handle GCS paths — download to temp file first
+        from app.services.storage import is_gcs_path
+
+        gcs_tmp = None
+        if is_gcs_path(outer_path):
+            from app.services.storage import download_to_tempfile
+
+            gcs_tmp = download_to_tempfile(outer_path, suffix=".zip")
+            outer_path = str(gcs_tmp)
+        elif not os.path.exists(outer_path):
+            raise FileNotFoundError(
+                f"Source file not found: {outer_path}"
+            )
 
         # Extract inner ZIP to a temp file (avoid holding 1.4GB in RAM twice)
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -844,9 +858,17 @@ def stage_recruitcrm_attachments(
         job.updated_at = datetime.now(UTC)
         db.commit()
         logger.exception(
-            "Recruit CRM attachments migration job %d failed", migration_job_id
+            "Recruit CRM attachments migration job %d failed",
+            migration_job_id,
         )
         return {"job_id": migration_job_id, "status": "failed"}
+    finally:
+        # Clean up GCS temp download
+        if gcs_tmp is not None:
+            try:
+                gcs_tmp.unlink(missing_ok=True)
+            except OSError:
+                pass
 
 
 def _build_slug_map(csv_migration_job_id: int, db: Session) -> dict[str, int]:

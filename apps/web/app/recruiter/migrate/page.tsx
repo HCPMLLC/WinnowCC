@@ -164,12 +164,91 @@ export default function RecruiterMigrationWizard() {
     }
   }
 
-  function uploadFile() {
+  async function uploadFile() {
     if (!file) return;
     setUploading(true);
     setUploadPct(0);
     setError(null);
 
+    try {
+      // Try signed URL flow first (needed for Cloud Run's 32 MB body limit)
+      const signedRes = await fetch(
+        `${API}/api/recruiter/migration/upload-url?filename=${encodeURIComponent(file.name)}`,
+        { credentials: "include" },
+      );
+      const signedData = signedRes.ok ? await signedRes.json() : null;
+
+      if (signedData?.signed_url) {
+        // Direct upload to GCS via signed URL
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open("PUT", signedData.signed_url);
+          xhr.setRequestHeader("Content-Type", "application/zip");
+          xhr.timeout = 1800000; // 30 minutes for very large files
+
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+              setUploadPct(Math.round((e.loaded / e.total) * 100));
+            }
+          };
+
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve();
+            } else {
+              reject(new Error(`GCS upload failed (${xhr.status})`));
+            }
+          };
+          xhr.onerror = () => reject(new Error("Network error during upload"));
+          xhr.ontimeout = () => reject(new Error("Upload timed out"));
+          xhr.send(file);
+        });
+
+        // Register the uploaded file with the API
+        setUploadPct(100);
+        const regRes = await fetch(
+          `${API}/api/recruiter/migration/register-upload`,
+          {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              gcs_path: signedData.gcs_path,
+              filename: file.name,
+            }),
+          },
+        );
+        if (!regRes.ok) {
+          const body = await regRes.text();
+          throw new Error(body || `Registration failed (${regRes.status})`);
+        }
+        const data = await regRes.json();
+        setMigration((prev) => ({
+          ...prev,
+          jobId: data.job_id,
+          platform: data.detected_platform,
+          confidence: data.confidence,
+          evidence: data.evidence,
+          entityTypesFound: data.entity_types_found || [],
+          rowCount: data.row_count,
+          status: "pending",
+        }));
+        setStep("detection");
+        setUploading(false);
+        return;
+      }
+    } catch (e) {
+      // If signed URL flow fails, fall through to direct upload for local dev
+      const msg = (e as Error).message || "";
+      // If GCS upload itself failed, don't retry with direct upload
+      if (msg.includes("GCS upload") || msg.includes("Registration")) {
+        setError(msg);
+        setUploading(false);
+        return;
+      }
+    }
+
+    // Fallback: direct upload (works on local dev, small files)
     const formData = new FormData();
     formData.append("file", file);
 
@@ -179,7 +258,7 @@ export default function RecruiterMigrationWizard() {
       `${API}/api/recruiter/migration/upload?source_platform=auto`,
     );
     xhr.withCredentials = true;
-    xhr.timeout = 600000; // 10 minutes for large files
+    xhr.timeout = 600000; // 10 minutes
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) {
@@ -208,12 +287,14 @@ export default function RecruiterMigrationWizard() {
     };
 
     xhr.onerror = () => {
-      setError("Network error during upload. For large files (1+ GB), ensure you have a stable connection and try again.");
+      setError(
+        "Network error during upload. The file may exceed the server size limit. Please try again.",
+      );
       setUploading(false);
     };
 
     xhr.ontimeout = () => {
-      setError("Upload timed out. The file may be too large for the current connection speed. Please try again.");
+      setError("Upload timed out. Please try again.");
       setUploading(false);
     };
 

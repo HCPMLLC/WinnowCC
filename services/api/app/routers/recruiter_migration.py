@@ -5,7 +5,14 @@ import os
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    UploadFile,
+)
+from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -124,6 +131,114 @@ def _process_resume_archive_sync(
             status_code=500,
             detail=f"Resume processing failed: {exc}",
         ) from None
+
+
+@router.post("/upload-url")
+def get_signed_upload_url(
+    filename: str = Query(...),
+    user: User = Depends(require_recruiter),
+):
+    """Get a signed GCS URL for direct browser upload.
+
+    Used for large files (1+ GB) that exceed Cloud Run's
+    32 MB request body limit. Returns None fields when GCS
+    is disabled (local dev falls back to direct upload).
+    """
+    from app.services.storage import generate_signed_upload_url
+
+    file_id = uuid.uuid4().hex[:12]
+    safe_name = f"{user.id}_{file_id}_{filename}"
+    result = generate_signed_upload_url(
+        "staging/migration_zips/", safe_name,
+    )
+    if not result:
+        return {
+            "signed_url": None,
+            "gcs_path": None,
+            "message": "Direct upload not available; "
+            "use standard upload endpoint.",
+        }
+    return {
+        "signed_url": result["url"],
+        "gcs_path": result["gcs_path"],
+    }
+
+
+class RegisterUploadRequest(BaseModel):
+    gcs_path: str
+    filename: str
+
+
+@router.post("/register-upload")
+def register_gcs_upload(
+    body: RegisterUploadRequest,
+    user: User = Depends(require_recruiter),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    db: Session = Depends(get_session),
+):
+    """Register a file uploaded directly to GCS via signed URL.
+
+    Downloads to a temp file for platform detection, then creates
+    the MigrationJob pointing at the GCS path.
+    """
+    from app.services.storage import (
+        download_to_tempfile,
+        is_gcs_path,
+    )
+
+    if not is_gcs_path(body.gcs_path):
+        raise HTTPException(400, "Invalid GCS path")
+
+    tmp_path = download_to_tempfile(body.gcs_path, suffix=".zip")
+    try:
+        detection = detect_platform(str(tmp_path))
+    finally:
+        try:
+            tmp_path.unlink()
+        except OSError:
+            pass
+
+    platform = detection["platform"]
+
+    job = MigrationJob(
+        user_id=user.id,
+        source_platform=platform,
+        source_platform_detected=detection["platform"],
+        status="pending",
+        source_file_path=body.gcs_path,
+        config_json={
+            "original_filename": body.filename,
+            "detection": detection,
+            "recruiter_profile_id": profile.id,
+        },
+    )
+    db.add(job)
+    db.flush()
+
+    activity = RecruiterActivity(
+        recruiter_profile_id=profile.id,
+        user_id=user.id,
+        activity_type="migration_started",
+        subject=f"Started migration from {platform}",
+        activity_metadata={
+            "migration_job_id": job.id,
+            "platform": platform,
+            "file_name": body.filename,
+        },
+    )
+    db.add(activity)
+    db.commit()
+    db.refresh(job)
+
+    return {
+        "job_id": job.id,
+        "detected_platform": detection["platform"],
+        "confidence": detection["confidence"],
+        "evidence": detection["evidence"],
+        "entity_types_found": detection["entity_types_found"],
+        "row_count": detection["row_count"],
+        "status": "pending",
+    }
 
 
 @router.post("/upload")

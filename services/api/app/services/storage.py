@@ -93,6 +93,36 @@ def upload_bytes(data: bytes, prefix: str, filename: str) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Signed URLs (for direct browser uploads bypassing API body limits)
+# ---------------------------------------------------------------------------
+
+
+def generate_signed_upload_url(
+    prefix: str, filename: str, content_type: str = "application/zip",
+    expiration_minutes: int = 60,
+) -> dict | None:
+    """Generate a signed URL for direct browser upload to GCS.
+
+    Returns {"url": ..., "gcs_path": ...} or None if GCS is disabled.
+    """
+    if not is_gcs_enabled():
+        return None
+
+    import datetime
+
+    blob_name = f"{prefix}{filename}"
+    blob = _get_bucket().blob(blob_name)
+    url = blob.generate_signed_url(
+        version="v4",
+        expiration=datetime.timedelta(minutes=expiration_minutes),
+        method="PUT",
+        content_type=content_type,
+    )
+    gcs_path = f"gs://{os.environ['GCS_BUCKET']}/{blob_name}"
+    return {"url": url, "gcs_path": gcs_path}
+
+
+# ---------------------------------------------------------------------------
 # Download
 # ---------------------------------------------------------------------------
 
