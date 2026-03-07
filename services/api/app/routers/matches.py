@@ -109,28 +109,105 @@ def _deduplicate_matches(
     return list(best.values())
 
 
+def _enrich_skills(
+    reasons: dict,
+    job: Job,
+    profile_skills: list[str],
+    parsed_job_skills: list[str] | None,
+) -> dict:
+    """Re-compute matched/missing skills using parsed job skills or taxonomy."""
+    from app.services.matching import _tokenize
+    from app.services.skill_taxonomy import extract_skills_from_text, normalize_skill
+
+    skills_set = {s.lower() for s in profile_skills}
+    job_tokens = _tokenize(job.description_text)
+    job_text_lower = (job.description_text or "").lower()
+
+    matched_set: set[str] = {
+        s for s in profile_skills
+        if s in job_tokens or (" " in s and s in job_text_lower)
+    }
+    if parsed_job_skills:
+        normalized_job = {normalize_skill(s).lower() for s in parsed_job_skills}
+        matched_set |= skills_set & normalized_job
+        missing = [
+            s for s in parsed_job_skills
+            if normalize_skill(s).lower() not in skills_set
+        ][:7]
+    else:
+        fallback = extract_skills_from_text(job.description_text or "")
+        missing = [s for s in fallback if s.lower() not in skills_set][:7]
+
+    reasons["matched_skills"] = sorted(matched_set)[:7]
+    reasons["missing_skills"] = missing
+    return reasons
+
+
+def _batch_parsed_skills(
+    session: Session, job_ids: list[int]
+) -> dict[int, list[str]]:
+    """Load parsed skills for a batch of jobs."""
+    from app.models.job_parsed_detail import JobParsedDetail
+
+    if not job_ids:
+        return {}
+    parsed_rows = session.execute(
+        select(
+            JobParsedDetail.job_id,
+            JobParsedDetail.required_skills,
+            JobParsedDetail.preferred_skills,
+        ).where(JobParsedDetail.job_id.in_(job_ids))
+    ).all()
+    result: dict[int, list[str]] = {}
+    for jid, req, pref in parsed_rows:
+        combined = []
+        if req and isinstance(req, list):
+            combined.extend(req)
+        if pref and isinstance(pref, list):
+            combined.extend(pref)
+        if combined:
+            result[jid] = combined
+    return result
+
+
+def _enrich_rows_skills(
+    session: Session,
+    rows: list[tuple],
+    profile_json: dict,
+) -> None:
+    """Re-compute matched/missing skills in-place for match reasons."""
+    profile_skills = [
+        s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)
+    ]
+    job_ids = [job.id for _, job in rows]
+    parsed_map = _batch_parsed_skills(session, job_ids)
+
+    for match, job in rows:
+        reasons = dict(match.reasons or {})
+        _enrich_skills(reasons, job, profile_skills, parsed_map.get(job.id))
+        match.reasons = reasons
+
+
 def _refresh_skill_analysis(
     rows: list[tuple],
     profile_json: dict,
     jobs_by_id: dict,
+    session: Session | None = None,
 ) -> list[MatchResponse]:
     """Build MatchResponse list, refreshing skill analysis against current profile."""
-    from app.services.matching import _tokenize, _top_keywords
-
     profile_skills = [
         s.lower() for s in profile_json.get("skills", []) if isinstance(s, str)
     ]
 
+    parsed_map: dict[int, list[str]] = {}
+    if session is not None:
+        job_ids = [job.id for _, job in rows]
+        parsed_map = _batch_parsed_skills(session, job_ids)
+
     results = []
     for match, job in rows:
         reasons = dict(match.reasons or {})
-
-        job_tokens = _tokenize(job.description_text)
-        matched = [s for s in profile_skills if s in job_tokens]
-        missing = [t for t in _top_keywords(job_tokens) if t not in profile_skills][:7]
-
-        reasons["matched_skills"] = matched[:7]
-        reasons["missing_skills"] = missing[:7]
+        _enrich_skills(reasons, job, profile_skills, parsed_map.get(job.id))
 
         results.append(
             MatchResponse(
@@ -327,6 +404,18 @@ def list_matches(
     ]
 
     rows = _deduplicate_matches(rows)[:matches_visible]
+
+    # Re-compute skill analysis using parsed job skills / taxonomy
+    profile_version = _latest_profile_version(session, user.id)
+    profile = session.execute(
+        select(CandidateProfile).where(
+            CandidateProfile.user_id == user.id,
+            CandidateProfile.version == profile_version,
+        )
+    ).scalar_one_or_none()
+    if profile:
+        _enrich_rows_skills(session, rows, profile.profile_json or {})
+
     return [
         MatchResponse(
             id=match.id,
@@ -393,6 +482,18 @@ def list_all_matches(
     ]
 
     rows = _deduplicate_matches(rows)
+
+    # Re-compute skill analysis using parsed job skills / taxonomy
+    profile_version = _latest_profile_version(session, user.id)
+    profile = session.execute(
+        select(CandidateProfile).where(
+            CandidateProfile.user_id == user.id,
+            CandidateProfile.version == profile_version,
+        )
+    ).scalar_one_or_none()
+    if profile:
+        _enrich_rows_skills(session, rows, profile.profile_json or {})
+
     return [
         MatchResponse(
             id=match.id,
@@ -471,13 +572,31 @@ def get_match(
     ).scalar_one_or_none()
     gap_recs_status = gap_rec.status if gap_rec else None
 
+    # Re-compute skill analysis using parsed job skills / taxonomy
+    reasons = dict(match.reasons or {})
+    profile_version = _latest_profile_version(session, user.id)
+    profile = session.execute(
+        select(CandidateProfile).where(
+            CandidateProfile.user_id == user.id,
+            CandidateProfile.version == profile_version,
+        )
+    ).scalar_one_or_none()
+    if profile:
+        profile_skills = [
+            s.lower()
+            for s in (profile.profile_json or {}).get("skills", [])
+            if isinstance(s, str)
+        ]
+        parsed_map = _batch_parsed_skills(session, [job.id])
+        _enrich_skills(reasons, job, profile_skills, parsed_map.get(job.id))
+
     return MatchResponse(
         id=match.id,
         job=JobResponse.model_validate(job),
         match_score=match.match_score,
         interview_readiness_score=match.interview_readiness_score,
         offer_probability=match.offer_probability,
-        reasons=match.reasons,
+        reasons=reasons,
         created_at=match.created_at,
         resume_score=match.resume_score,
         cover_letter_score=match.cover_letter_score,

@@ -620,7 +620,7 @@ def get_candidate_matches(
     profile_json = profile.profile_json if profile else {}
 
     deduplicated = _deduplicate_matches(rows)
-    return _refresh_skill_analysis(deduplicated, profile_json, jobs_by_id)
+    return _refresh_skill_analysis(deduplicated, profile_json, jobs_by_id, session=session)
 
 
 @router.get("/{user_id}/documents", response_model=list[TailoredDocumentResponse])
