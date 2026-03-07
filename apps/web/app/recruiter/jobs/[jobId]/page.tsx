@@ -39,6 +39,8 @@ interface RecruiterJob {
   closes_at: string | null;
   start_at: string | null;
   created_at: string;
+  contact_name: string | null;
+  contact_email: string | null;
   employer_job_id: number | null;
   employer_company_name: string | null;
 }
@@ -812,6 +814,25 @@ export default function RecruiterJobDetailPage() {
               </div>
             </div>
 
+            {(job.contact_name || job.contact_email) && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Client Contact
+                </p>
+                <div className="flex items-center gap-3 text-sm text-slate-700">
+                  {job.contact_name && <span className="font-medium">{job.contact_name}</span>}
+                  {job.contact_email && (
+                    <a
+                      href={`mailto:${job.contact_email}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {job.contact_email}
+                    </a>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
                 Description *
@@ -1113,6 +1134,25 @@ export default function RecruiterJobDetailPage() {
                 {reparseError && (
                   <p className="mt-2 text-sm text-red-700">{reparseError}</p>
                 )}
+              </div>
+            )}
+            {(job.contact_name || job.contact_email) && (
+              <div>
+                <h3 className="text-sm font-medium text-slate-500">
+                  Client Contact
+                </h3>
+                <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
+                  {job.contact_name && <span className="font-medium">{job.contact_name}</span>}
+                  {job.contact_name && job.contact_email && <span className="text-slate-400">|</span>}
+                  {job.contact_email && (
+                    <a
+                      href={`mailto:${job.contact_email}`}
+                      className="text-blue-600 hover:underline"
+                    >
+                      {job.contact_email}
+                    </a>
+                  )}
+                </div>
               </div>
             )}
             <div>

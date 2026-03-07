@@ -1937,6 +1937,9 @@ def get_recruiter_job(
     )
     resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
     resp.matched_candidates_count = count
+    if job.client_id and job.client:
+        resp.contact_name = job.client.contact_name
+        resp.contact_email = job.client.contact_email
     if job.employer_job_id and job.employer_job:
         ej = job.employer_job
         resp.employer_company_name = ej.employer.company_name if ej.employer else None
