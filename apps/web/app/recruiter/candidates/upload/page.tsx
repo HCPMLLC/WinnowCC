@@ -263,6 +263,88 @@ export default function ResumeUploadPage() {
         </div>
       </div>
 
+      {/* Use-case guidance */}
+      {!uploading && !isComplete && !isQueued && (
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="rounded-lg border border-slate-200 bg-white p-4">
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="h-5 w-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 16V4m0 0l-4 4m4-4l4 4M4 14v4a2 2 0 002 2h12a2 2 0 002-2v-4" />
+              </svg>
+              <h3 className="text-sm font-semibold text-slate-900">Bulk Resume Upload</h3>
+              <span className="rounded-full bg-green-50 px-2 py-0.5 text-[10px] font-medium text-green-700">
+                You are here
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Best for adding <strong>individual resume files</strong> (PDF, DOC, DOCX) you already have on your computer.
+              Each file is parsed, and if an email is found it&apos;s automatically linked to your existing pipeline contacts.
+              Great for a handful of resumes up to a few hundred at a time.
+            </p>
+            <div className="mt-3 rounded-md bg-slate-50 p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Estimated time</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~15 min</p>
+                  <p className="text-[10px] text-slate-500">100 resumes</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~1 hr</p>
+                  <p className="text-[10px] text-slate-500">500 resumes</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~2 hrs</p>
+                  <p className="text-[10px] text-slate-500">1,000 resumes</p>
+                </div>
+              </div>
+              <p className="mt-1.5 text-[10px] text-slate-400 text-center">
+                Each file is uploaded and parsed individually. Upload speed depends on file size and connection.
+              </p>
+            </div>
+          </div>
+          <Link
+            href="/recruiter/migration"
+            className="group rounded-lg border border-slate-200 bg-white p-4 transition-colors hover:border-slate-300 hover:bg-slate-50"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <svg className="h-5 w-5 text-slate-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+              </svg>
+              <h3 className="text-sm font-semibold text-slate-900">Migrate from another CRM</h3>
+              <svg className="ml-auto h-4 w-4 text-slate-400 transition-transform group-hover:translate-x-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Best for <strong>large-scale imports</strong> from Bullhorn, Recruit CRM, CATSOne, or other platforms.
+              Upload a CSV, XLSX, JSON, or ZIP export — Winnow auto-detects the source, preserves candidate data and
+              relationships, and processes thousands of records in the background. Use this for 500+ candidates or
+              when switching CRMs.
+            </p>
+            <div className="mt-3 rounded-md bg-slate-50 p-2.5">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1.5">Estimated time</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~5 min</p>
+                  <p className="text-[10px] text-slate-500">100 resumes</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~15 min</p>
+                  <p className="text-[10px] text-slate-500">500 resumes</p>
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">~30 min</p>
+                  <p className="text-[10px] text-slate-500">1,000 resumes</p>
+                </div>
+              </div>
+              <p className="mt-1.5 text-[10px] text-slate-400 text-center">
+                Single upload, batch-processed in the background. You can close the page and come back later.
+              </p>
+            </div>
+          </Link>
+        </div>
+      )}
+
       {/* Drop zone */}
       {!uploading && !isComplete && !isQueued && (
         <div
