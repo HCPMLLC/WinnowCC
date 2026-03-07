@@ -22,8 +22,8 @@ _RETRY_POLICIES: dict[str, tuple[int, list[int]]] = {
     "low": (2, [60, 300]),
 }
 
-# Auto-purge failed jobs after 7 days
-_FAILURE_TTL = 604800
+# Auto-purge failed jobs after 2 days
+_FAILURE_TTL = 172800
 
 
 def _wake_worker() -> None:

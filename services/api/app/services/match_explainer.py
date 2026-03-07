@@ -233,5 +233,8 @@ def backfill_match_explanations_job(batch_size: int = 100) -> None:
         match_ids = [m.id for m in matches]
         generate_explanations_batch(match_ids, db)
         logger.info("Generated explanations for %d matches.", len(match_ids))
+    except Exception:
+        db.rollback()
+        logger.exception("backfill_match_explanations_job: failed")
     finally:
         db.close()

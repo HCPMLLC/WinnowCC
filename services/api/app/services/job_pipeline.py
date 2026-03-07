@@ -24,6 +24,10 @@ def ingest_jobs_job(query: dict) -> int:
     session = get_session_factory()()
     try:
         return ingest_jobs(session, query)
+    except Exception:
+        session.rollback()
+        logger.exception("ingest_jobs_job: failed for query %s", query)
+        return 0
     finally:
         session.close()
 
@@ -36,6 +40,12 @@ def match_jobs_job(user_id: int, profile_version: int) -> int:
     try:
         matches = compute_matches(session, user_id, profile_version)
         return len(matches)
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "match_jobs_job: failed for user=%s version=%s", user_id, profile_version
+        )
+        return 0
     finally:
         session.close()
 
@@ -45,6 +55,15 @@ def tailor_job(user_id: int, job_id: int, profile_version: int) -> int:
     try:
         tailored = create_tailored_docs(session, user_id, job_id, profile_version)
         return tailored.id
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "tailor_job: failed for user=%s job=%s version=%s",
+            user_id,
+            job_id,
+            profile_version,
+        )
+        return 0
     finally:
         session.close()
 
