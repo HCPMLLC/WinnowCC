@@ -51,6 +51,17 @@ export default function RecruiterMigrationWizard() {
     batchStatus: null,
   });
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [history, setHistory] = useState<
+    { id: number; source_platform: string; status: string; stats: Record<string, unknown> | null; created_at: string; completed_at: string | null }[]
+  >([]);
+
+  // Fetch migration history on mount and when a migration finishes
+  useEffect(() => {
+    fetch(`${API}/api/recruiter/migration/history/list`, { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setHistory)
+      .catch(() => {});
+  }, [step]);
 
   // On mount, check for existing in-progress migration jobs
   const resumeChecked = useRef(false);
@@ -866,6 +877,72 @@ export default function RecruiterMigrationWizard() {
                     : "Rollback"}
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Migration History */}
+      {history.length > 0 && (
+        <div className="mt-10 rounded-xl border border-slate-200 bg-white p-6">
+          <h2 className="mb-4 text-lg font-semibold text-slate-800">
+            Migration History
+          </h2>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 text-left text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  <th className="py-2 pr-4">Date</th>
+                  <th className="py-2 pr-4">Platform</th>
+                  <th className="py-2 pr-4">Status</th>
+                  <th className="py-2 pr-4 text-right">Imported</th>
+                  <th className="py-2 pr-4 text-right">Merged</th>
+                  <th className="py-2 pr-4 text-right">Skipped</th>
+                  <th className="py-2 text-right">Errors</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((j) => {
+                  const s = j.stats as Record<string, number> | null;
+                  const statusColor =
+                    j.status === "completed"
+                      ? "bg-green-100 text-green-700"
+                      : j.status === "failed" || j.status === "rolled_back"
+                        ? "bg-red-100 text-red-700"
+                        : j.status === "importing" || j.status === "queued"
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-slate-100 text-slate-600";
+                  return (
+                    <tr key={j.id} className="border-b border-slate-100">
+                      <td className="py-2 pr-4 text-slate-600">
+                        {new Date(j.created_at).toLocaleDateString()}
+                      </td>
+                      <td className="py-2 pr-4 capitalize text-slate-700">
+                        {j.source_platform.replace(/_/g, " ")}
+                      </td>
+                      <td className="py-2 pr-4">
+                        <span
+                          className={`inline-block rounded-full px-2 py-0.5 text-xs font-semibold ${statusColor}`}
+                        >
+                          {j.status.replace(/_/g, " ")}
+                        </span>
+                      </td>
+                      <td className="py-2 pr-4 text-right text-slate-700">
+                        {s?.imported ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 text-right text-slate-700">
+                        {s?.merged ?? "—"}
+                      </td>
+                      <td className="py-2 pr-4 text-right text-slate-700">
+                        {s?.skipped ?? "—"}
+                      </td>
+                      <td className="py-2 text-right text-slate-700">
+                        {s?.errors ?? "—"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
