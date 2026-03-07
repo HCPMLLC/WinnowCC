@@ -18,7 +18,6 @@ from app.models.recruiter_client import RecruiterClient
 from app.models.recruiter_job import RecruiterJob
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.services.migration.import_engine import (
-    BATCH_SIZE,
     _map_row,
     _read_csv,
     _record_entity,
@@ -141,6 +140,11 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
         stats["total_rows"] = len(rows)
         type_stats = {"imported": 0, "merged": 0, "skipped": 0, "errors": 0}
 
+        # Write initial stats so polling shows total immediately
+        job.stats_json = {**stats}
+        job.updated_at = datetime.now(UTC)
+        db.commit()
+
         for i, row in enumerate(rows):
             try:
                 mapped = _map_row(row, field_mapping)
@@ -203,8 +207,8 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
                 type_stats[result] += 1
                 stats[result] += 1
 
-                if (i + 1) % BATCH_SIZE == 0:
-                    # Update stats so polling can show progress
+                if (i + 1) % 10 == 0:
+                    # Update stats frequently so polling shows live progress
                     job.stats_json = {**stats}
                     job.updated_at = datetime.now(UTC)
                     db.commit()
