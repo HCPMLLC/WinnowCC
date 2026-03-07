@@ -114,19 +114,20 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
     if not job:
         raise ValueError(f"Migration job {migration_job_id} not found")
 
-    job.status = "importing"
-    job.started_at = datetime.now(UTC)
-    db.commit()
+    if job.status != "importing":
+        job.status = "importing"
+        job.started_at = datetime.now(UTC)
+        db.commit()
 
     config = job.config_json or {}
     recruiter_profile_id = config.get("recruiter_profile_id")
-    if not recruiter_profile_id:
-        raise ValueError("recruiter_profile_id missing from job config")
 
     stats = {"imported": 0, "merged": 0, "skipped": 0, "errors": 0, "by_type": {}}
     errors: list[dict] = []
 
     try:
+        if not recruiter_profile_id:
+            raise ValueError("recruiter_profile_id missing from job config")
         file_path = job.source_file_path
         if not file_path or not Path(file_path).exists():
             raise FileNotFoundError(f"Source file not found: {file_path}")
@@ -137,6 +138,7 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
         entity_type = config.get("entity_type", "candidates")
 
         rows = _read_csv(file_path)
+        stats["total_rows"] = len(rows)
         type_stats = {"imported": 0, "merged": 0, "skipped": 0, "errors": 0}
 
         for i, row in enumerate(rows):
@@ -202,6 +204,9 @@ def run_recruiter_migration(migration_job_id: int, db: Session) -> dict:
                 stats[result] += 1
 
                 if (i + 1) % BATCH_SIZE == 0:
+                    # Update stats so polling can show progress
+                    job.stats_json = {**stats}
+                    job.updated_at = datetime.now(UTC)
                     db.commit()
 
             except Exception as e:

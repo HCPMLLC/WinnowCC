@@ -33,6 +33,17 @@ router = APIRouter(
 UPLOAD_DIR = os.getenv("MIGRATION_UPLOAD_DIR", "/tmp/winnow_migrations")
 
 
+def _run_migration_worker(migration_job_id: int) -> None:
+    """RQ worker entry point for CRM migration jobs."""
+    from app.db.session import get_session_factory
+
+    session = get_session_factory()()
+    try:
+        run_recruiter_migration(migration_job_id, session)
+    finally:
+        session.close()
+
+
 def _process_resume_archive_sync(
     job: MigrationJob,
     user: User,
@@ -395,16 +406,39 @@ def start_recruiter_migration(
             run_recruitcrm_zip_migration,
         )
 
-        result = run_recruitcrm_zip_migration(job.id, db)
-        if result.get("status") == "completed":
-            return result
-        raise HTTPException(
-            status_code=500,
-            detail="Migration failed: "
-            f"{result.get('stats', {}).get('errors', 0)} errors",
-        )
+        try:
+            result = run_recruitcrm_zip_migration(job.id, db)
+        except Exception:
+            logger.exception("RecruitCRM ZIP migration %d failed", job_id)
+            db.refresh(job)
+            return {
+                "job_id": job_id,
+                "status": job.status,
+                "stats": job.stats_json,
+                "errors": job.error_log,
+            }
+        return result
 
-    return run_recruiter_migration(job_id, db)
+    # Enqueue CRM import to worker so the POST returns immediately
+    # and the frontend can poll for progress with % counter.
+    job.status = "importing"
+    job.started_at = datetime.now(UTC)
+    db.commit()
+
+    try:
+        from app.services.queue import get_queue
+
+        queue = get_queue("default")
+        queue.enqueue(
+            _run_migration_worker,
+            migration_job_id=job_id,
+            job_timeout="30m",
+        )
+    except Exception:
+        logger.warning("Queue unavailable, running migration %d synchronously", job_id)
+        return run_recruiter_migration(job_id, db)
+
+    return {"job_id": job_id, "status": "importing"}
 
 
 @router.get("/{job_id}/preview")

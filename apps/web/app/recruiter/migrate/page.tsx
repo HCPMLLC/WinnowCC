@@ -212,9 +212,14 @@ export default function RecruiterMigrationWizard() {
         `/api/recruiter/migration/${migration.jobId}/start`,
         { method: "POST" },
       );
-      if (data.status === "completed") {
-        // Small archives are processed synchronously — go straight to summary
-        setMigration((prev) => ({ ...prev, status: "completed", stats: data.stats ?? prev.stats }));
+      if (data.status === "completed" || data.status === "failed") {
+        // Sync result — go straight to summary
+        setMigration((prev) => ({
+          ...prev,
+          status: data.status,
+          stats: data.stats ?? prev.stats,
+          errors: data.errors ?? prev.errors,
+        }));
         setStep("summary");
       } else {
         setStep("progress");
@@ -592,7 +597,7 @@ export default function RecruiterMigrationWizard() {
           ? batch.total_files
           : isResume
             ? ((stats?.total_files ?? migration.rowCount) || 1)
-            : (migration.rowCount || 1);
+            : ((stats?.total_rows ?? migration.rowCount) || 1);
         const pct = waitingForWorker ? 0 : Math.min(100, Math.round((processed / total) * 100));
         const unit = isResume ? "files" : "rows";
 
