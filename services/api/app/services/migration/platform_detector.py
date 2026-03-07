@@ -370,21 +370,38 @@ def _detect_from_zip(path: Path, filename_lower: str) -> dict:
 
     # Check for resume archive (ZIP of PDF/DOCX files)
     _resume_exts = (".pdf", ".docx", ".doc")
-    resume_files = [
+    doc_files = [
         n
         for n in names
         if any(n.lower().endswith(ext) for ext in _resume_exts)
         and "__MACOSX" not in n
         and not n.split("/")[-1].startswith(".")
     ]
-    if resume_files:
-        evidence.append(f"ZIP contains {len(resume_files)} resume files (PDF/DOCX)")
+    if doc_files:
+        # A ZIP with very few document files may be job descriptions or
+        # other non-resume documents. Only classify as resume_archive with
+        # high confidence when there are enough files to be a real batch.
+        if len(doc_files) >= 5:
+            confidence = 0.9
+        elif len(doc_files) >= 3:
+            confidence = 0.6
+        else:
+            # 1-2 files — likely not a resume archive; flag but don't
+            # auto-classify so the user can choose the right action.
+            confidence = 0.3
+            evidence.append(
+                f"ZIP contains only {len(doc_files)} document file(s) — "
+                "this may not be a resume archive"
+            )
+        evidence.append(
+            f"ZIP contains {len(doc_files)} document files (PDF/DOC/DOCX)"
+        )
         return {
-            "platform": "resume_archive",
-            "confidence": 0.9,
+            "platform": "resume_archive" if confidence >= 0.5 else "unknown",
+            "confidence": confidence,
             "evidence": evidence,
-            "entity_types_found": ["resumes"],
-            "row_count": len(resume_files),
+            "entity_types_found": ["resumes"] if confidence >= 0.5 else ["documents"],
+            "row_count": len(doc_files),
             "field_mapping": {},
         }
 

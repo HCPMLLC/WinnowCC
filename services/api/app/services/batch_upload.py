@@ -449,6 +449,7 @@ def process_batch_resume_file(
                         select(CandidateProfile)
                         .where(CandidateProfile.user_id == platform_user.id)
                         .order_by(CandidateProfile.id.desc())
+                        .limit(1)
                     ).scalar_one_or_none()
                     linked_cp_id = existing_cp.id if existing_cp else new_cp.id
 

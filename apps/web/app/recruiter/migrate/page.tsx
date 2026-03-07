@@ -497,6 +497,19 @@ export default function RecruiterMigrationWizard() {
               </div>
             )}
 
+            {migration.confidence < 0.5 && (
+              <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <div className="mb-1 font-semibold">Low confidence detection</div>
+                <p>
+                  This file doesn&apos;t clearly match a known CRM export or resume
+                  archive. Please verify the file contains the data you expect
+                  before proceeding. If this is a ZIP with job descriptions (not
+                  resumes), use the{" "}
+                  <strong>Jobs &rarr; Upload Documents</strong> feature instead.
+                </p>
+              </div>
+            )}
+
             {migration.evidence.length > 0 && (
               <div className="mb-6">
                 <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -514,14 +527,16 @@ export default function RecruiterMigrationWizard() {
 
             <button
               onClick={startImport}
-              disabled={starting}
+              disabled={starting || migration.platform === "unknown"}
               className="w-full rounded-lg bg-green-600 px-4 py-3 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50"
             >
               {starting
                 ? "Starting import..."
-                : isResume
-                  ? "Start Resume Import"
-                  : "Start Import"}
+                : migration.platform === "unknown"
+                  ? "Cannot import — unrecognized file format"
+                  : isResume
+                    ? "Start Resume Import"
+                    : "Start Import"}
             </button>
           </div>
         );
