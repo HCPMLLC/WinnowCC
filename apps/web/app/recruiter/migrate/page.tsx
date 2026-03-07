@@ -170,21 +170,31 @@ export default function RecruiterMigrationWizard() {
     setUploadPct(0);
     setError(null);
 
+    // Step 1: Try to get a signed URL for direct-to-cloud upload
+    let signedUrl: string | null = null;
+    let gcsPath: string | null = null;
     try {
-      // Try signed URL flow first (needed for Cloud Run's 32 MB body limit)
       const signedRes = await fetch(
         `${API}/api/recruiter/migration/upload-url?filename=${encodeURIComponent(file.name)}`,
         { credentials: "include" },
       );
-      const signedData = signedRes.ok ? await signedRes.json() : null;
+      if (signedRes.ok) {
+        const signedData = await signedRes.json();
+        signedUrl = signedData.signed_url || null;
+        gcsPath = signedData.gcs_path || null;
+      }
+    } catch {
+      // Signed URL not available — will use direct upload
+    }
 
-      if (signedData?.signed_url) {
-        // Direct upload to GCS via signed URL
+    if (signedUrl && gcsPath) {
+      // Upload directly to cloud storage (bypasses server size limits)
+      try {
         await new Promise<void>((resolve, reject) => {
           const xhr = new XMLHttpRequest();
-          xhr.open("PUT", signedData.signed_url);
+          xhr.open("PUT", signedUrl!);
           xhr.setRequestHeader("Content-Type", "application/zip");
-          xhr.timeout = 1800000; // 30 minutes for very large files
+          xhr.timeout = 1800000; // 30 minutes
 
           xhr.upload.onprogress = (e) => {
             if (e.lengthComputable) {
@@ -196,11 +206,20 @@ export default function RecruiterMigrationWizard() {
             if (xhr.status >= 200 && xhr.status < 300) {
               resolve();
             } else {
-              reject(new Error(`GCS upload failed (${xhr.status})`));
+              reject(new Error(
+                `Upload to storage failed (HTTP ${xhr.status}). ` +
+                `Please try again.`,
+              ));
             }
           };
-          xhr.onerror = () => reject(new Error("Network error during upload"));
-          xhr.ontimeout = () => reject(new Error("Upload timed out"));
+          xhr.onerror = () => reject(new Error(
+            "Network error uploading to cloud storage. " +
+            "Check your internet connection and try again.",
+          ));
+          xhr.ontimeout = () => reject(new Error(
+            "Upload timed out after 30 minutes. " +
+            "Please check your connection speed and try again.",
+          ));
           xhr.send(file);
         });
 
@@ -212,15 +231,12 @@ export default function RecruiterMigrationWizard() {
             method: "POST",
             credentials: "include",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gcs_path: signedData.gcs_path,
-              filename: file.name,
-            }),
+            body: JSON.stringify({ gcs_path: gcsPath, filename: file.name }),
           },
         );
         if (!regRes.ok) {
           const body = await regRes.text();
-          throw new Error(body || `Registration failed (${regRes.status})`);
+          throw new Error(body || `File registration failed (${regRes.status})`);
         }
         const data = await regRes.json();
         setMigration((prev) => ({
@@ -236,19 +252,14 @@ export default function RecruiterMigrationWizard() {
         setStep("detection");
         setUploading(false);
         return;
-      }
-    } catch (e) {
-      // If signed URL flow fails, fall through to direct upload for local dev
-      const msg = (e as Error).message || "";
-      // If GCS upload itself failed, don't retry with direct upload
-      if (msg.includes("GCS upload") || msg.includes("Registration")) {
-        setError(msg);
+      } catch (e) {
+        setError((e as Error).message);
         setUploading(false);
-        return;
+        return; // Do NOT fall back — direct upload will also fail
       }
     }
 
-    // Fallback: direct upload (works on local dev, small files)
+    // Fallback: direct upload (local dev only, small files)
     const formData = new FormData();
     formData.append("file", file);
 
@@ -288,7 +299,7 @@ export default function RecruiterMigrationWizard() {
 
     xhr.onerror = () => {
       setError(
-        "Network error during upload. The file may exceed the server size limit. Please try again.",
+        "Network error during upload. The file may exceed the server size limit.",
       );
       setUploading(false);
     };
