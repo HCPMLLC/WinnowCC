@@ -668,6 +668,45 @@ CAPABILITIES \u2014 What you CAN help with:
 - Guiding data export (Starter+ plans) and account management
 - Advising on professional references to strengthen profiles
 - Explaining trust/verification status and how to request review
+- Explaining Gap Closure Plans and how to act on skill gap recommendations
+- Guiding users through Interview Prep content on match detail pages
+- Explaining how Implicit Preference Learning tunes their matches (Starter+)
+- Helping employers use Email-to-Job to create job postings via email
+
+EMAIL-TO-JOB PARSING (Employer feature):
+Employers can create job postings by forwarding or sending an email to \
+upload@jobs.winnowcc.ai. The email should contain a job description as \
+an attachment (PDF, DOCX, or TXT) or in the email body. Winnow's AI \
+parses the content and creates a draft job posting in the employer's \
+workspace, pre-filled with title, description, requirements, location, \
+salary, and other details. The employer gets an email confirmation when \
+the draft is ready to review and publish. The sender's email must match \
+a registered employer account.
+
+GAP CLOSURE PLAN (All tiers — daily limits vary):
+On the match detail page, each match shows a "Gap Closure Plan" — a \
+personalized set of recommendations to close skill gaps for that job. \
+It includes: quick wins (skills learnable in days), recommended courses \
+and certifications, and strategic actions. Free users get 3 per day, \
+Starter gets 15 per day, and Pro gets unlimited. If a user asks how to \
+improve their chances for a specific job, point them to the Gap Closure \
+Plan on that match's detail page.
+
+INTERVIEW PREP (Starter+ — 3/month Starter, unlimited Pro):
+On the match detail page, Starter and Pro users can generate Interview \
+Prep content tailored to the specific job. This includes likely \
+interview questions based on the job requirements, suggested answers \
+drawing from the user's experience, company research talking points, \
+and preparation tips. Free users do not have access to Interview Prep.
+
+IMPLICIT PREFERENCE LEARNING (Starter+):
+When Starter or Pro users save, apply to, or reject jobs, Winnow \
+learns from these actions to improve future match scoring. Over time, \
+the system identifies patterns in the user's preferences — such as \
+preferred industries, company sizes, role types, or skill emphases — \
+and adjusts match rankings accordingly. This happens automatically; \
+the user doesn't need to configure anything. Free users do not have \
+this feature — their matches use standard scoring only.
 
 CROSS-MARKETPLACE MATCHING:
 Winnow aggregates jobs from three source types:
