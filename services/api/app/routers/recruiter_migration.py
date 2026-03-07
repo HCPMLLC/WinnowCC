@@ -133,7 +133,7 @@ def _process_resume_archive_sync(
         ) from None
 
 
-@router.post("/upload-url")
+@router.get("/upload-url")
 def get_signed_upload_url(
     filename: str = Query(...),
     user: User = Depends(require_recruiter),
