@@ -207,19 +207,25 @@ export default function RecruiterMigrationWizard() {
               resolve();
             } else {
               reject(new Error(
-                `Upload to storage failed (HTTP ${xhr.status}). ` +
-                `Please try again.`,
+                `Cloud storage rejected upload (HTTP ${xhr.status}): ` +
+                (xhr.responseText || "").slice(0, 300),
               ));
             }
           };
-          xhr.onerror = () => reject(new Error(
-            "Network error uploading to cloud storage. " +
-            "Check your internet connection and try again.",
-          ));
+
+          xhr.onerror = () => {
+            // Include readyState to help diagnose the failure point
+            reject(new Error(
+              `Cloud storage upload failed (readyState=${xhr.readyState}, ` +
+              `status=${xhr.status}). This may be a browser or network ` +
+              `issue with the ${(file!.size / 1e9).toFixed(1)} GB file.`,
+            ));
+          };
+
           xhr.ontimeout = () => reject(new Error(
-            "Upload timed out after 30 minutes. " +
-            "Please check your connection speed and try again.",
+            "Upload timed out after 30 minutes.",
           ));
+
           xhr.send(file);
         });
 
