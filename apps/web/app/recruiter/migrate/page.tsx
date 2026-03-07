@@ -218,6 +218,11 @@ export default function RecruiterMigrationWizard() {
     if (!migration.jobId) return;
     setStarting(true);
     setError(null);
+
+    // Immediately move to the progress step so the user sees the
+    // progress bar right away — polling runs in parallel with the POST.
+    setStep("progress");
+
     try {
       const data = await apiFetch(
         `/api/recruiter/migration/${migration.jobId}/start`,
@@ -231,12 +236,20 @@ export default function RecruiterMigrationWizard() {
           stats: data.stats ?? prev.stats,
           errors: data.errors ?? prev.errors,
         }));
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
         setStep("summary");
-      } else {
-        setStep("progress");
       }
+      // For async ("importing"), polling is already running via the useEffect
     } catch (e: unknown) {
       setError((e as Error).message);
+      if (pollRef.current) {
+        clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+      setStep("detection");
     }
     setStarting(false);
   }
