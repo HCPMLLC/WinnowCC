@@ -74,7 +74,29 @@ export default function GapRecommendationsCard({
   const [retrying, setRetrying] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [upgradeMessage, setUpgradeMessage] = useState("");
+  const [progress, setProgress] = useState(0);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const startProgress = useCallback(() => {
+    setProgress(0);
+    if (progressRef.current) clearInterval(progressRef.current);
+    progressRef.current = setInterval(() => {
+      setProgress((prev) => {
+        if (prev < 60) return prev + 3;
+        if (prev < 85) return prev + 1;
+        if (prev < 95) return prev + 0.3;
+        return prev;
+      });
+    }, 400);
+  }, []);
+
+  const stopProgress = useCallback(() => {
+    if (progressRef.current) {
+      clearInterval(progressRef.current);
+      progressRef.current = null;
+    }
+  }, []);
 
   const fetchRecs = useCallback(async () => {
     try {
@@ -87,6 +109,7 @@ export default function GapRecommendationsCard({
           const msg = errData?.detail || "Daily limit reached. Upgrade for more.";
           setUpgradeMessage(typeof msg === "string" ? msg : "Daily limit reached. Upgrade for more.");
           setShowUpgrade(true);
+          stopProgress();
           setLoading(false);
           if (pollRef.current) {
             clearInterval(pollRef.current);
@@ -94,33 +117,39 @@ export default function GapRecommendationsCard({
           }
           return;
         }
+        stopProgress();
         setLoading(false);
         return;
       }
       const json: GapRecsResponse = await res.json();
       setData(json);
-      setLoading(false);
 
       if (json.status === "completed" || json.status === "failed") {
+        stopProgress();
+        setProgress(100);
+        setLoading(false);
         if (pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
         }
       }
     } catch {
+      stopProgress();
       setLoading(false);
     }
-  }, [matchId]);
+  }, [matchId, stopProgress]);
 
   useEffect(() => {
     return () => {
       if (pollRef.current) clearInterval(pollRef.current);
+      if (progressRef.current) clearInterval(progressRef.current);
     };
   }, []);
 
   const handleTrigger = () => {
     setTriggered(true);
     setLoading(true);
+    startProgress();
     fetchRecs();
     pollRef.current = setInterval(fetchRecs, 3000);
   };
@@ -173,16 +202,30 @@ export default function GapRecommendationsCard({
 
   // Loading / pending
   if (loading || (data && data.status === "pending")) {
+    const pct = Math.round(progress);
     return (
       <div className="mt-4 rounded-lg border border-emerald-200 bg-white p-5">
         <h3 className="mb-3 text-sm font-semibold uppercase tracking-wide text-emerald-600">
           Gap Closure Plan
         </h3>
-        <div className="flex items-center justify-center py-8">
-          <div className="h-8 w-8 animate-spin rounded-full border-3 border-emerald-600 border-t-transparent" />
-          <span className="ml-3 text-sm text-emerald-600">
-            Creating your personalized learning plan...
-          </span>
+        <div className="flex flex-col items-center py-6 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-emerald-600 border-t-transparent" />
+            <span className="text-sm text-emerald-600">
+              Creating your personalized learning plan...
+            </span>
+          </div>
+          <div className="w-full max-w-xs">
+            <div className="flex items-center justify-between mb-1">
+              <span className="text-xs text-emerald-600 font-medium">{pct}% complete</span>
+            </div>
+            <div className="h-2 w-full rounded-full bg-emerald-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-300 ease-out"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+          </div>
         </div>
       </div>
     );

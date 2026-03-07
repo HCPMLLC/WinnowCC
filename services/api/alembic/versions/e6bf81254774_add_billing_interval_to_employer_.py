@@ -19,16 +19,12 @@ depends_on: Union[str, Sequence[str], None] = None
 
 def upgrade() -> None:
     conn = op.get_bind()
-    columns = [c["name"] for c in sa.inspect(conn).get_columns("employer_profiles")]
+    inspector = sa.inspect(conn)
+    columns = [c["name"] for c in inspector.get_columns("employer_profiles")]
     if "billing_interval" not in columns:
         op.add_column(
             'employer_profiles',
-            sa.Column(
-                'billing_interval',
-                sa.String(length=20),
-                server_default='monthly',
-                nullable=True,
-            ),
+            sa.Column('billing_interval', sa.String(length=20), server_default='monthly', nullable=True),
         )
 
 
