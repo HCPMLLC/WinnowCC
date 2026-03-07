@@ -104,20 +104,52 @@ def generate_signed_upload_url(
     """Generate a signed URL for direct browser upload to GCS.
 
     Returns {"url": ..., "gcs_path": ...} or None if GCS is disabled.
+
+    On Cloud Run the default compute-engine credentials cannot sign
+    locally, so we pass ``service_account_email`` + ``access_token``
+    which makes the GCS client use the IAM signBlob API instead.
     """
     if not is_gcs_enabled():
         return None
 
     import datetime
 
+    import google.auth  # type: ignore[import-untyped]
+    import google.auth.transport.requests  # type: ignore[import-untyped]
+    from google.auth import compute_engine  # type: ignore[import-untyped]
+
     blob_name = f"{prefix}{filename}"
     blob = _get_bucket().blob(blob_name)
-    url = blob.generate_signed_url(
-        version="v4",
-        expiration=datetime.timedelta(minutes=expiration_minutes),
-        method="PUT",
-        content_type=content_type,
-    )
+
+    credentials, _ = google.auth.default()
+
+    if isinstance(credentials, compute_engine.Credentials):
+        # Refresh to get a valid access token
+        credentials.refresh(
+            google.auth.transport.requests.Request()
+        )
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(
+                minutes=expiration_minutes
+            ),
+            method="PUT",
+            content_type=content_type,
+            service_account_email=(
+                credentials.service_account_email
+            ),
+            access_token=credentials.token,
+        )
+    else:
+        url = blob.generate_signed_url(
+            version="v4",
+            expiration=datetime.timedelta(
+                minutes=expiration_minutes
+            ),
+            method="PUT",
+            content_type=content_type,
+        )
+
     gcs_path = f"gs://{os.environ['GCS_BUCKET']}/{blob_name}"
     return {"url": url, "gcs_path": gcs_path}
 
