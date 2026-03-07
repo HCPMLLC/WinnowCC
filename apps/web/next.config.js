@@ -24,7 +24,7 @@ const nextConfig = {
               "script-src 'self' 'unsafe-inline' 'unsafe-eval'",
               "style-src 'self' 'unsafe-inline'",
               "img-src 'self' https: data:",
-              `connect-src 'self' ${apiBase} wss:`,
+              `connect-src 'self' ${apiBase} https://storage.googleapis.com wss:`,
               "font-src 'self' https:",
               "frame-ancestors 'none'",
             ].join('; '),
