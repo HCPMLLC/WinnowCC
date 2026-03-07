@@ -552,7 +552,13 @@ export default function RecruiterJobDetailPage() {
             </span>
             {(job.client_name || job.client_company_name) && (
               <span className="text-sm text-slate-600">
-                {job.client_name || job.client_company_name}
+                {job.client_id ? (
+                  <Link href={`/recruiter/clients/${job.client_id}`} className="hover:underline">
+                    {job.client_name || job.client_company_name}
+                  </Link>
+                ) : (
+                  job.client_name || job.client_company_name
+                )}
               </span>
             )}
             {job.location && (
@@ -689,7 +695,15 @@ export default function RecruiterJobDetailPage() {
             {job.client_company_name && (
               <div>
                 <h3 className="text-sm font-medium text-slate-500">Client</h3>
-                <p className="mt-1 text-sm text-slate-700">{job.client_name || job.client_company_name}</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {job.client_id ? (
+                    <Link href={`/recruiter/clients/${job.client_id}`} className="text-blue-600 hover:underline">
+                      {job.client_name || job.client_company_name}
+                    </Link>
+                  ) : (
+                    job.client_name || job.client_company_name
+                  )}
+                </p>
               </div>
             )}
           </div>
