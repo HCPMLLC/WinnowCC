@@ -39,11 +39,18 @@ const COLUMNS: { key: SortField; label: string }[] = [
   { key: "source", label: "Source" },
   { key: "posted_at", label: "Posted" },
   { key: "application_deadline", label: "Deadline" },
+  { key: "ingested_at", label: "Ingested" },
 ];
 
 function formatDate(iso: string | null): string {
   if (!iso) return "\u2014";
   return new Date(iso).toLocaleDateString();
+}
+
+function formatDateTime(iso: string | null): string {
+  if (!iso) return "\u2014";
+  const d = new Date(iso);
+  return `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export default function AdminJobsPage() {
@@ -170,6 +177,9 @@ export default function AdminJobsPage() {
       </td>
       <td className="px-4 py-3 text-sm text-slate-600">
         {formatDate(job.application_deadline)}
+      </td>
+      <td className="px-4 py-3 text-sm text-slate-600">
+        {formatDateTime(job.ingested_at)}
       </td>
     </tr>
   );
