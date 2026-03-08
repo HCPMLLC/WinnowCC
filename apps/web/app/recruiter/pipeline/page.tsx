@@ -58,6 +58,7 @@ export default function RecruiterPipeline() {
 
   // Search
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bulk selection
@@ -89,7 +90,7 @@ export default function RecruiterPipeline() {
       setFetchError("");
       const url = new URL(`${API_BASE}/api/recruiter/pipeline`);
       if (stageFilter) url.searchParams.set("stage", stageFilter);
-      if (searchQuery.trim()) url.searchParams.set("search", searchQuery.trim());
+      if (debouncedSearch.trim()) url.searchParams.set("search", debouncedSearch.trim());
       url.searchParams.set("limit", "100");
       const res = await fetch(url.toString(), { credentials: "include" });
       if (res.ok) {
@@ -101,18 +102,19 @@ export default function RecruiterPipeline() {
     } catch {
       setFetchError("Network error loading pipeline");
     }
-  }, [stageFilter, searchQuery]);
+  }, [stageFilter, debouncedSearch]);
 
   useEffect(() => {
     setLoading(true);
     fetchPipeline().finally(() => setLoading(false));
   }, [stageFilter, fetchPipeline]);
 
-  // Debounced search
+  // Debounced search — update debouncedSearch after user stops typing
   function handleSearchChange(value: string) {
     setSearchQuery(value);
     if (searchTimeout.current) clearTimeout(searchTimeout.current);
     searchTimeout.current = setTimeout(() => {
+      setDebouncedSearch(value);
       setSelected(new Set());
     }, 300);
   }
@@ -310,7 +312,7 @@ export default function RecruiterPipeline() {
     }
   }
 
-  if (loading) {
+  if (loading && entries.length === 0) {
     return <div className="flex items-center justify-center py-20"><div className="text-sm text-slate-500">Loading pipeline...</div></div>;
   }
 
