@@ -55,6 +55,7 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
     now = datetime.now(UTC)
     new_count = 0
     new_jobs: list[Job] = []  # Track new jobs for post-commit parsing
+    seen_keys: set[tuple[str, str]] = set()  # (source, source_job_id) seen this batch
     sources = get_job_sources()
     total_sources = len(sources)
     completed_sources = 0
@@ -80,6 +81,11 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
             if not _is_recent_posting(posting.posted_at, now):
                 source_stale += 1
                 continue
+            batch_key = (posting.source, posting.source_job_id)
+            if batch_key in seen_keys:
+                source_dup += 1
+                continue
+            seen_keys.add(batch_key)
             description = _clean_text(posting.description_text)
             description_html = _get_description_html(posting.description_text)
             content_hash = _hash_posting(posting, description)
