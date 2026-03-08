@@ -645,7 +645,7 @@ RESUME_EXTENSIONS = {".pdf", ".docx", ".doc"}
 STAGE_BATCH_SIZE = 50
 
 
-def _stage_attachments_job(migration_job_id: int) -> None:
+def stage_attachments_job(migration_job_id: int) -> None:
     """RQ worker entry point for attachments import."""
     from app.db.session import get_session_factory
 

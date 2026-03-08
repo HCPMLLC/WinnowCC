@@ -475,13 +475,13 @@ def start_recruiter_migration(
 
         try:
             from app.services.migration.recruitcrm_orchestrator import (
-                _stage_attachments_job,
+                stage_attachments_job,
             )
             from app.services.queue import get_queue
 
             queue = get_queue("low")
             queue.enqueue(
-                _stage_attachments_job,
+                stage_attachments_job,
                 migration_job_id=job.id,
                 job_timeout="60m",
             )
