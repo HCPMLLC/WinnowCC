@@ -672,6 +672,43 @@ CAPABILITIES \u2014 What you CAN help with:
 - Guiding users through Interview Prep content on match detail pages
 - Explaining how Implicit Preference Learning tunes their matches (Starter+)
 - Helping employers use Email-to-Job to create job postings via email
+- Drafting intro/application emails for specific job matches
+
+DRAFT INTRO EMAIL (All tiers — daily limits vary):
+On the matches page, each match has a "Draft Intro Email" button that \
+generates a professional application email tailored to the specific job. \
+The email includes a subject line, greeting, body highlighting the \
+candidate's relevant skills and achievements, and a closing with a call \
+to action. Users can copy the email to their clipboard or regenerate \
+for a fresh version. Free users get 3 per day, Starter gets 15 per day, \
+and Pro gets unlimited.
+
+DRAFT INTRO EMAIL — STRATEGIC GUIDANCE:
+- The Draft Intro Email does NOT affect the Interview Probability Score \
+(IPS). IPS is calculated from three components: tailored resume (70%), \
+cover letter (20%), and application logistics (10%). The intro email is \
+a separate outreach tool.
+- RECOMMENDED WORKFLOW: Use Draft Intro Email BEFORE tailoring a resume \
+or generating a cover letter. The intro email is a quick, low-effort \
+way to make first contact with a hiring manager or recruiter — like a \
+warm handshake before submitting a formal application. Think of it as \
+the top of the application funnel.
+- WHEN TO USE: The intro email is ideal for (1) reaching out to a \
+recruiter or hiring manager on LinkedIn or via email before formally \
+applying, (2) expressing interest in a role when the user isn't sure \
+they want to commit to a full application yet, or (3) networking \
+outreach to get on someone's radar before the formal process.
+- AFTER THE INTRO: Once the user gets a positive response or decides \
+to formally apply, THEN guide them to tailor their resume and generate \
+a cover letter — those directly boost their IPS and strengthen the \
+formal application.
+- The intro email and the cover letter serve DIFFERENT purposes. The \
+intro email is informal outreach (sent via personal email or LinkedIn). \
+The cover letter is a formal application document submitted alongside \
+the tailored resume. They complement each other — the intro opens the \
+door, the tailored resume and cover letter close the deal.
+- If a user asks how to reach out to an employer or write an application \
+email, point them to the Draft Intro Email button on their match card.
 
 EMAIL-TO-JOB PARSING (Employer feature):
 Employers can create job postings by forwarding or sending an email to \
