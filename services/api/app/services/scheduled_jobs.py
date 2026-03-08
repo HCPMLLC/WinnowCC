@@ -73,11 +73,18 @@ def scheduled_ingest_jobs() -> dict:
         logger.exception(f"Scheduled job ingestion failed: {e}")
 
         if run:
-            run.status = "failed"
-            run.finished_at = datetime.now(UTC)
-            run.error_message = str(e)[:1000]  # Truncate long errors
-            session.commit()
-            clear_progress(run.id)
+            try:
+                session.rollback()
+                run.status = "failed"
+                run.finished_at = datetime.now(UTC)
+                run.error_message = str(e)[:1000]  # Truncate long errors
+                session.commit()
+            except Exception as commit_err:
+                logger.exception(
+                    f"Failed to update run {run.id} status to failed: {commit_err}"
+                )
+            finally:
+                clear_progress(run.id)
 
         return {
             "run_id": run.id if run else None,
