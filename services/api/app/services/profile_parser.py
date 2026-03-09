@@ -14,7 +14,10 @@ logger = logging.getLogger(__name__)
 
 SECTION_HEADINGS = {
     "summary",
+    "professional summary",
+    "executive summary",
     "objective",
+    "career objective",
     "experience",
     "work experience",
     "professional experience",
@@ -27,6 +30,20 @@ SECTION_HEADINGS = {
     "projects",
     "certifications",
     "skills",
+}
+
+ABOUT_HEADINGS = {
+    "summary",
+    "professional summary",
+    "executive summary",
+    "objective",
+    "career objective",
+    "about",
+    "about me",
+    "profile",
+    "personal statement",
+    "career summary",
+    "overview",
 }
 
 EXPERIENCE_HEADINGS = {
@@ -96,6 +113,10 @@ def parse_profile_from_text(text: str) -> dict:
     profile["experience"] = _extract_experience(lines)
     profile["education"] = _extract_education(lines)
 
+    about = _extract_about(lines)
+    if about:
+        profile["about"] = about
+
     return profile
 
 
@@ -122,10 +143,22 @@ def _extract_name(lines: list[str], email: str | None, phone: str | None) -> str
             continue
         if any(char.isdigit() for char in line):
             continue
+        # Skip lines that are section headings
+        normalized = lowered.strip(" :")
+        if normalized in SECTION_HEADINGS or normalized in ABOUT_HEADINGS:
+            continue
         words = [word for word in line.split() if word.isalpha()]
         if 1 < len(words) <= 4 and len(line) <= 40:
             return line
     return None
+
+
+def _extract_about(lines: list[str]) -> str | None:
+    """Extract professional summary / about section text."""
+    section = _extract_section(lines, ABOUT_HEADINGS)
+    if not section:
+        return None
+    return " ".join(section).strip() or None
 
 
 def _extract_location(lines: list[str]) -> str | None:
