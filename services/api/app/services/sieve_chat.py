@@ -2106,12 +2106,15 @@ attachments ZIP (Phase 2) to enable matching.
 
     WHAT GETS IMPORTED:
     Companies (→ Clients), Contacts (→ merged into Clients), \
-Jobs (→ Recruiter Jobs with status/salary/location), \
-Candidates (→ Pipeline Candidates with email/phone/LinkedIn), \
+Jobs (→ Recruiter Jobs with title, description, requirements, \
+nice-to-haves, job category, department, salary, location, \
+start date, close date, status, openings), \
+Candidates (→ Pipeline Candidates with email/phone/LinkedIn, \
+current company, current title, location, skills), \
 Assignments (→ candidate-job links with stage mapping: \
 Applied→Sourced, Interviewing→Interviewing, Selected→Placed, etc.)
 
-    NOT YET IMPORTED: Skills/tags, work/education history, notes, \
+    NOT YET IMPORTED: Work/education history, notes, \
 activity logs. These are planned for future updates.
 
 11. OUTREACH SEQUENCES (/recruiter/sequences)

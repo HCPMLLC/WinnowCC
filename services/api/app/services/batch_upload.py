@@ -976,7 +976,7 @@ def _start_next_queued_import(session) -> None:
 
     try:
         config = next_job.config_json or {}
-        queue = get_queue("low")
+        queue = get_queue("default")
         queue.enqueue(
             expand_zip_batch_job,
             user_id=next_job.user_id,

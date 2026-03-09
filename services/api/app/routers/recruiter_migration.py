@@ -591,7 +591,7 @@ def start_recruiter_migration(
         db.commit()
 
         try:
-            queue = get_queue("low")
+            queue = get_queue("default")
             queue.enqueue(
                 expand_zip_batch_job,
                 user_id=user.id,
