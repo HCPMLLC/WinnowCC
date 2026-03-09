@@ -15,6 +15,130 @@ from app.services.job_sources import JobPosting, get_job_sources
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# US-availability filter
+# ---------------------------------------------------------------------------
+
+_US_STATE_ABBREVS = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY", "DC",
+}
+
+# Locations that explicitly exclude the US
+_NON_US_COUNTRIES = {
+    "afghanistan", "albania", "algeria", "andorra", "angola", "argentina",
+    "armenia", "australia", "austria", "azerbaijan", "bahamas", "bahrain",
+    "bangladesh", "barbados", "belarus", "belgium", "belize", "benin",
+    "bhutan", "bolivia", "bosnia", "botswana", "brazil", "brunei", "bulgaria",
+    "burkina faso", "burundi", "cambodia", "cameroon", "canada", "chile", "china",
+    "colombia", "congo", "costa rica", "croatia", "cuba", "cyprus",
+    "czech republic", "czechia", "denmark", "dominican republic", "ecuador",
+    "egypt", "el salvador", "estonia", "ethiopia", "fiji", "finland",
+    "france", "gabon", "georgia", "germany", "ghana", "greece", "guatemala",
+    "guinea", "haiti", "honduras", "hungary", "iceland", "india", "indonesia",
+    "iran", "iraq", "ireland", "israel", "italy", "jamaica", "japan",
+    "jordan", "kazakhstan", "kenya", "korea", "kuwait", "laos", "latvia",
+    "lebanon", "libya", "lithuania", "luxembourg", "madagascar", "malaysia",
+    "mali", "malta", "mexico", "moldova", "mongolia", "montenegro",
+    "morocco", "mozambique", "myanmar", "namibia", "nepal", "netherlands",
+    "new zealand", "nicaragua", "niger", "nigeria", "north macedonia",
+    "norway", "oman", "pakistan", "panama", "paraguay", "peru",
+    "philippines", "poland", "portugal", "qatar", "romania", "russia",
+    "rwanda", "saudi arabia", "senegal", "serbia", "singapore", "slovakia",
+    "slovenia", "south africa", "south korea", "spain", "sri lanka", "sudan",
+    "sweden", "switzerland", "syria", "taiwan", "tanzania", "thailand",
+    "togo", "trinidad", "tunisia", "turkey", "turkiye", "uganda", "ukraine",
+    "united arab emirates", "uae", "united kingdom", "uk", "uruguay",
+    "uzbekistan", "venezuela", "vietnam", "yemen", "zambia", "zimbabwe",
+    # Common cities outside the US
+    "london", "toronto", "vancouver", "montreal", "berlin", "munich",
+    "paris", "amsterdam", "dublin", "bangalore", "bengaluru", "mumbai",
+    "hyderabad", "pune", "chennai", "delhi", "noida", "gurgaon",
+    "singapore", "tokyo", "sydney", "melbourne", "auckland",
+    "mexico city", "são paulo", "sao paulo", "bogota", "buenos aires",
+    "lagos", "nairobi", "cape town", "johannesburg", "cairo", "dubai",
+    "abu dhabi", "tel aviv", "warsaw", "prague", "budapest", "bucharest",
+    "lisbon", "barcelona", "madrid", "milan", "rome", "zurich", "geneva",
+    "stockholm", "oslo", "copenhagen", "helsinki", "vienna", "brussels",
+    "manila", "jakarta", "kuala lumpur", "bangkok", "hanoi",
+    "ho chi minh", "taipei", "seoul", "shanghai", "beijing", "shenzhen",
+}
+
+_US_KEYWORDS = {
+    "united states", "usa", "u.s.", "u.s.a.",
+}
+
+_US_STATE_NAMES = {
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana",
+    "maine", "maryland", "massachusetts", "michigan", "minnesota",
+    "mississippi", "missouri", "montana", "nebraska", "nevada",
+    "new hampshire", "new jersey", "new mexico", "new york",
+    "north carolina", "north dakota", "ohio", "oklahoma", "oregon",
+    "pennsylvania", "rhode island", "south carolina", "south dakota",
+    "tennessee", "texas", "utah", "vermont", "virginia", "washington",
+    "west virginia", "wisconsin", "wyoming", "district of columbia",
+}
+
+_RE_STATE_ABBREV = re.compile(
+    r"(?:^|[,\s])(" + "|".join(_US_STATE_ABBREVS) + r")(?:$|[,\s])"
+)
+
+
+def _is_available_in_us(location: str | None, remote_flag: bool | None) -> bool:
+    """Return True if the job is available to US residents.
+
+    Rules:
+    - Explicit US locations (state abbreviations, US keywords) → accept
+    - Generic remote/worldwide/global with no country restriction → accept
+    - Locations naming a non-US country or city → reject
+    - Remote with non-US qualifier (e.g. "Remote - UK") → reject
+    """
+    if not location:
+        # No location info — accept if remote, reject otherwise
+        return bool(remote_flag)
+
+    loc_lower = location.lower().strip()
+
+    # Explicit US indicators
+    if any(kw in loc_lower for kw in _US_KEYWORDS):
+        return True
+    if _RE_STATE_ABBREV.search(location):
+        return True
+    # Full state names (e.g. "Texas", "New York, New York")
+    for state in _US_STATE_NAMES:
+        if state in loc_lower:
+            return True
+    # Common US patterns: "City, ST" where ST is 2-letter state
+    parts = [p.strip() for p in location.split(",")]
+    for part in parts:
+        if part.strip().upper() in _US_STATE_ABBREVS:
+            return True
+        if part.strip().upper() == "US":
+            return True
+
+    # Reject if location names a non-US country/city
+    for country in _NON_US_COUNTRIES:
+        if country in loc_lower:
+            return False
+
+    # Generic remote/flexible/worldwide — accept (no country restriction)
+    generic_remote = {"remote", "worldwide", "global", "anywhere", "flexible",
+                      "flexible / remote", "n/a", "location", "remote job",
+                      "work from home", "distributed", "north america"}
+    if loc_lower in generic_remote:
+        return True
+    if loc_lower.startswith("remote") and remote_flag:
+        # "Remote - <country>" was already caught above; remaining = accept
+        return True
+
+    # If we can't determine, accept for remote jobs, reject for on-site
+    return bool(remote_flag)
+
 
 def _update_progress(run_id: int | None, completed: int, total: int, jobs: int) -> None:
     """Write ingestion progress to Redis so the admin UI can poll it."""
@@ -77,9 +201,13 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
         source_new = 0
         source_stale = 0
         source_dup = 0
+        source_geo_skip = 0
         for posting in postings:
             if not _is_recent_posting(posting.posted_at, now):
                 source_stale += 1
+                continue
+            if not _is_available_in_us(posting.location, posting.remote_flag):
+                source_geo_skip += 1
                 continue
             batch_key = (posting.source, posting.source_job_id)
             if batch_key in seen_keys:
@@ -137,11 +265,12 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
             source_new += 1
             new_count += 1
         logger.info(
-            "Source %s: %d new, %d stale, %d duplicate",
+            "Source %s: %d new, %d stale, %d duplicate, %d non-US skipped",
             source.name,
             source_new,
             source_stale,
             source_dup,
+            source_geo_skip,
         )
         completed_sources += 1
         _update_progress(run_id, completed_sources, total_sources, new_count)
