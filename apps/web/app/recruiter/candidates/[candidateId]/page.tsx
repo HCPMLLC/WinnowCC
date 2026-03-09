@@ -719,6 +719,33 @@ export default function CandidateDetailPage() {
             </div>
           </div>
 
+          {/* Contact Info */}
+          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-slate-900">Contact Info</h2>
+            {(displayContact.email || displayContact.phone || displayContact.website) ? (
+              <div className="grid gap-4 sm:grid-cols-3">
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">Email</h3>
+                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.email || <span className="italic text-slate-400">Not provided</span>}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">Phone</h3>
+                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.phone ? formatPhone(displayContact.phone) : <span className="italic text-slate-400">Not provided</span>}</p>
+                </div>
+                <div>
+                  <h3 className="text-sm font-medium text-slate-500">Website</h3>
+                  {displayContact.website ? (
+                    <a href={displayContact.website} target="_blank" rel="noopener noreferrer" className="mt-0.5 text-sm text-blue-600 hover:underline">{displayContact.website}</a>
+                  ) : (
+                    <p className="mt-0.5 text-sm italic text-slate-400">Not provided</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm italic text-slate-400">Not provided</p>
+            )}
+          </div>
+
           {/* Matched Jobs */}
           {matchedJobs.length > 0 && (
             <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -943,33 +970,6 @@ export default function CandidateDetailPage() {
                     </div>
                   );
                 })}
-              </div>
-            ) : (
-              <p className="text-sm italic text-slate-400">Not provided</p>
-            )}
-          </div>
-
-          {/* Contact Info */}
-          <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-3 text-lg font-semibold text-slate-900">Contact Info</h2>
-            {(displayContact.email || displayContact.phone || displayContact.website) ? (
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div>
-                  <h3 className="text-sm font-medium text-slate-500">Email</h3>
-                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.email || <span className="italic text-slate-400">Not provided</span>}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-slate-500">Phone</h3>
-                  <p className="mt-0.5 text-sm text-slate-700">{displayContact.phone ? formatPhone(displayContact.phone) : <span className="italic text-slate-400">Not provided</span>}</p>
-                </div>
-                <div>
-                  <h3 className="text-sm font-medium text-slate-500">Website</h3>
-                  {displayContact.website ? (
-                    <a href={displayContact.website} target="_blank" rel="noopener noreferrer" className="mt-0.5 text-sm text-blue-600 hover:underline">{displayContact.website}</a>
-                  ) : (
-                    <p className="mt-0.5 text-sm italic text-slate-400">Not provided</p>
-                  )}
-                </div>
               </div>
             ) : (
               <p className="text-sm italic text-slate-400">Not provided</p>
