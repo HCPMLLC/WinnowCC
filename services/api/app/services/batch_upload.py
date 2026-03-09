@@ -804,6 +804,45 @@ def _create_recruiter_job(session, parsed, recruiter_profile_id, bf):
 # ---------------------------------------------------------------------------
 
 
+def _refresh_recruiter_job_matches(session, batch_id: str) -> None:
+    """After a recruiter resume batch completes, re-populate candidate matches
+    for all of their active jobs so the match counts update."""
+    try:
+        from app.models.recruiter_job import RecruiterJob
+        from app.services.job_pipeline import populate_recruiter_job_candidates
+        from app.services.queue import get_queue
+
+        batch = session.execute(
+            select(UploadBatch).where(UploadBatch.batch_id == batch_id)
+        ).scalar_one_or_none()
+        if not batch or not batch.owner_profile_id:
+            return
+
+        active_jobs = session.execute(
+            select(RecruiterJob.id).where(
+                RecruiterJob.recruiter_profile_id == batch.owner_profile_id,
+                RecruiterJob.status == "active",
+            )
+        ).scalars().all()
+
+        if not active_jobs:
+            return
+
+        q = get_queue()
+        for job_id in active_jobs:
+            q.enqueue(populate_recruiter_job_candidates, job_id)
+
+        logger.info(
+            "Enqueued candidate matching for %d active jobs (batch %s)",
+            len(active_jobs),
+            batch_id,
+        )
+    except Exception:
+        logger.warning(
+            "Failed to enqueue job matching after batch %s", batch_id, exc_info=True
+        )
+
+
 def _finalize_batch(session, batch_id: str, file_status: str = "succeeded") -> None:
     """Atomically increment batch counters. Mark completed when all files are done.
 
@@ -853,6 +892,13 @@ def _finalize_batch(session, batch_id: str, file_status: str = "succeeded") -> N
         )
 
     session.commit()
+
+    # Re-populate candidate matches for all active recruiter jobs
+    if files_completed >= total_files and batch_type in (
+        "recruiter_resume_zip",
+        "recruiter_resume",
+    ):
+        _refresh_recruiter_job_matches(session, batch_id)
 
     # Send completion email for large ZIP-originated batches
     if files_completed >= total_files and batch_type == "recruiter_resume_zip":
