@@ -25,6 +25,16 @@ load_dotenv(dotenv_path=ENV_PATH, override=False)
 from redis import Redis  # noqa: E402
 from rq_scheduler import Scheduler  # noqa: E402
 
+from app.services.scheduled_jobs import (  # noqa: E402
+    scheduled_check_stale_jobs,
+    scheduled_expire_introductions,
+    scheduled_hard_delete_expired,
+    scheduled_ingest_jobs,
+    scheduled_process_outreach,
+    scheduled_promote_queued_imports,
+    scheduled_purge_inactive_jobs,
+    scheduled_send_weekly_digests,
+)
 from app.services.scheduler_config import (  # noqa: E402
     get_scheduler_config,
     get_scheduler_enabled,
@@ -72,54 +82,14 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
     # Map of job_type -> (cron_string, func, queue_name)
     cron_expr = get_scheduler_ingest_cron()
     jobs_to_schedule = [
-        (
-            "ingest",
-            cron_expr,
-            "app.services.scheduled_jobs.scheduled_ingest_jobs",
-            "default",
-        ),
-        (
-            "expire_introductions",
-            "0 3 * * *",
-            "app.services.scheduled_jobs.scheduled_expire_introductions",
-            "default",
-        ),
-        (
-            "outreach",
-            "*/15 * * * *",
-            "app.services.scheduled_jobs.scheduled_process_outreach",
-            "default",
-        ),
-        (
-            "stale_check",
-            "0 2 * * *",
-            "app.services.scheduled_jobs.scheduled_check_stale_jobs",
-            "default",
-        ),
-        (
-            "job_purge",
-            "0 4 * * 0",
-            "app.services.scheduled_jobs.scheduled_purge_inactive_jobs",
-            "default",
-        ),
-        (
-            "hard_delete",
-            "0 5 * * *",
-            "app.services.scheduled_jobs.scheduled_hard_delete_expired",
-            "default",
-        ),
-        (
-            "weekly_digest",
-            "0 7 * * 0",
-            "app.services.scheduled_jobs.scheduled_send_weekly_digests",
-            "low",
-        ),
-        (
-            "promote_imports",
-            "*/2 * * * *",
-            "app.services.scheduled_jobs.scheduled_promote_queued_imports",
-            "default",
-        ),
+        ("ingest", cron_expr, scheduled_ingest_jobs, "default"),
+        ("expire_introductions", "0 3 * * *", scheduled_expire_introductions, "default"),
+        ("outreach", "*/15 * * * *", scheduled_process_outreach, "default"),
+        ("stale_check", "0 2 * * *", scheduled_check_stale_jobs, "default"),
+        ("job_purge", "0 4 * * 0", scheduled_purge_inactive_jobs, "default"),
+        ("hard_delete", "0 5 * * *", scheduled_hard_delete_expired, "default"),
+        ("weekly_digest", "0 7 * * 0", scheduled_send_weekly_digests, "low"),
+        ("promote_imports", "*/2 * * * *", scheduled_promote_queued_imports, "default"),
     ]
 
     # Cancel all existing scheduled jobs to avoid duplicates
