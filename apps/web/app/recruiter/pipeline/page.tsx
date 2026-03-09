@@ -23,6 +23,7 @@ interface PipelineCandidate {
   match_score: number | null;
   outreach_count: number;
   candidate_name: string | null;
+  current_title: string | null;
   headline: string | null;
   location: string | null;
   current_company: string | null;
@@ -30,7 +31,24 @@ interface PipelineCandidate {
   linkedin_url: string | null;
   is_platform_candidate: boolean;
   job_match_count: number;
+  years_experience: number | null;
   created_at: string;
+}
+
+/** Title Case: capitalize first letter of each word */
+function toProperCase(s: string): string {
+  return s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
+/** Format phone to +1-NNN-NNN-NNNN */
+function formatPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  // Handle 10-digit or 11-digit (leading 1) US numbers
+  const d = digits.length === 11 && digits.startsWith("1") ? digits.slice(1) : digits;
+  if (d.length === 10) {
+    return `+1-${d.slice(0, 3)}-${d.slice(3, 6)}-${d.slice(6)}`;
+  }
+  return raw; // Return as-is if not a standard US number
 }
 
 const STAGES = ["sourced", "contacted", "screening", "interviewing", "offered", "placed", "rejected"];
@@ -192,7 +210,7 @@ export default function RecruiterPipeline() {
     setEditSaving(true);
     try {
       const body: Record<string, unknown> = {};
-      if (editForm.external_name) body.external_name = editForm.external_name;
+      if (editForm.external_name) body.external_name = toProperCase(editForm.external_name);
       if (editForm.external_email) body.external_email = editForm.external_email;
       if (editForm.external_phone) body.external_phone = editForm.external_phone;
       if (editForm.external_linkedin) body.external_linkedin = editForm.external_linkedin;
@@ -262,7 +280,7 @@ export default function RecruiterPipeline() {
     setCreating(true);
     setError("");
     const body: Record<string, unknown> = { stage: form.stage, source: form.source || "manual" };
-    if (form.external_name) body.external_name = form.external_name;
+    if (form.external_name) body.external_name = toProperCase(form.external_name);
     if (form.external_email) body.external_email = form.external_email;
     if (form.notes) body.notes = form.notes;
 
@@ -451,7 +469,7 @@ export default function RecruiterPipeline() {
 
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-                  <h3 className="text-base font-semibold text-slate-900">{entry.candidate_name || entry.external_name || `Candidate #${entry.id}`}</h3>
+                  <h3 className="text-base font-semibold text-slate-900">{toProperCase(entry.candidate_name || entry.external_name || `Candidate #${entry.id}`)}</h3>
                   {entry.match_score != null && (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">{Math.round(entry.match_score)}% match</span>
                   )}
@@ -463,20 +481,29 @@ export default function RecruiterPipeline() {
                   {entry.rating != null && (
                     <span className="text-xs text-amber-500">{"★".repeat(entry.rating)}{"☆".repeat(5 - entry.rating)}</span>
                   )}
-                  {entry.linkedin_url && (
-                    <span
-                      onClick={(ev) => { ev.stopPropagation(); window.open(entry.linkedin_url!, "_blank"); }}
+                  {(entry.linkedin_url || entry.external_linkedin) && (
+                    <a
+                      href={entry.linkedin_url || entry.external_linkedin!}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(ev) => ev.stopPropagation()}
                       className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700 hover:bg-blue-100"
                     >
                       LinkedIn
-                    </span>
+                    </a>
                   )}
                 </div>
-                {entry.headline && <p className="mt-0.5 text-sm text-slate-600 truncate">{entry.headline}</p>}
+                {(entry.current_title || entry.headline) && (
+                  <p className="mt-0.5 text-sm text-slate-600 truncate">{entry.current_title || entry.headline}</p>
+                )}
                 <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-slate-500">
                   {entry.location && <span>{entry.location}</span>}
-                  {entry.current_company && <span>{entry.current_company}</span>}
                   {entry.external_email && <span>{entry.external_email}</span>}
+                  {(entry.external_phone) && <span>{formatPhone(entry.external_phone)}</span>}
+                  {entry.years_experience != null && (
+                    <span>{entry.years_experience} yr{entry.years_experience !== 1 ? "s" : ""} exp</span>
+                  )}
+                  {entry.current_company && <span>{entry.current_company}</span>}
                   {entry.source && <span>via {entry.source}</span>}
                 </div>
                 {entry.skills && entry.skills.length > 0 && (

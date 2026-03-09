@@ -228,6 +228,7 @@ class PipelineCandidateResponse(BaseModel):
     outreach_count: int = 0
     last_outreach_at: datetime | None = None
     candidate_name: str | None = None
+    current_title: str | None = None
     # Profile summary fields (resolved from candidate_profile if linked)
     headline: str | None = None
     location: str | None = None
@@ -236,6 +237,7 @@ class PipelineCandidateResponse(BaseModel):
     linkedin_url: str | None = None
     is_platform_candidate: bool = False
     job_match_count: int = 0
+    years_experience: int | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

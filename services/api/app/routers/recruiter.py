@@ -509,10 +509,41 @@ def list_pipeline(
                             )
                         if not current_company:
                             current_company = exp[0].get("company")
+                # Extract current title from most recent experience
+                current_title = None
+                exp = pj.get("experience") or []
+                if exp and isinstance(exp[0], dict):
+                    current_title = exp[0].get("title")
+
+                # Compute years of experience from experience dates
+                years_experience = None
+                if exp:
+                    from dateutil.parser import parse as parse_dt
+
+                    earliest = None
+                    for job_entry in exp:
+                        if not isinstance(job_entry, dict):
+                            continue
+                        start = job_entry.get("start_date")
+                        if start:
+                            try:
+                                dt = parse_dt(str(start))
+                                if earliest is None or dt < earliest:
+                                    earliest = dt
+                            except Exception:
+                                pass
+                    if earliest:
+                        diff = datetime.now(UTC) - earliest.replace(
+                            tzinfo=UTC
+                        )
+                        years_experience = max(1, diff.days // 365)
+
                 profiles_map[cp_id] = {
                     "headline": headline,
                     "location": (pj.get("location") or basics.get("location")),
                     "current_company": current_company,
+                    "current_title": current_title,
+                    "years_experience": years_experience,
                     "skills": [s for s in skills if s][:10],
                     "linkedin_url": pj.get("linkedin_url"),
                     "is_platform_candidate": is_platform,
@@ -547,6 +578,10 @@ def list_pipeline(
             resp.headline = info["headline"]
             resp.location = info["location"]
             resp.current_company = info["current_company"]
+            if info.get("current_title"):
+                resp.current_title = info["current_title"]
+            if info.get("years_experience"):
+                resp.years_experience = info["years_experience"]
             resp.skills = info["skills"]
             resp.linkedin_url = info["linkedin_url"]
             resp.is_platform_candidate = info["is_platform_candidate"]
