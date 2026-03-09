@@ -628,9 +628,30 @@ def _import_candidates(
                 type_stats["skipped"] += 1
                 continue
 
-            # Dedup by email
+            # Dedup by email — enrich existing entry with CSV fields
             if email and email in existing_emails:
                 pc_id = existing_emails[email]
+                existing_pc = db.get(RecruiterPipelineCandidate, pc_id)
+                if existing_pc:
+                    if not existing_pc.external_name and name:
+                        existing_pc.external_name = name
+                    if not existing_pc.external_phone and phone:
+                        existing_pc.external_phone = phone
+                    if not existing_pc.external_linkedin and linkedin:
+                        existing_pc.external_linkedin = linkedin
+                    current_org = (row.get("Current Organisation") or "").strip() or None
+                    position = (row.get("Position") or "").strip() or None
+                    if not existing_pc.current_company and current_org:
+                        existing_pc.current_company = current_org
+                    if not existing_pc.current_title and position:
+                        existing_pc.current_title = position
+                    if not existing_pc.location:
+                        city = (row.get("City") or "").strip()
+                        state = (row.get("State") or "").strip()
+                        country = (row.get("Country") or "").strip()
+                        loc_parts = [p for p in [city, state, country] if p]
+                        if loc_parts:
+                            existing_pc.location = ", ".join(loc_parts)
                 if slug:
                     slug_map[f"candidate:{slug}"] = pc_id
                 _record_entity(
