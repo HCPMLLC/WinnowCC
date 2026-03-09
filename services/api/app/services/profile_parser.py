@@ -117,6 +117,15 @@ def parse_profile_from_text(text: str) -> dict:
     if about:
         profile["about"] = about
 
+    # Populate contact_info so frontend Contact Info section works
+    contact_info: dict[str, str] = {}
+    if email:
+        contact_info["email"] = email
+    if phone:
+        contact_info["phone"] = phone
+    if contact_info:
+        profile["contact_info"] = contact_info
+
     return profile
 
 

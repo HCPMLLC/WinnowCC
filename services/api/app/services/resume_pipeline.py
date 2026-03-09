@@ -186,4 +186,13 @@ def merge_recruiter_reparse(existing_json: dict, llm_json: dict) -> dict:
         if existing_json.get(key):
             llm_json[key] = existing_json[key]
 
+    # Ensure contact_info survives merge — fill from regex if LLM missed
+    existing_ci = existing_json.get("contact_info") or {}
+    llm_ci = llm_json.get("contact_info") or {}
+    for key in ("email", "phone", "website"):
+        if existing_ci.get(key) and not llm_ci.get(key):
+            llm_ci[key] = existing_ci[key]
+    if llm_ci:
+        llm_json["contact_info"] = llm_ci
+
     return llm_json

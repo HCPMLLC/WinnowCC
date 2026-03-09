@@ -99,8 +99,8 @@ def recruiter_llm_reparse_job(
         logger.info(
             "LLM reparse succeeded for profile %d (skills: %d, experience: %d)",
             candidate_profile_id,
-            len(llm_profile_json.get("skills", [])),
-            len(llm_profile_json.get("experience", [])),
+            len(cp.profile_json.get("skills", [])),
+            len(cp.profile_json.get("experience", [])),
         )
 
     except Exception as exc:

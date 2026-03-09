@@ -448,6 +448,7 @@ def map_llm_to_profile_json(llm: dict) -> dict:
     summary = llm.get("professional_summary")
     if summary:
         basics["summary"] = summary
+        profile["about"] = summary
 
     # Total years
     yoe = llm.get("years_of_experience")
@@ -727,6 +728,22 @@ def map_llm_to_profile_json(llm: dict) -> dict:
 
     if enrichment:
         profile["llm_enrichment"] = enrichment
+
+    # Populate contact_info so frontend Contact Info section works
+    contact_info: dict[str, str] = {}
+    if basics.get("email"):
+        contact_info["email"] = basics["email"]
+    if basics.get("phone"):
+        contact_info["phone"] = basics["phone"]
+    website = (
+        contact.get("portfolio_url")
+        or contact.get("github_url")
+        or contact.get("linkedin_url")
+    )
+    if website:
+        contact_info["website"] = website
+    if contact_info:
+        profile["contact_info"] = contact_info
 
     return profile
 

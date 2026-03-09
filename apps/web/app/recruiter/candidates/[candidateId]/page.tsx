@@ -360,7 +360,9 @@ export default function CandidateDetailPage() {
   const displayVolunteer = pj.volunteer || [];
   const displayPubs = pj.publications || [];
   const displayProjects = pj.projects || [];
-  const displayContact = pj.contact_info || {};
+  const displayContact = pj.contact_info && Object.keys(pj.contact_info).length > 0
+    ? pj.contact_info
+    : { email: basics.email as string, phone: basics.phone as string };
   const displayNotes = pj.notes || "";
   const isPlatformCandidate = !pj.source && !pj.sourced_by_user_id;
 
