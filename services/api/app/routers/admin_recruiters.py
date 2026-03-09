@@ -250,3 +250,80 @@ def override_recruiter_tier(
         subscription_status=recruiter.subscription_status,
         billing_exempt=recruiter.billing_exempt,
     )
+
+
+@router.post("/{recruiter_id}/prioritize-reparse")
+def prioritize_reparse(
+    recruiter_id: int,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Move pending LLM reparses for this recruiter to front of low queue."""
+    from app.models.candidate_profile import CandidateProfile
+    from app.services.queue import get_queue
+    from app.services.recruiter_llm_reparse import recruiter_llm_reparse_job
+
+    recruiter = session.get(RecruiterProfile, recruiter_id)
+    if recruiter is None:
+        raise HTTPException(status_code=404, detail="Recruiter not found.")
+
+    # Find profiles with pending LLM reparse for this recruiter
+    pending_profiles = (
+        session.execute(
+            select(CandidateProfile)
+            .where(
+                CandidateProfile.profile_json["sourced_by_user_id"].astext
+                == str(recruiter.user_id),
+                CandidateProfile.llm_parse_status == "pending",
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    low_q = get_queue("low")
+    queued = 0
+    for cp in pending_profiles:
+        if cp.resume_document_id:
+            low_q.enqueue(
+                recruiter_llm_reparse_job,
+                cp.id,
+                cp.resume_document_id,
+                job_timeout="10m",
+                at_front=True,
+            )
+            queued += 1
+
+    return {"queued": queued}
+
+
+@router.post("/{recruiter_id}/refresh-matches")
+def refresh_matches(
+    recruiter_id: int,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Enqueue candidate matching for all active jobs of this recruiter."""
+    from app.services.job_pipeline import populate_recruiter_job_candidates
+    from app.services.queue import get_queue
+
+    recruiter = session.get(RecruiterProfile, recruiter_id)
+    if recruiter is None:
+        raise HTTPException(status_code=404, detail="Recruiter not found.")
+
+    active_jobs = (
+        session.execute(
+            select(RecruiterJob.id).where(
+                RecruiterJob.recruiter_profile_id == recruiter_id,
+                RecruiterJob.status == "active",
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    q = get_queue()
+    for job_id in active_jobs:
+        q.enqueue(populate_recruiter_job_candidates, job_id)
+
+    return {"queued": len(active_jobs)}

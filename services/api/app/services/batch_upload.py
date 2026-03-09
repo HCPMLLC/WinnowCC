@@ -84,9 +84,28 @@ def create_upload_batch(
 
     bulk_queue = get_queue("bulk")
     batch_files = []
+    skipped_count = 0
 
     for idx, (filename, contents) in enumerate(files):
         file_hash = hashlib.sha256(contents).hexdigest()
+
+        # SHA256 dedup: skip if this recruiter already has this exact file
+        if batch_type == "recruiter_resume" and _sha256_exists_for_recruiter(
+            session, file_hash, user_id
+        ):
+            bf = UploadBatchFile(
+                batch_id=batch_id,
+                file_index=idx,
+                original_filename=filename,
+                staged_path="",
+                file_size_bytes=len(contents),
+                sha256=file_hash,
+                status="skipped",
+            )
+            session.add(bf)
+            session.flush()
+            skipped_count += 1
+            continue
 
         # Stage raw bytes to storage under staging prefix
         staged_name = f"{idx}_{file_hash[:12]}_{filename}"
@@ -104,6 +123,10 @@ def create_upload_batch(
         session.add(bf)
         session.flush()
         batch_files.append(bf)
+
+    # Adjust total_files to exclude skipped duplicates
+    if skipped_count:
+        batch.total_files = len(files) - skipped_count
 
     session.commit()
 
@@ -128,9 +151,21 @@ def create_upload_batch(
                 job_timeout="10m",
             )
 
-    # Update batch status to processing
-    batch.status = "processing"
-    session.commit()
+    # If all files were skipped (all duplicates), mark batch completed
+    if not batch_files and skipped_count:
+        batch.status = "completed"
+        batch.completed_at = datetime.now(UTC)
+        batch.files_completed = skipped_count
+        session.commit()
+        logger.info(
+            "Batch %s: all %d files skipped (SHA256 duplicates)",
+            batch_id,
+            skipped_count,
+        )
+    else:
+        # Update batch status to processing
+        batch.status = "processing"
+        session.commit()
 
     return {
         "batch_id": batch_id,
@@ -206,12 +241,32 @@ def create_upload_batch_from_zip(
 
             bulk_queue = get_queue("bulk")
             batch_file_ids: list[int] = []
+            skipped_count = 0
 
             for idx, info in enumerate(entries):
                 # Read one file at a time — peak memory ~200KB
                 contents = zf.read(info.filename)
                 file_hash = hashlib.sha256(contents).hexdigest()
                 base_name = Path(info.filename).name
+
+                # SHA256 dedup: skip if this recruiter already has this file
+                if _sha256_exists_for_recruiter(session, file_hash, user_id):
+                    bf = UploadBatchFile(
+                        batch_id=batch_id,
+                        file_index=idx,
+                        original_filename=base_name,
+                        staged_path="",
+                        file_size_bytes=len(contents),
+                        sha256=file_hash,
+                        status="skipped",
+                    )
+                    session.add(bf)
+                    session.flush()
+                    skipped_count += 1
+                    del contents
+                    if (idx + 1) % CHUNK_COMMIT_SIZE == 0:
+                        session.commit()
+                    continue
 
                 staged_name = f"{idx}_{file_hash[:12]}_{base_name}"
                 staged_path = upload_bytes(
@@ -238,34 +293,52 @@ def create_upload_batch_from_zip(
                 if (idx + 1) % CHUNK_COMMIT_SIZE == 0:
                     session.commit()
                     logger.info(
-                        "ZIP batch %s: staged %d/%d files",
+                        "ZIP batch %s: staged %d/%d files (%d skipped)",
                         batch_id,
                         idx + 1,
                         len(entries),
+                        skipped_count,
                     )
+
+            # Adjust total_files to exclude skipped duplicates
+            if skipped_count:
+                batch.total_files = len(entries) - skipped_count
 
             # Final commit for remaining rows
             session.commit()
 
-        # Enqueue per-file worker jobs (after all rows committed)
-        if enqueue_workers:
-            for bf_id in batch_file_ids:
-                bulk_queue.enqueue(
-                    process_batch_resume_file,
-                    bf_id,
-                    batch_id,
-                    owner_profile_id,
-                    job_timeout="10m",
-                )
+        # If all files were skipped (all duplicates), mark completed
+        if not batch_file_ids and skipped_count:
+            batch.status = "completed"
+            batch.completed_at = datetime.now(UTC)
+            batch.files_completed = skipped_count
+            session.commit()
+            logger.info(
+                "ZIP batch %s: all %d files skipped (SHA256 duplicates)",
+                batch_id,
+                skipped_count,
+            )
+        else:
+            # Enqueue per-file worker jobs (after all rows committed)
+            if enqueue_workers:
+                for bf_id in batch_file_ids:
+                    bulk_queue.enqueue(
+                        process_batch_resume_file,
+                        bf_id,
+                        batch_id,
+                        owner_profile_id,
+                        job_timeout="10m",
+                    )
 
-        batch.status = "processing"
-        session.commit()
+            batch.status = "processing"
+            session.commit()
 
-        logger.info(
-            "ZIP batch %s: staged %d files, enqueued worker jobs",
-            batch_id,
-            len(batch_file_ids),
-        )
+            logger.info(
+                "ZIP batch %s: staged %d files (%d skipped), enqueued worker jobs",
+                batch_id,
+                len(batch_file_ids),
+                skipped_count,
+            )
 
         return {
             "batch_id": batch_id,
@@ -398,6 +471,34 @@ def process_batch_resume_file(
             basics = profile_json.get("basics", {})
             parsed_email = basics.get("email")
             parsed_name = basics.get("name")
+
+            # Email dedup: skip if this recruiter already has a profile
+            # linked to a pipeline entry with this email
+            if parsed_email:
+                parsed_email_lower = parsed_email.strip().lower()
+                existing_pipeline = session.execute(
+                    select(RecruiterPipelineCandidate).where(
+                        RecruiterPipelineCandidate.recruiter_profile_id
+                        == recruiter_profile_id,
+                        func.lower(RecruiterPipelineCandidate.external_email)
+                        == parsed_email_lower,
+                        RecruiterPipelineCandidate.candidate_profile_id.isnot(None),
+                    )
+                ).scalar_one_or_none()
+
+                if existing_pipeline is not None:
+                    bf.status = "skipped"
+                    bf.result_json = json.dumps(
+                        {
+                            "status": "email_duplicate",
+                            "matched_email": parsed_email,
+                            "existing_pipeline_id": existing_pipeline.id,
+                        }
+                    )
+                    bf.processed_at = datetime.now(UTC)
+                    session.commit()
+                    _finalize_batch(session, batch_id, "skipped")
+                    return
 
             # Read raw bytes for permanent storage
             raw_bytes = tmp_path.read_bytes()
@@ -1266,6 +1367,28 @@ def _send_zip_batch_email(session, batch: UploadBatch, counts) -> None:
         )
     except Exception:
         logger.warning("Failed to send ZIP batch completion email", exc_info=True)
+
+
+def _sha256_exists_for_recruiter(session, file_hash: str, user_id: int) -> bool:
+    """Check if a resume with this SHA256 already exists for this recruiter."""
+    from app.models.candidate_profile import CandidateProfile
+    from app.models.resume_document import ResumeDocument
+
+    existing = session.execute(
+        select(ResumeDocument.id)
+        .join(
+            CandidateProfile,
+            CandidateProfile.resume_document_id == ResumeDocument.id,
+        )
+        .where(
+            ResumeDocument.sha256 == file_hash,
+            ResumeDocument.deleted_at.is_(None),
+            CandidateProfile.profile_json["sourced_by_user_id"].astext
+            == str(user_id),
+        )
+        .limit(1)
+    ).scalar_one_or_none()
+    return existing is not None
 
 
 def _fail_file(session, bf: UploadBatchFile, error: str) -> None:

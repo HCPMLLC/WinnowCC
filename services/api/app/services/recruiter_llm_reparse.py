@@ -103,6 +103,9 @@ def recruiter_llm_reparse_job(
             len(cp.profile_json.get("experience", [])),
         )
 
+        # Auto-trigger matching when all reparses for this recruiter are done
+        _trigger_matching_if_all_done(session, cp.profile_json)
+
     except Exception as exc:
         session.rollback()
         try:
@@ -119,3 +122,72 @@ def recruiter_llm_reparse_job(
         )
     finally:
         session.close()
+
+
+def _trigger_matching_if_all_done(session, profile_json: dict) -> None:
+    """If no more pending/running reparses remain for this recruiter,
+    enqueue job matching for all their active jobs."""
+    try:
+        from sqlalchemy import select, func
+
+        from app.models.recruiter_job import RecruiterJob
+        from app.services.job_pipeline import populate_recruiter_job_candidates
+        from app.services.queue import get_queue
+
+        sourced_by = profile_json.get("sourced_by_user_id")
+        if not sourced_by:
+            return
+
+        # Count remaining pending/running reparses for this recruiter
+        remaining = (
+            session.execute(
+                select(func.count(CandidateProfile.id)).where(
+                    CandidateProfile.profile_json["sourced_by_user_id"].astext
+                    == str(sourced_by),
+                    CandidateProfile.llm_parse_status.in_(("pending", "running")),
+                )
+            ).scalar()
+            or 0
+        )
+
+        if remaining > 0:
+            return
+
+        # Find the recruiter profile id from user_id
+        from app.models.recruiter import RecruiterProfile
+
+        rp = session.execute(
+            select(RecruiterProfile.id).where(
+                RecruiterProfile.user_id == int(sourced_by)
+            )
+        ).scalar_one_or_none()
+        if not rp:
+            return
+
+        active_jobs = (
+            session.execute(
+                select(RecruiterJob.id).where(
+                    RecruiterJob.recruiter_profile_id == rp,
+                    RecruiterJob.status == "active",
+                )
+            )
+            .scalars()
+            .all()
+        )
+
+        if not active_jobs:
+            return
+
+        q = get_queue()
+        for job_id in active_jobs:
+            q.enqueue(populate_recruiter_job_candidates, job_id)
+
+        logger.info(
+            "All LLM reparses done for recruiter user %s — enqueued matching for %d jobs",
+            sourced_by,
+            len(active_jobs),
+        )
+    except Exception:
+        logger.warning(
+            "Failed to trigger post-enrichment matching", exc_info=True
+        )
