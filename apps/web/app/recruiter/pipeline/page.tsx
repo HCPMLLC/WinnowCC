@@ -66,6 +66,9 @@ const STAGE_COLORS: Record<string, string> = {
 export default function RecruiterPipeline() {
   const router = useRouter();
   const [entries, setEntries] = useState<PipelineCandidate[]>([]);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 50;
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [stageFilter, setStageFilter] = useState("");
@@ -109,10 +112,13 @@ export default function RecruiterPipeline() {
       const url = new URL(`${API_BASE}/api/recruiter/pipeline`);
       if (stageFilter) url.searchParams.set("stage", stageFilter);
       if (debouncedSearch.trim()) url.searchParams.set("search", debouncedSearch.trim());
-      url.searchParams.set("limit", "100");
+      url.searchParams.set("limit", String(PAGE_SIZE));
+      url.searchParams.set("offset", String(page * PAGE_SIZE));
       const res = await fetch(url.toString(), { credentials: "include" });
       if (res.ok) {
-        setEntries(await res.json());
+        const data = await res.json();
+        setEntries(data.items);
+        setTotal(data.total);
       } else {
         const body = await res.json().catch(() => null);
         setFetchError(body?.detail || `Failed to load pipeline (${res.status})`);
@@ -120,7 +126,7 @@ export default function RecruiterPipeline() {
     } catch {
       setFetchError("Network error loading pipeline");
     }
-  }, [stageFilter, debouncedSearch]);
+  }, [stageFilter, debouncedSearch, page]);
 
   useEffect(() => {
     setLoading(true);
@@ -134,6 +140,7 @@ export default function RecruiterPipeline() {
     searchTimeout.current = setTimeout(() => {
       setDebouncedSearch(value);
       setSelected(new Set());
+      setPage(0);
     }, 300);
   }
 
@@ -389,7 +396,7 @@ export default function RecruiterPipeline() {
       {/* Stage filter pills */}
       <div className="flex flex-wrap gap-2">
         {["", ...STAGES].map((s) => (
-          <button key={s} onClick={() => setStageFilter(s)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${stageFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+          <button key={s} onClick={() => { setStageFilter(s); setPage(0); setSelected(new Set()); }} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${stageFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
             {s || "All"}
           </button>
         ))}
@@ -438,16 +445,21 @@ export default function RecruiterPipeline() {
         </div>
       ) : (
         <div className="space-y-3">
-          {/* Select All */}
-          <label className="flex items-center gap-2 px-1 text-sm text-slate-600">
-            <input
-              type="checkbox"
-              checked={entries.length > 0 && selected.size === entries.length}
-              onChange={toggleSelectAll}
-              className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
-            />
-            Select All ({entries.length})
-          </label>
+          {/* Select All + total count */}
+          <div className="flex items-center justify-between px-1">
+            <label className="flex items-center gap-2 text-sm text-slate-600">
+              <input
+                type="checkbox"
+                checked={entries.length > 0 && selected.size === entries.length}
+                onChange={toggleSelectAll}
+                className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+              />
+              Select All ({entries.length})
+            </label>
+            <span className="text-sm font-medium text-slate-700">
+              {total.toLocaleString()} {total === 1 ? "resume" : "resumes"} in pipeline
+            </span>
+          </div>
 
           {entries.map((entry) => (
             <div
@@ -557,6 +569,31 @@ export default function RecruiterPipeline() {
               </div>
             </div>
           ))}
+
+          {/* Pagination */}
+          {total > PAGE_SIZE && (
+            <div className="flex items-center justify-between pt-2">
+              <span className="text-sm text-slate-500">
+                Showing {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)} of {total.toLocaleString()}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setPage((p) => p - 1); setSelected(new Set()); }}
+                  disabled={page === 0}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Previous
+                </button>
+                <button
+                  onClick={() => { setPage((p) => p + 1); setSelected(new Set()); }}
+                  disabled={(page + 1) * PAGE_SIZE >= total}
+                  className="rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-40"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

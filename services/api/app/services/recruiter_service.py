@@ -142,16 +142,14 @@ def add_to_pipeline(
     return pc
 
 
-def list_pipeline(
-    session: Session,
+def _pipeline_base_query(
     profile: RecruiterProfile,
     stage: str | None = None,
     job_id: int | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
-    limit: int = 50,
-    offset: int = 0,
-) -> list[RecruiterPipelineCandidate]:
+):
+    """Build the shared WHERE clause for pipeline queries."""
     stmt = select(RecruiterPipelineCandidate).where(
         RecruiterPipelineCandidate.recruiter_profile_id == profile.id
     )
@@ -170,6 +168,36 @@ def list_pipeline(
     if tags:
         for tag in tags:
             stmt = stmt.where(RecruiterPipelineCandidate.tags.contains([tag]))
+    return stmt
+
+
+def count_pipeline(
+    session: Session,
+    profile: RecruiterProfile,
+    stage: str | None = None,
+    job_id: int | None = None,
+    search: str | None = None,
+    tags: list[str] | None = None,
+) -> int:
+    """Return the total count of pipeline candidates matching filters."""
+    from sqlalchemy import func as sa_func
+
+    base = _pipeline_base_query(profile, stage, job_id, search, tags)
+    count_stmt = select(sa_func.count()).select_from(base.subquery())
+    return session.execute(count_stmt).scalar_one()
+
+
+def list_pipeline(
+    session: Session,
+    profile: RecruiterProfile,
+    stage: str | None = None,
+    job_id: int | None = None,
+    search: str | None = None,
+    tags: list[str] | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> list[RecruiterPipelineCandidate]:
+    stmt = _pipeline_base_query(profile, stage, job_id, search, tags)
     stmt = stmt.order_by(RecruiterPipelineCandidate.created_at.desc())
     stmt = stmt.offset(offset).limit(limit)
     return list(session.execute(stmt).scalars().all())

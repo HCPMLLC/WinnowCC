@@ -433,7 +433,7 @@ def add_to_pipeline(
     return resp
 
 
-@router.get("/pipeline", response_model=list[PipelineCandidateResponse])
+@router.get("/pipeline")
 def list_pipeline(
     stage: str | None = Query(None),
     job_id: int | None = Query(None),
@@ -443,20 +443,20 @@ def list_pipeline(
     offset: int = Query(0, ge=0),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
-) -> list[PipelineCandidateResponse]:
-    """List pipeline candidates with optional filters."""
+):
+    """List pipeline candidates with optional filters and total count."""
     from app.models.candidate_profile import CandidateProfile
+    from app.services.recruiter_service import count_pipeline as svc_count
     from app.services.recruiter_service import list_pipeline as svc_list
     from app.services.recruiter_service import resolve_candidate_name
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
+    filter_args = dict(stage=stage, job_id=job_id, search=search, tags=tag_list)
+    total = svc_count(session, profile, **filter_args)
     pcs = svc_list(
         session,
         profile,
-        stage=stage,
-        job_id=job_id,
-        search=search,
-        tags=tag_list,
+        **filter_args,
         limit=limit,
         offset=offset,
     )
@@ -588,7 +588,7 @@ def list_pipeline(
         if pc.candidate_profile_id:
             resp.job_match_count = match_counts.get(pc.candidate_profile_id, 0)
         results.append(resp)
-    return results
+    return {"items": results, "total": total}
 
 
 @router.post(

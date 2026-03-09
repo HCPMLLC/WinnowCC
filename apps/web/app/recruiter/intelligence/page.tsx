@@ -232,7 +232,8 @@ export default function RecruiterIntelligence() {
           { credentials: "include" },
         );
         if (res.ok) {
-          const pcs = await res.json();
+          const data = await res.json();
+          const pcs = Array.isArray(data) ? data : data.items || [];
           for (const pc of pcs) {
             const cpId = pc.candidate_profile_id as number | null;
             if (!cpId || seen.has(cpId)) continue;
