@@ -171,6 +171,7 @@ class RecruiterJobResponse(BaseModel):
     # Cross-segment linking
     employer_job_id: int | None = None
     employer_company_name: str | None = None
+    primary_contact: dict | None = None
     contact_name: str | None = None
     contact_email: str | None = None
     matched_candidates_count: int = 0

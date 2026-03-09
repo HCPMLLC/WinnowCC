@@ -49,6 +49,11 @@ export default function RecruiterJobsPage() {
   const [jobs, setJobs] = useState<RecruiterJob[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
+  const [sortBy, setSortBy] = useState("created_at");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [search, setSearch] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [showUploadForm, setShowUploadForm] = useState(false);
@@ -98,6 +103,9 @@ export default function RecruiterJobsPage() {
     try {
       const url = new URL(`${API_BASE}/api/recruiter/jobs`);
       if (statusFilter) url.searchParams.set("status", statusFilter);
+      if (sortBy) url.searchParams.set("sort_by", sortBy);
+      if (sortDir) url.searchParams.set("sort_dir", sortDir);
+      if (debouncedSearch) url.searchParams.set("search", debouncedSearch);
       const res = await fetch(url.toString(), { credentials: "include" });
       if (res.ok) {
         setJobs(await res.json());
@@ -106,6 +114,13 @@ export default function RecruiterJobsPage() {
       console.error("Failed to fetch jobs:", err);
     }
   }
+
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [search]);
 
   useEffect(() => {
     setIsLoading(true);
@@ -116,8 +131,8 @@ export default function RecruiterJobsPage() {
         .then((data) => setClients(data))
         .catch(() => {}),
     ]).finally(() => setIsLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
-  }, [statusFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, sortBy, sortDir, debouncedSearch]);
 
   // Cleanup upload polling on unmount
   useEffect(() => {
@@ -872,11 +887,19 @@ export default function RecruiterJobsPage() {
         </div>
       )}
 
-      {/* Status filter + bulk actions */}
+      {/* Search, sort, filter + bulk actions */}
       <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-4">
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search jobs..."
+            className="w-48 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          />
+
           <label className="text-sm font-medium text-slate-700">
-            Filter by status:
+            Status:
           </label>
           <select
             value={statusFilter}
@@ -889,6 +912,28 @@ export default function RecruiterJobsPage() {
             <option value="paused">Paused</option>
             <option value="closed">Closed</option>
           </select>
+
+          <label className="text-sm font-medium text-slate-700">
+            Sort:
+          </label>
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          >
+            <option value="created_at">Date Created</option>
+            <option value="title">Title</option>
+            <option value="closes_at">Deadline</option>
+            <option value="client">Client</option>
+            <option value="location">Location</option>
+          </select>
+          <button
+            onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+            title={sortDir === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortDir === "asc" ? "\u2191 Asc" : "\u2193 Desc"}
+          </button>
 
           {jobs.length > 0 && (
             <>

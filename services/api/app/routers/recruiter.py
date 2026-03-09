@@ -9,7 +9,20 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import (
+    String,
+    cast,
+    func,
+    nulls_last,
+    or_,
+    select,
+)
+from sqlalchemy import (
+    asc as sa_asc,
+)
+from sqlalchemy import (
+    desc as sa_desc,
+)
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -1826,9 +1839,23 @@ async def upload_job_documents(
     )
 
 
+_RECRUITER_JOB_SORT_COLUMNS = {
+    "title": RecruiterJob.title,
+    "closes_at": RecruiterJob.closes_at,
+    "client": RecruiterJob.client_company_name,
+    "location": RecruiterJob.location,
+    "created_at": RecruiterJob.created_at,
+}
+
+_NULLABLE_SORT_COLS = {"closes_at", "client", "location"}
+
+
 @router.get("/jobs", response_model=list[RecruiterJobResponse])
 def list_recruiter_jobs(
     status_filter: str | None = Query(None, alias="status"),
+    sort_by: str = Query("created_at"),
+    sort_dir: str = Query("desc"),
+    search: str | None = Query(None),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> list[RecruiterJobResponse]:
@@ -1853,13 +1880,35 @@ def list_recruiter_jobs(
             )
         stmt = stmt.where(RecruiterJob.status == status_filter)
 
-    stmt = stmt.order_by(RecruiterJob.created_at.desc())
+    if search:
+        pattern = f"%{search}%"
+        stmt = stmt.where(
+            or_(
+                RecruiterJob.title.ilike(pattern),
+                RecruiterJob.client_company_name.ilike(pattern),
+            )
+        )
+
+    # Sorting
+    col = _RECRUITER_JOB_SORT_COLUMNS.get(sort_by, RecruiterJob.created_at)
+    direction = sa_desc if sort_dir == "desc" else sa_asc
+    order_expr = direction(col)
+    if sort_by in _NULLABLE_SORT_COLS:
+        order_expr = nulls_last(order_expr)
+    stmt = stmt.order_by(order_expr)
 
     rows = session.execute(stmt).all()
     results = []
     for job, count in rows:
         resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
         resp.matched_candidates_count = count or 0
+        # Populate contact from primary_contact, fall back to client
+        if job.primary_contact:
+            resp.contact_name = job.primary_contact.get("name")
+            resp.contact_email = job.primary_contact.get("email")
+        elif job.client_id and job.client:
+            resp.contact_name = job.client.contact_name
+            resp.contact_email = job.client.contact_email
         results.append(resp)
     return results
 
@@ -1937,7 +1986,10 @@ def get_recruiter_job(
     )
     resp = RecruiterJobResponse.model_validate(job, from_attributes=True)
     resp.matched_candidates_count = count
-    if job.client_id and job.client:
+    if job.primary_contact:
+        resp.contact_name = job.primary_contact.get("name")
+        resp.contact_email = job.primary_contact.get("email")
+    elif job.client_id and job.client:
         resp.contact_name = job.client.contact_name
         resp.contact_email = job.client.contact_email
     if job.employer_job_id and job.employer_job:

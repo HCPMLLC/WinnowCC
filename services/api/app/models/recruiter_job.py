@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, Text, func
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -65,6 +66,9 @@ class RecruiterJob(Base):
     assigned_to_user_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
+
+    # Job-level primary contact (from migration Contact/Contact Slug)
+    primary_contact = mapped_column(JSONB, nullable=True)
 
     # Cross-segment link to employer job
     employer_job_id: Mapped[int | None] = mapped_column(

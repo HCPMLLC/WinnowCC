@@ -76,6 +76,15 @@ RCRM_ASSIGNMENT_STAGES: dict[str, str] = {
 }
 
 # Recruit CRM job status → Winnow job status
+# Contact "Stage" field → contact role
+_CONTACT_STAGE_ROLE: dict[str, str] = {
+    "client": "Hiring Manager",
+    "lead": "Hiring Manager",
+    "prime": "Prime Contractor",
+    "hsp": "Prime Contractor",
+    "supplier": "Subcontractor",
+}
+
 RCRM_JOB_STATUS: dict[str, str] = {
     "Open": "active",
     "Closed": "closed",
@@ -320,8 +329,15 @@ def _import_companies(
     db.commit()
 
     # Second pass: resolve parent company relationships
-    # (RecruiterClient doesn't have parent_client_id yet — skip for now)
-    # Future: for slug, parent_slug in parent_links: ...
+    for slug, parent_slug in parent_links:
+        child_id = slug_map.get(f"company:{slug}")
+        parent_id = slug_map.get(f"company:{parent_slug}")
+        if child_id and parent_id and child_id != parent_id:
+            child_client = db.get(RecruiterClient, child_id)
+            if child_client:
+                child_client.parent_client_id = parent_id
+    if parent_links:
+        db.commit()
 
     return type_stats
 
@@ -338,6 +354,7 @@ def _import_contacts(
 
     for i, row in enumerate(rows):
         try:
+            slug = (row.get("Slug") or "").strip()
             company_slug = (row.get("Company Slug") or "").strip()
             first_name = (row.get("First Name") or "").strip()
             last_name = (row.get("Last Name") or "").strip()
@@ -346,16 +363,25 @@ def _import_contacts(
             phone = (row.get("Contact Number") or "").strip()
             title = (row.get("Designation") or "").strip()
 
+            # Map Stage field to contact role
+            stage_raw = (row.get("Stage") or "").strip().lower()
+            role = _CONTACT_STAGE_ROLE.get(stage_raw)
+
             client = None
             if company_slug and f"company:{company_slug}" in slug_map:
                 client_id = slug_map[f"company:{company_slug}"]
                 client = db.get(RecruiterClient, client_id)
 
             if client:
+                # Track contact slug → client_id for job-level contact resolution
+                if slug:
+                    slug_map[f"contact:{slug}"] = client.id
+
                 # Append to contacts JSONB array
                 contact_entry = {
                     k: v for k, v in {
-                        "name": name, "email": email, "phone": phone, "title": title,
+                        "name": name, "email": email, "phone": phone,
+                        "title": title, "role": role,
                     }.items() if v
                 }
                 if contact_entry:
@@ -373,7 +399,6 @@ def _import_contacts(
                 if title and not client.contact_title:
                     client.contact_title = title
 
-                slug = (row.get("Slug") or "").strip()
                 _record_entity(
                     migration_job_id, "contact", slug or str(i),
                     "recruiter_client", client.id, row, "merged", db,
@@ -395,8 +420,9 @@ def _import_contacts(
 
                 if company_slug:
                     slug_map[f"company:{company_slug}"] = client.id
+                if slug:
+                    slug_map[f"contact:{slug}"] = client.id
 
-                slug = (row.get("Slug") or "").strip()
                 _record_entity(
                     migration_job_id, "contact", slug or str(i),
                     "recruiter_client", client.id, row, "imported", db,
@@ -467,9 +493,54 @@ def _import_jobs(
             department = (row.get("Department") or "").strip() or None
             positions_to_fill = _parse_int(row.get("Number Of Openings"))
 
+            # External job ID (Solicitation #)
+            job_id_external = (
+                row.get("Solicitation #") or row.get("Job ID") or ""
+            ).strip() or None
+
             # Dates
             close_date = _parse_date(row.get("Close Date"))
             start_date = _parse_date(row.get("Start Date"))
+
+            # Resolve job-level primary contact from Contact Slug
+            primary_contact = None
+            contact_slug = (row.get("Contact Slug") or "").strip()
+            contact_name_raw = (row.get("Contact") or "").strip()
+            if contact_slug:
+                contact_client_id = slug_map.get(f"contact:{contact_slug}")
+                if contact_client_id:
+                    contact_client = db.get(RecruiterClient, contact_client_id)
+                    if contact_client and contact_client.contacts:
+                        # Find matching contact by name
+                        for ce in contact_client.contacts:
+                            if ce.get("name") == contact_name_raw:
+                                primary_contact = {
+                                    k: v for k, v in {
+                                        "name": ce.get("name"),
+                                        "email": ce.get("email"),
+                                        "phone": ce.get("phone"),
+                                        "role": ce.get("role"),
+                                    }.items() if v
+                                }
+                                break
+                        # Fallback: first contact with a role priority
+                        if not primary_contact:
+                            for pref_role in [
+                                "Prime Contractor", "Hiring Manager", "Purchaser",
+                            ]:
+                                for ce in contact_client.contacts:
+                                    if ce.get("role") == pref_role:
+                                        primary_contact = {
+                                            k: v for k, v in {
+                                                "name": ce.get("name"),
+                                                "email": ce.get("email"),
+                                                "phone": ce.get("phone"),
+                                                "role": ce.get("role"),
+                                            }.items() if v
+                                        }
+                                        break
+                                if primary_contact:
+                                    break
 
             rjob = RecruiterJob(
                 recruiter_profile_id=recruiter_profile_id,
@@ -486,6 +557,8 @@ def _import_jobs(
                 status=status,
                 department=department,
                 job_category=job_category,
+                job_id_external=job_id_external,
+                primary_contact=primary_contact,
                 positions_to_fill=positions_to_fill or 1,
                 closes_at=close_date,
                 start_at=start_date,
