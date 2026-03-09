@@ -48,8 +48,8 @@ const STATUS_COLORS: Record<string, string> = {
 export default function RecruiterJobsPage() {
   const [jobs, setJobs] = useState<RecruiterJob[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [sortBy, setSortBy] = useState("created_at");
+  const [statusFilter, setStatusFilter] = useState("active");
+  const [sortBy, setSortBy] = useState("closes_at");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [search, setSearch] = useState("");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
