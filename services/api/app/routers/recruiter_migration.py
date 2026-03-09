@@ -495,7 +495,7 @@ def start_recruiter_migration(
             )
             from app.services.queue import get_queue
 
-            queue = get_queue("low")
+            queue = get_queue("default")
             queue.enqueue(
                 stage_attachments_job,
                 migration_job_id=job.id,
