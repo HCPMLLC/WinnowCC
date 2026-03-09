@@ -22,6 +22,7 @@ export default function RecruiterCandidates() {
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [sortBy, setSortBy] = useState<"job_match_count" | "name">("job_match_count");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [deleting, setDeleting] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -68,15 +69,20 @@ export default function RecruiterCandidates() {
     load();
   }, []);
 
-  const filtered = candidates.filter((c) => {
-    if (!search.trim()) return true;
-    const q = search.toLowerCase();
-    return (
-      c.name?.toLowerCase().includes(q) ||
-      c.headline?.toLowerCase().includes(q) ||
-      c.skills?.some((s) => s.toLowerCase().includes(q))
-    );
-  });
+  const filtered = candidates
+    .filter((c) => {
+      if (!search.trim()) return true;
+      const q = search.toLowerCase();
+      return (
+        c.name?.toLowerCase().includes(q) ||
+        c.headline?.toLowerCase().includes(q) ||
+        c.skills?.some((s) => s.toLowerCase().includes(q))
+      );
+    })
+    .sort((a, b) => {
+      if (sortBy === "job_match_count") return b.job_match_count - a.job_match_count;
+      return (a.name || "").localeCompare(b.name || "");
+    });
 
   const filteredIds = new Set(filtered.map((c) => c.id));
   const allFilteredSelected = filtered.length > 0 && filtered.every((c) => selected.has(c.id));
@@ -208,15 +214,23 @@ export default function RecruiterCandidates() {
         </div>
       </div>
 
-      {/* Search */}
-      <div>
+      {/* Search + Sort */}
+      <div className="flex gap-3">
         <input
           type="text"
           placeholder="Search by name, title, or skill..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          className="min-w-0 flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
         />
+        <select
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "job_match_count" | "name")}
+          className="shrink-0 rounded-lg border border-slate-300 px-3 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        >
+          <option value="job_match_count">Most Matches</option>
+          <option value="name">Name A-Z</option>
+        </select>
       </div>
 
       {/* Select All + Action Bar */}
@@ -291,11 +305,9 @@ export default function RecruiterCandidates() {
                           Winnowcc.ai
                         </span>
                       )}
-                      {c.job_match_count > 0 && (
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                          {c.job_match_count} job{c.job_match_count !== 1 ? "s" : ""} matched
-                        </span>
-                      )}
+                      <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-medium ${c.job_match_count > 0 ? "bg-blue-50 text-blue-700" : "bg-slate-50 text-slate-400"}`}>
+                        {c.job_match_count} job{c.job_match_count !== 1 ? "s" : ""} matched
+                      </span>
                     </div>
                     {c.headline && (
                       <p className="mt-0.5 text-sm text-slate-600 truncate">{c.headline}</p>
