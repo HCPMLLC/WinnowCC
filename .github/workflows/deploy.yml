@@ -132,7 +132,7 @@ jobs:
             --memory=4Gi \
             --cpu=2 \
             --min-instances=1 \
-            --max-instances=8 \
+            --max-instances=24 \
             --no-cpu-throttling \
             --execution-environment=gen2
 
