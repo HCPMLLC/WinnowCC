@@ -26,6 +26,23 @@ from app.services.migration.platform_detector import FIELD_MAPPINGS
 
 logger = logging.getLogger(__name__)
 
+# Date formats common across CRM exports
+_DATE_FORMATS = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S"]
+
+
+def _parse_date(val: str | None) -> datetime | None:
+    """Parse a date string from CRM export."""
+    if not val or not str(val).strip():
+        return None
+    val = str(val).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(val, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Status/stage mapping constants
 # ---------------------------------------------------------------------------
@@ -413,17 +430,28 @@ def _import_recruiter_job(
     if not salary_min and not salary_max and mapped.get("salary"):
         salary_min, salary_max = _parse_salary_range(mapped["salary"])
 
+    # Parse dates
+    closes_at = _parse_date(mapped.get("closes_at"))
+    start_at = _parse_date(mapped.get("start_at"))
+    positions = _parse_int(mapped.get("positions_to_fill"))
+
     job = RecruiterJob(
         recruiter_profile_id=recruiter_profile_id,
         title=title,
         description=mapped.get("description") or f"Imported from {platform}: {title}",
         requirements=mapped.get("requirements") or mapped.get("skills"),
+        nice_to_haves=mapped.get("nice_to_haves"),
         client_company_name=company or None,
         location=location or None,
         employment_type=mapped.get("employment_type"),
         salary_min=salary_min,
         salary_max=salary_max,
         status=status,
+        department=mapped.get("department"),
+        job_category=mapped.get("job_category"),
+        positions_to_fill=positions or 1,
+        closes_at=closes_at,
+        start_at=start_at,
     )
     db.add(job)
     db.flush()
@@ -513,12 +541,26 @@ def _import_pipeline_candidate(
     tags = _parse_tags(mapped.get("tags"))
     source = mapped.get("source") or f"migration_{platform}"
 
+    # Build location from city/state/country
+    location = mapped.get("location") or ""
+    if not location:
+        loc_parts = [
+            mapped.get("city", ""),
+            mapped.get("state", ""),
+            mapped.get("country", ""),
+        ]
+        location = ", ".join(p for p in loc_parts if p) or None
+
     pc = RecruiterPipelineCandidate(
         recruiter_profile_id=recruiter_profile_id,
         external_name=name or None,
         external_email=email or None,
         external_phone=mapped.get("phone"),
         external_linkedin=mapped.get("linkedin_url"),
+        current_company=mapped.get("company"),
+        current_title=mapped.get("job_title"),
+        location=location or None,
+        skills=mapped.get("skills"),
         source=source,
         stage=stage,
         tags=tags or None,

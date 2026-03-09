@@ -38,6 +38,12 @@ class RecruiterPipelineCandidate(Base):
     external_linkedin: Mapped[str | None] = mapped_column(String(500), nullable=True)
     external_resume_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Professional context
+    current_company: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    current_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    skills: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     source: Mapped[str | None] = mapped_column(String(100), nullable=True)
     stage: Mapped[str] = mapped_column(String(50), server_default="sourced")
     rating: Mapped[int | None] = mapped_column(Integer, nullable=True)

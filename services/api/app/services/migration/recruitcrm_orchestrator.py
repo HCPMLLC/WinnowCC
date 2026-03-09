@@ -41,6 +41,23 @@ from app.services.migration.recruiter_import_engine import (
 
 logger = logging.getLogger(__name__)
 
+# Date formats Recruit CRM may use
+_DATE_FORMATS = ["%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y", "%Y-%m-%dT%H:%M:%S"]
+
+
+def _parse_date(val: str | None) -> datetime | None:
+    """Parse a date string from Recruit CRM export."""
+    if not val or not str(val).strip():
+        return None
+    val = str(val).strip()
+    for fmt in _DATE_FORMATS:
+        try:
+            return datetime.strptime(val, fmt).replace(tzinfo=UTC)
+        except ValueError:
+            continue
+    return None
+
+
 # Recruit CRM assignment status → Winnow stage
 RCRM_ASSIGNMENT_STAGES: dict[str, str] = {
     "Applied": "sourced",
@@ -427,10 +444,24 @@ def _import_jobs(
             # Employment type
             employment_type = (row.get("Job Type") or "").strip() or None
 
+            # Text fields
+            description = (row.get("Job Description") or "").strip()
+            requirements = (row.get("Requirements") or "").strip() or None
+            nice_to_haves = (row.get("Nice to Have") or "").strip() or None
+            job_category = (row.get("Job Category") or "").strip() or None
+            department = (row.get("Department") or "").strip() or None
+            positions_to_fill = _parse_int(row.get("Number Of Openings"))
+
+            # Dates
+            close_date = _parse_date(row.get("Close Date"))
+            start_date = _parse_date(row.get("Start Date"))
+
             rjob = RecruiterJob(
                 recruiter_profile_id=recruiter_profile_id,
                 title=title,
-                description=f"Imported from Recruit CRM: {title}",
+                description=description or f"Imported from Recruit CRM: {title}",
+                requirements=requirements,
+                nice_to_haves=nice_to_haves,
                 client_company_name=company_name or None,
                 client_id=client_id,
                 location=location,
@@ -438,6 +469,11 @@ def _import_jobs(
                 salary_min=salary_min,
                 salary_max=salary_max,
                 status=status,
+                department=department,
+                job_category=job_category,
+                positions_to_fill=positions_to_fill or 1,
+                closes_at=close_date,
+                start_at=start_date,
             )
             db.add(rjob)
             db.flush()
@@ -516,12 +552,24 @@ def _import_candidates(
                 type_stats["merged"] += 1
                 continue
 
+            # Professional context
+            current_org = (row.get("Current Organisation") or "").strip() or None
+            position = (row.get("Position") or "").strip() or None
+            city = (row.get("City") or "").strip()
+            state = (row.get("State") or "").strip()
+            country = (row.get("Country") or "").strip()
+            loc_parts = [p for p in [city, state, country] if p]
+            candidate_location = ", ".join(loc_parts) or None
+
             pc = RecruiterPipelineCandidate(
                 recruiter_profile_id=recruiter_profile_id,
                 external_name=name or None,
                 external_email=email or None,
                 external_phone=phone or None,
                 external_linkedin=linkedin or None,
+                current_company=current_org,
+                current_title=position,
+                location=candidate_location,
                 source=source,
                 stage="sourced",
             )
