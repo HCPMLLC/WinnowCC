@@ -201,6 +201,22 @@ def register_gcs_upload(
             "row_count": 0,  # Will be determined by background worker
             "field_mapping": {},
         }
+    elif (
+        fname.endswith(".zip")
+        and ("csv-data-export" in fname or "csv_data_export" in fname)
+    ):
+        detection = {
+            "platform": "recruitcrm",
+            "confidence": 0.85,
+            "evidence": [
+                "Filename pattern matches Recruit CRM CSV data export"
+            ],
+            "entity_types_found": [
+                "candidates", "companies", "contacts", "jobs", "assignments",
+            ],
+            "row_count": 0,
+            "field_mapping": {},
+        }
     elif fname.endswith(".zip"):
         detection = {
             "platform": "resume_archive",

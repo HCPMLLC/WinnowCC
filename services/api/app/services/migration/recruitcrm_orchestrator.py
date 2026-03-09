@@ -210,19 +210,34 @@ def run_recruitcrm_zip_migration(migration_job_id: int, db: Session) -> dict:
 # ---------------------------------------------------------------------------
 
 def _read_csvs_from_zip(file_path: str) -> dict[str, list[dict]]:
-    """Read all recognized CSVs from a ZIP into {filename: [rows]}."""
+    """Read all recognized CSVs from a ZIP into {filename: [rows]}.
+
+    Supports both local paths and gs:// GCS paths (downloads to a temp
+    file first).
+    """
+    from app.services.storage import download_to_tempfile, is_gcs_path
+
+    local_path = file_path
+    tmp_file = None
+    if is_gcs_path(file_path):
+        tmp_file = download_to_tempfile(file_path, suffix=".zip")
+        local_path = str(tmp_file)
+
     result = {}
-    with zipfile.ZipFile(file_path) as zf:
-        for name in zf.namelist():
-            basename = name.split("/")[-1].lower()
-            # Match against known filenames (case-insensitive)
-            for expected in RCRM_CSV_FILES:
-                if basename == expected:
-                    with zf.open(name) as f:
-                        text = io.TextIOWrapper(f, encoding="utf-8-sig")
-                        reader = csv.DictReader(text)
-                        result[expected] = list(reader)
-                    break
+    try:
+        with zipfile.ZipFile(local_path) as zf:
+            for name in zf.namelist():
+                basename = name.split("/")[-1].lower()
+                for expected in RCRM_CSV_FILES:
+                    if basename == expected:
+                        with zf.open(name) as f:
+                            text = io.TextIOWrapper(f, encoding="utf-8-sig")
+                            reader = csv.DictReader(text)
+                            result[expected] = list(reader)
+                        break
+    finally:
+        if tmp_file:
+            tmp_file.unlink(missing_ok=True)
     return result
 
 
