@@ -1921,6 +1921,14 @@ def list_recruiter_jobs(
             or_(
                 RecruiterJob.title.ilike(pattern),
                 RecruiterJob.client_company_name.ilike(pattern),
+                RecruiterJob.location.ilike(pattern),
+                RecruiterJob.remote_policy.ilike(pattern),
+                RecruiterJob.employment_type.ilike(pattern),
+                RecruiterJob.job_id_external.ilike(pattern),
+                RecruiterJob.primary_contact["name"]
+                .astext.ilike(pattern),
+                RecruiterJob.primary_contact["email"]
+                .astext.ilike(pattern),
             )
         )
 
