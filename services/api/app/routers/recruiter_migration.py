@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
-from app.models.migration import MigrationJob
+from app.models.migration import MigrationEntityMap, MigrationJob
 from app.models.recruiter import RecruiterProfile
 from app.models.recruiter_activity import RecruiterActivity
 from app.models.user import User
@@ -807,18 +807,68 @@ def repair_contact_names(
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     db: Session = Depends(get_session),
 ):
-    """Repair migrated contacts: split 'name' → first_name/last_name.
+    """Rebuild contacts from original migration CSV data.
 
-    Fixes contacts that were imported with a combined 'name' field
-    instead of separate first_name/last_name fields.
+    Re-reads MigrationEntityMap raw_data for contact rows and
+    reconstructs the contacts JSONB with proper first_name,
+    last_name, and role fields.
     """
     from app.models.recruiter_client import RecruiterClient
 
-    clients = (
+    # Stage → role mapping (same as orchestrator)
+    stage_role = {
+        "client": "Hiring Manager",
+        "lead": "Hiring Manager",
+        "prime": "Prime Contractor",
+        "hsp": "Prime Contractor",
+        "supplier": "Subcontractor",
+    }
+
+    # Find all contact migration entities for this recruiter's clients
+    entities = (
         db.execute(
-            select(RecruiterClient).where(
-                RecruiterClient.recruiter_profile_id == profile.id,
-                RecruiterClient.contacts.isnot(None),
+            select(MigrationEntityMap).where(
+                MigrationEntityMap.source_entity_type == "contact",
+                MigrationEntityMap.winnow_entity_type == "recruiter_client",
+                MigrationEntityMap.raw_data.isnot(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Group contacts by client_id
+    client_contacts: dict[int, list[dict]] = {}
+    for e in entities:
+        cid = e.winnow_entity_id
+        if not cid:
+            continue
+        raw = e.raw_data or {}
+        first = (raw.get("First Name") or "").strip()
+        last = (raw.get("Last Name") or "").strip()
+        email = (raw.get("Email") or "").strip()
+        phone = (raw.get("Contact Number") or "").strip()
+        stage = (raw.get("Stage") or "").strip().lower()
+        role = stage_role.get(stage)
+        entry = {
+            k: v
+            for k, v in {
+                "first_name": first,
+                "last_name": last,
+                "email": email,
+                "phone": phone,
+                "role": role,
+            }.items()
+            if v
+        }
+        if entry:
+            client_contacts.setdefault(cid, []).append(entry)
+
+    # Filter to only this recruiter's clients
+    my_client_ids = set(
+        db.execute(
+            select(RecruiterClient.id).where(
+                RecruiterClient.recruiter_profile_id == profile.id
             )
         )
         .scalars()
@@ -828,29 +878,26 @@ def repair_contact_names(
     from sqlalchemy.orm.attributes import flag_modified
 
     repaired = 0
-    for client in clients:
-        contacts = client.contacts
-        if not contacts:
+    for cid, new_contacts in client_contacts.items():
+        if cid not in my_client_ids:
             continue
-        changed = False
-        new_contacts = []
-        for entry in contacts:
-            e = dict(entry)  # copy to avoid mutation issues
-            # Split combined "name" into first_name / last_name
-            if "name" in e and "first_name" not in e:
-                parts = (e.pop("name") or "").split(" ", 1)
-                e["first_name"] = parts[0] if parts else ""
-                e["last_name"] = parts[1] if len(parts) > 1 else ""
-                changed = True
-            # Rename "title" to keep it but ensure role is present
-            if "title" in e and "role" not in e:
-                e["role"] = e.pop("title")
-                changed = True
-            new_contacts.append(e)
-        if changed:
-            client.contacts = new_contacts
-            flag_modified(client, "contacts")
-            repaired += 1
+        client = db.get(RecruiterClient, cid)
+        if not client:
+            continue
+        client.contacts = new_contacts
+        flag_modified(client, "contacts")
+        # Update legacy fields from first contact
+        first_ct = new_contacts[0]
+        fn = first_ct.get("first_name", "")
+        ln = first_ct.get("last_name", "")
+        name = f"{fn} {ln}".strip()
+        if name:
+            client.contact_name = name
+        if first_ct.get("email"):
+            client.contact_email = first_ct["email"]
+        if first_ct.get("phone"):
+            client.contact_phone = first_ct["phone"]
+        repaired += 1
 
     db.commit()
     return {"repaired_clients": repaired}
