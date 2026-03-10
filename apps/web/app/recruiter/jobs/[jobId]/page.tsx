@@ -65,9 +65,18 @@ interface Submission {
   employer_notes: string | null;
 }
 
+interface ClientContact {
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  phone: string | null;
+  role: string | null;
+}
+
 interface ClientOption {
   id: number;
   company_name: string;
+  contacts: ClientContact[] | null;
 }
 
 interface CandidateMatch {
@@ -123,6 +132,7 @@ export default function RecruiterJobDetailPage() {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [submissionChecks, setSubmissionChecks] = useState<Record<number, SubmissionCheck>>({});
   const [submittingId, setSubmittingId] = useState<number | null>(null);
+  const [contactMode, setContactMode] = useState<"select" | "manual">("select");
   const [reparsing, setReparsing] = useState(false);
   const [reparseError, setReparseError] = useState("");
 
@@ -807,7 +817,10 @@ export default function RecruiterJobDetailPage() {
                         client_id: e.target.value,
                         client_company_name:
                           selected?.company_name || form.client_company_name,
+                        contact_name: "",
+                        contact_email: "",
                       });
+                      setContactMode("select");
                     }}
                     className={`${inputCls} mt-1`}
                   >
@@ -822,36 +835,132 @@ export default function RecruiterJobDetailPage() {
               </div>
             </div>
 
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Contact Name
-                </label>
-                <input
-                  type="text"
-                  value={form.contact_name}
-                  onChange={(e) =>
-                    setForm({ ...form, contact_name: e.target.value })
-                  }
-                  className={inputCls}
-                  placeholder="e.g. Jane Smith"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Contact Email
-                </label>
-                <input
-                  type="email"
-                  value={form.contact_email}
-                  onChange={(e) =>
-                    setForm({ ...form, contact_email: e.target.value })
-                  }
-                  className={inputCls}
-                  placeholder="e.g. jane@company.com"
-                />
-              </div>
-            </div>
+            {(() => {
+              const selectedClient = clients.find(
+                (c) => c.id === Number(form.client_id),
+              );
+              const clientContacts = selectedClient?.contacts?.filter(
+                (ct) => ct.first_name || ct.last_name || ct.email,
+              );
+              const hasContacts = clientContacts && clientContacts.length > 0;
+
+              if (hasContacts && contactMode === "select") {
+                // Build the selected value to match against dropdown
+                const selectedValue = clientContacts.findIndex((ct) => {
+                  const name = [ct.first_name, ct.last_name]
+                    .filter(Boolean)
+                    .join(" ");
+                  return (
+                    name === form.contact_name && ct.email === form.contact_email
+                  );
+                });
+
+                return (
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-slate-700">
+                      Contact
+                    </label>
+                    <select
+                      value={selectedValue >= 0 ? String(selectedValue) : ""}
+                      onChange={(e) => {
+                        if (e.target.value === "__manual__") {
+                          setContactMode("manual");
+                          return;
+                        }
+                        const idx = Number(e.target.value);
+                        const ct = clientContacts[idx];
+                        if (ct) {
+                          const name = [ct.first_name, ct.last_name]
+                            .filter(Boolean)
+                            .join(" ");
+                          setForm({
+                            ...form,
+                            contact_name: name,
+                            contact_email: ct.email || "",
+                          });
+                        } else {
+                          setForm({
+                            ...form,
+                            contact_name: "",
+                            contact_email: "",
+                          });
+                        }
+                      }}
+                      className={inputCls}
+                    >
+                      <option value="">Select a contact...</option>
+                      {clientContacts.map((ct, idx) => {
+                        const name = [ct.first_name, ct.last_name]
+                          .filter(Boolean)
+                          .join(" ");
+                        const role = ct.role ? ` (${ct.role})` : "";
+                        const email = ct.email ? ` — ${ct.email}` : "";
+                        return (
+                          <option key={idx} value={String(idx)}>
+                            {name}
+                            {role}
+                            {email}
+                          </option>
+                        );
+                      })}
+                      <option value="__manual__">Enter manually...</option>
+                    </select>
+                    {(form.contact_name || form.contact_email) && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        {form.contact_name}
+                        {form.contact_email
+                          ? ` — ${form.contact_email}`
+                          : ""}
+                      </p>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div>
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Contact Name
+                      </label>
+                      <input
+                        type="text"
+                        value={form.contact_name}
+                        onChange={(e) =>
+                          setForm({ ...form, contact_name: e.target.value })
+                        }
+                        className={inputCls}
+                        placeholder="e.g. Jane Smith"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">
+                        Contact Email
+                      </label>
+                      <input
+                        type="email"
+                        value={form.contact_email}
+                        onChange={(e) =>
+                          setForm({ ...form, contact_email: e.target.value })
+                        }
+                        className={inputCls}
+                        placeholder="e.g. jane@company.com"
+                      />
+                    </div>
+                  </div>
+                  {hasContacts && (
+                    <button
+                      type="button"
+                      onClick={() => setContactMode("select")}
+                      className="mt-1 text-xs text-blue-600 hover:underline"
+                    >
+                      Pick from client contacts
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
