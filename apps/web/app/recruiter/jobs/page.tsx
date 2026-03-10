@@ -158,25 +158,36 @@ export default function RecruiterJobsPage() {
     }
   }
 
+  function chunkArray<T>(arr: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+  }
+
   async function handleBulkDelete() {
     if (selected.size === 0) return;
     if (!window.confirm(`Delete ${selected.size} job${selected.size !== 1 ? "s" : ""}? This cannot be undone.`)) return;
 
     setBulkAction("deleting");
     try {
-      const params = new URLSearchParams();
-      for (const id of selected) params.append("ids", String(id));
-      const res = await fetch(`${API_BASE}/api/recruiter/jobs/bulk-delete?${params.toString()}`, {
-        method: "POST",
-        credentials: "include",
-      });
-      if (res.ok) {
-        setSelected(new Set());
-        fetchJobs();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(parseApiError(data, "Failed to delete jobs"));
+      const batches = chunkArray([...selected], 100);
+      for (const batch of batches) {
+        const params = new URLSearchParams();
+        for (const id of batch) params.append("ids", String(id));
+        const res = await fetch(`${API_BASE}/api/recruiter/jobs/bulk-delete?${params.toString()}`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(parseApiError(data, "Failed to delete jobs"));
+          break;
+        }
       }
+      setSelected(new Set());
+      fetchJobs();
     } catch {
       setError("Network error");
     } finally {
@@ -189,20 +200,23 @@ export default function RecruiterJobsPage() {
 
     setBulkAction("updating");
     try {
-      const params = new URLSearchParams();
-      for (const id of selected) params.append("ids", String(id));
-      params.append("new_status", bulkStatus);
-      const res = await fetch(`${API_BASE}/api/recruiter/jobs/bulk-status?${params.toString()}`, {
-        method: "PATCH",
-        credentials: "include",
-      });
-      if (res.ok) {
-        setSelected(new Set());
-        fetchJobs();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(parseApiError(data, "Failed to update jobs"));
+      const batches = chunkArray([...selected], 100);
+      for (const batch of batches) {
+        const params = new URLSearchParams();
+        for (const id of batch) params.append("ids", String(id));
+        params.append("new_status", bulkStatus);
+        const res = await fetch(`${API_BASE}/api/recruiter/jobs/bulk-status?${params.toString()}`, {
+          method: "PATCH",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(parseApiError(data, "Failed to update jobs"));
+          break;
+        }
       }
+      setSelected(new Set());
+      fetchJobs();
     } catch {
       setError("Network error");
     } finally {

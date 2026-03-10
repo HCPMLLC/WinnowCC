@@ -117,6 +117,14 @@ export default function JobsPage() {
     }
   }
 
+  function chunkArray<T>(arr: T[], size: number): T[][] {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+  }
+
   async function handleBulkArchive() {
     if (selected.size === 0) return;
     if (
@@ -129,19 +137,22 @@ export default function JobsPage() {
     setBulkAction("archiving");
     setError("");
     try {
-      const params = new URLSearchParams();
-      for (const id of selected) params.append("ids", String(id));
-      const res = await fetch(
-        `${API_BASE}/api/employer/jobs/bulk-archive?${params.toString()}`,
-        { method: "POST", credentials: "include" },
-      );
-      if (res.ok) {
-        setSelected(new Set());
-        fetchJobs(false);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Failed to archive jobs");
+      const batches = chunkArray([...selected], 100);
+      for (const batch of batches) {
+        const params = new URLSearchParams();
+        for (const id of batch) params.append("ids", String(id));
+        const res = await fetch(
+          `${API_BASE}/api/employer/jobs/bulk-archive?${params.toString()}`,
+          { method: "POST", credentials: "include" },
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.detail || "Failed to archive jobs");
+          break;
+        }
       }
+      setSelected(new Set());
+      fetchJobs(false);
     } catch {
       setError("Network error");
     } finally {
@@ -161,20 +172,23 @@ export default function JobsPage() {
     setBulkAction("deleting");
     setError("");
     try {
-      const params = new URLSearchParams();
-      for (const id of selected) params.append("ids", String(id));
-      const res = await fetch(
-        `${API_BASE}/api/employer/jobs/bulk-delete?${params.toString()}`,
-        { method: "POST", credentials: "include" },
-      );
-      if (res.ok) {
-        setSelected(new Set());
-        fetchJobs(false);
-        if (viewTab === "archived") fetchJobs(true);
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setError(data.detail || "Failed to delete jobs");
+      const batches = chunkArray([...selected], 100);
+      for (const batch of batches) {
+        const params = new URLSearchParams();
+        for (const id of batch) params.append("ids", String(id));
+        const res = await fetch(
+          `${API_BASE}/api/employer/jobs/bulk-delete?${params.toString()}`,
+          { method: "POST", credentials: "include" },
+        );
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data.detail || "Failed to delete jobs");
+          break;
+        }
       }
+      setSelected(new Set());
+      fetchJobs(false);
+      if (viewTab === "archived") fetchJobs(true);
     } catch {
       setError("Network error");
     } finally {
