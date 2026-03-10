@@ -1060,7 +1060,9 @@ export default function RecruiterJobsPage() {
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
                     <p className="mb-1 text-xs font-medium text-slate-400">
-                      ID: {job.job_id_external || job.id}
+                      {job.job_id_external
+                        ? `ID: ${job.job_id_external}`
+                        : <span className="text-amber-500">No Job ID</span>}
                     </p>
                     <div className="mb-2 flex items-center gap-3">
                       <h3 className="text-lg font-semibold text-slate-900">
