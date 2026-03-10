@@ -435,6 +435,10 @@ def _import_recruiter_job(
     start_at = _parse_date(mapped.get("start_at"))
     positions = _parse_int(mapped.get("positions_to_fill"))
 
+    job_id_external = (
+        mapped.get("job_id_external") or ""
+    ).strip() or None
+
     job = RecruiterJob(
         recruiter_profile_id=recruiter_profile_id,
         title=title,
@@ -452,6 +456,7 @@ def _import_recruiter_job(
         positions_to_fill=positions or 1,
         closes_at=closes_at,
         start_at=start_at,
+        job_id_external=job_id_external,
     )
     db.add(job)
     db.flush()

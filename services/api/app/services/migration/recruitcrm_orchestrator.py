@@ -493,9 +493,12 @@ def _import_jobs(
             department = (row.get("Department") or "").strip() or None
             positions_to_fill = _parse_int(row.get("Number Of Openings"))
 
-            # External job ID (Solicitation #)
+            # External job ID (Solicitation # / Solicitation Number)
             job_id_external = (
-                row.get("Solicitation #") or row.get("Job ID") or ""
+                row.get("Solicitation #")
+                or row.get("Solicitation Number")
+                or row.get("Job ID")
+                or ""
             ).strip() or None
 
             # Dates
