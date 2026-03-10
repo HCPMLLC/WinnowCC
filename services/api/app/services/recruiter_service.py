@@ -900,3 +900,168 @@ def mark_notification_read(
     notif.is_read = True
     session.flush()
     return True
+
+
+# ---------------------------------------------------------------------------
+# Contact-Account Recognition (Phase 2)
+# ---------------------------------------------------------------------------
+
+
+def check_signup_email_matches(
+    session: Session,
+    new_user_email: str,
+    new_user_id: int,
+    new_user_role: str,
+) -> None:
+    """Check if a newly signed-up user's email matches any recruiter contacts
+    or pipeline candidates. Creates notifications + activity log entries.
+
+    Called from the signup endpoint. Does NOT auto-link anything — just
+    creates awareness notifications for the owning recruiter.
+    """
+    from app.models.recruiter_notification import RecruiterNotification
+
+    email_lower = new_user_email.lower().strip()
+    role_label = new_user_role if new_user_role != "candidate" else "candidate"
+
+    # --- 1) Check RecruiterClient contacts (JSONB) ---
+    # PostgreSQL: contacts @> '[{"email": "x"}]'::jsonb
+    import json
+
+    from sqlalchemy.dialects.postgresql import JSONB as PG_JSONB
+
+    pattern = json.dumps([{"email": email_lower}])
+    client_matches = (
+        session.execute(
+            select(RecruiterClient).where(
+                RecruiterClient.contacts.op("@>")(
+                    sa.cast(pattern, PG_JSONB)
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Also check legacy single-contact email field
+    legacy_matches = (
+        session.execute(
+            select(RecruiterClient).where(
+                func.lower(RecruiterClient.contact_email) == email_lower,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Deduplicate by client id
+    seen_client_ids: set[int] = set()
+    all_client_matches: list[RecruiterClient] = []
+    for c in list(client_matches) + list(legacy_matches):
+        if c.id not in seen_client_ids:
+            seen_client_ids.add(c.id)
+            all_client_matches.append(c)
+
+    for client in all_client_matches:
+        # Find the contact entry to get their role
+        contact_role = None
+        contact_name = None
+        if client.contacts:
+            for ct in client.contacts:
+                if (ct.get("email") or "").lower() == email_lower:
+                    contact_role = ct.get("role")
+                    first = ct.get("first_name", "")
+                    last = ct.get("last_name", "")
+                    contact_name = f"{first} {last}".strip()
+                    break
+        if not contact_name and client.contact_name:
+            contact_name = client.contact_name
+
+        # Get the recruiter's user_id for notification
+        profile = session.get(RecruiterProfile, client.recruiter_profile_id)
+        if not profile:
+            continue
+
+        role_desc = f" ({contact_role})" if contact_role else ""
+        name_desc = contact_name or email_lower
+        msg = (
+            f"{name_desc}{role_desc} on {client.company_name} "
+            f"has joined Winnow as a {role_label}."
+        )
+
+        # Log activity on the client
+        activity = RecruiterActivity(
+            recruiter_profile_id=profile.id,
+            client_id=client.id,
+            activity_type="contact_signup",
+            subject=msg,
+            activity_metadata={
+                "new_user_id": new_user_id,
+                "new_user_email": email_lower,
+                "new_user_role": new_user_role,
+                "contact_role": contact_role,
+            },
+        )
+        session.add(activity)
+        session.flush()
+
+        # Create notification for the recruiter
+        notif = RecruiterNotification(
+            recipient_user_id=profile.user_id,
+            sender_user_id=new_user_id,
+            activity_id=activity.id,
+            notification_type="contact_signup",
+            message=msg,
+        )
+        session.add(notif)
+
+    # --- 2) Check RecruiterPipelineCandidate external_email ---
+    pipeline_matches = (
+        session.execute(
+            select(RecruiterPipelineCandidate).where(
+                func.lower(
+                    RecruiterPipelineCandidate.external_email
+                ) == email_lower,
+                RecruiterPipelineCandidate.candidate_profile_id.is_(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    for pc in pipeline_matches:
+        profile = session.get(
+            RecruiterProfile, pc.recruiter_profile_id
+        )
+        if not profile:
+            continue
+
+        cand_name = pc.external_name or email_lower
+        msg = (
+            f"{cand_name}, a candidate in your pipeline, "
+            f"has joined Winnow as a {role_label}."
+        )
+
+        activity = RecruiterActivity(
+            recruiter_profile_id=profile.id,
+            pipeline_candidate_id=pc.id,
+            activity_type="candidate_signup",
+            subject=msg,
+            activity_metadata={
+                "new_user_id": new_user_id,
+                "new_user_email": email_lower,
+                "new_user_role": new_user_role,
+                "pipeline_candidate_id": pc.id,
+            },
+        )
+        session.add(activity)
+        session.flush()
+
+        notif = RecruiterNotification(
+            recipient_user_id=profile.user_id,
+            sender_user_id=new_user_id,
+            activity_id=activity.id,
+            notification_type="candidate_signup",
+            message=msg,
+        )
+        session.add(notif)

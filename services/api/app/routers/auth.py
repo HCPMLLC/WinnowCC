@@ -239,6 +239,18 @@ def signup(
     session.commit()
     session.refresh(user)
 
+    # Phase 2: Contact-Account Recognition — notify recruiters if this
+    # email matches any of their CRM contacts or pipeline candidates.
+    try:
+        from app.services.recruiter_service import check_signup_email_matches
+
+        check_signup_email_matches(session, email, user.id, role)
+        session.commit()
+    except Exception:
+        logger.warning(
+            "Contact-account recognition failed for %s", email, exc_info=True
+        )
+
     set_auth_cookie(response, user_id=user.id, email=user.email)
     resp = _me_response(user)
     resp.token = make_token(user_id=user.id, email=user.email)
