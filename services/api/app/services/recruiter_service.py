@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from datetime import datetime
 
+import sqlalchemy as sa
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -47,7 +48,13 @@ def list_clients(
     profile: RecruiterProfile,
     status_filter: str | None = None,
     contract_vehicle: str | None = None,
+    search: str | None = None,
+    sort_by: str = "company_name",
+    sort_dir: str = "asc",
 ) -> list[RecruiterClient]:
+    from sqlalchemy import asc as sa_asc
+    from sqlalchemy import desc as sa_desc
+
     stmt = select(RecruiterClient).where(
         RecruiterClient.recruiter_profile_id == profile.id
     )
@@ -55,11 +62,41 @@ def list_clients(
         stmt = stmt.where(RecruiterClient.status == status_filter)
     if contract_vehicle:
         stmt = stmt.where(RecruiterClient.contract_vehicle == contract_vehicle)
-    # Order: parent clients first, then children, then by name
-    stmt = stmt.order_by(
-        RecruiterClient.parent_client_id.asc().nulls_first(),
-        RecruiterClient.company_name.asc(),
-    )
+    if search:
+        pattern = f"%{search}%"
+        # Alias for parent join
+        ParentClient = select(
+            RecruiterClient.id,
+            RecruiterClient.company_name.label("parent_name"),
+        ).subquery()
+        stmt = stmt.outerjoin(
+            ParentClient,
+            RecruiterClient.parent_client_id == ParentClient.c.id,
+        )
+        stmt = stmt.where(
+            or_(
+                RecruiterClient.company_name.ilike(pattern),
+                RecruiterClient.industry.ilike(pattern),
+                RecruiterClient.contract_vehicle.ilike(pattern),
+                RecruiterClient.contact_name.ilike(pattern),
+                RecruiterClient.contacts.cast(
+                    sa.Text
+                ).ilike(pattern),
+                ParentClient.c.parent_name.ilike(pattern),
+            )
+        )
+
+    # Sorting
+    _sort_cols = {
+        "company_name": RecruiterClient.company_name,
+        "industry": RecruiterClient.industry,
+        "contract_vehicle": RecruiterClient.contract_vehicle,
+        "status": RecruiterClient.status,
+        "created_at": RecruiterClient.created_at,
+    }
+    col = _sort_cols.get(sort_by, RecruiterClient.company_name)
+    direction = sa_desc if sort_dir == "desc" else sa_asc
+    stmt = stmt.order_by(direction(col))
     return list(session.execute(stmt).scalars().all())
 
 

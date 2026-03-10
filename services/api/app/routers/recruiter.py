@@ -278,6 +278,9 @@ def create_client(
 def list_clients(
     status_filter: str | None = Query(None, alias="status"),
     contract_vehicle: str | None = Query(None),
+    search: str | None = Query(None),
+    sort_by: str = Query("company_name"),
+    sort_dir: str = Query("asc"),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> list[RecruiterClientResponse]:
@@ -299,6 +302,9 @@ def list_clients(
         profile,
         status_filter,
         contract_vehicle=contract_vehicle,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     results = []
     for c in clients:

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { parseApiError } from "../../lib/api-error";
 
@@ -91,6 +91,11 @@ export default function RecruiterClientsPage() {
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState("");
   const [vehicleFilter, setVehicleFilter] = useState("");
+  const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [sortBy, setSortBy] = useState("company_name");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
@@ -124,6 +129,9 @@ export default function RecruiterClientsPage() {
       const url = new URL(`${API_BASE}/api/recruiter/clients`);
       if (statusFilter) url.searchParams.set("status", statusFilter);
       if (vehicleFilter) url.searchParams.set("contract_vehicle", vehicleFilter);
+      if (debouncedSearch) url.searchParams.set("search", debouncedSearch);
+      if (sortBy) url.searchParams.set("sort_by", sortBy);
+      if (sortDir) url.searchParams.set("sort_dir", sortDir);
       const res = await fetch(url.toString(), { credentials: "include" });
       if (res.ok) setClients(await res.json());
     } catch {
@@ -131,11 +139,18 @@ export default function RecruiterClientsPage() {
     }
   }
 
+  // Debounce search input
+  useEffect(() => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+  }, [search]);
+
   useEffect(() => {
     setLoading(true);
     fetchClients().finally(() => setLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchClients is a closure over statusFilter/vehicleFilter, already tracked
-  }, [statusFilter, vehicleFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, vehicleFilter, debouncedSearch, sortBy, sortDir]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -290,13 +305,42 @@ export default function RecruiterClientsPage() {
         </div>
       )}
 
-      {/* Status filter */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        {["", "active", "inactive", "prospect"].map((s) => (
-          <button key={s} onClick={() => setStatusFilter(s)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
-            {s || "All"}
+      {/* Search, sort, and status filter */}
+      <div className="mb-4 flex flex-wrap items-center gap-4">
+        <input
+          type="text"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search name, industry, contact, vehicle..."
+          className="w-72 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        />
+        <div className="flex items-center gap-2">
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value)}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+          >
+            <option value="company_name">Sort: Client Name</option>
+            <option value="industry">Sort: Industry</option>
+            <option value="contract_vehicle">Sort: Contract Vehicle</option>
+            <option value="status">Sort: Status</option>
+            <option value="created_at">Sort: Date Added</option>
+          </select>
+          <button
+            onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+            className="rounded-md border border-slate-300 px-2 py-1.5 text-sm hover:bg-slate-50"
+            title={sortDir === "asc" ? "Ascending" : "Descending"}
+          >
+            {sortDir === "asc" ? "\u2191" : "\u2193"}
           </button>
-        ))}
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {["", "active", "inactive", "prospect"].map((s) => (
+            <button key={s} onClick={() => setStatusFilter(s)} className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${statusFilter === s ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              {s || "All"}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Contract vehicle filter */}
