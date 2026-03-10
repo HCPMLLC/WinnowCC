@@ -190,7 +190,15 @@ def load_user_context(user_id: int, session: Session) -> dict:
     ).scalar_one_or_none()
 
     name = user.email.split("@")[0]
-    if candidate:
+    # Prefer user-level name, then candidate name, then email prefix
+    user_full = (
+        user.full_name
+        or " ".join(p for p in [user.first_name, user.last_name] if p)
+        or ""
+    ).strip()
+    if user_full:
+        name = user_full
+    elif candidate:
         full = " ".join(p for p in [candidate.first_name, candidate.last_name] if p)
         if full:
             name = full
