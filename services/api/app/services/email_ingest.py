@@ -347,6 +347,16 @@ def _do_parse_and_create(
             if isinstance(cd, _date):
                 closes_at = datetime(cd.year, cd.month, cd.day, tzinfo=UTC)
 
+            # Sender is the Prime Contractor — use as primary job contact
+            _pc = {
+                k: v
+                for k, v in {
+                    "name": log_entry.sender_name if log_entry else None,
+                    "email": sender_email,
+                }.items()
+                if v
+            }
+
             job = RecruiterJob(
                 recruiter_profile_id=profile_id,
                 title=parsed_data.get("title", "Untitled Position"),
@@ -368,6 +378,7 @@ def _do_parse_and_create(
                 application_url=parsed_data.get("application_url"),
                 start_at=start_at,
                 closes_at=closes_at,
+                primary_contact=_pc or None,
             )
         else:
             from app.models.employer import EmployerJob

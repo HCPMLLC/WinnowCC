@@ -147,6 +147,8 @@ export default function RecruiterJobDetailPage() {
     start_at: "",
     closes_at: "",
     status: "draft",
+    contact_name: "",
+    contact_email: "",
   });
 
   function populateForm(j: RecruiterJob) {
@@ -171,6 +173,8 @@ export default function RecruiterJobDetailPage() {
       start_at: j.start_at ? j.start_at.slice(0, 10) : "",
       closes_at: j.closes_at ? j.closes_at.slice(0, 10) : "",
       status: j.status || "draft",
+      contact_name: j.contact_name || "",
+      contact_email: j.contact_email || "",
     });
   }
 
@@ -375,6 +379,10 @@ export default function RecruiterJobDetailPage() {
     else body.job_category = null;
     if (form.application_url) body.application_url = form.application_url;
     else body.application_url = null;
+    if (form.contact_name) body.contact_name = form.contact_name;
+    else body.contact_name = null;
+    if (form.contact_email) body.contact_email = form.contact_email;
+    else body.contact_email = null;
     body.start_at = form.start_at
       ? new Date(form.start_at).toISOString()
       : null;
@@ -814,24 +822,36 @@ export default function RecruiterJobDetailPage() {
               </div>
             </div>
 
-            {(job.contact_name || job.contact_email) && (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Client Contact
-                </p>
-                <div className="flex items-center gap-3 text-sm text-slate-700">
-                  {job.contact_name && <span className="font-medium">{job.contact_name}</span>}
-                  {job.contact_email && (
-                    <a
-                      href={`mailto:${job.contact_email}`}
-                      className="text-blue-600 hover:underline"
-                    >
-                      {job.contact_email}
-                    </a>
-                  )}
-                </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Contact Name
+                </label>
+                <input
+                  type="text"
+                  value={form.contact_name}
+                  onChange={(e) =>
+                    setForm({ ...form, contact_name: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="e.g. Jane Smith"
+                />
               </div>
-            )}
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Contact Email
+                </label>
+                <input
+                  type="email"
+                  value={form.contact_email}
+                  onChange={(e) =>
+                    setForm({ ...form, contact_email: e.target.value })
+                  }
+                  className={inputCls}
+                  placeholder="e.g. jane@company.com"
+                />
+              </div>
+            </div>
 
             <div>
               <label className="mb-1 block text-sm font-medium text-slate-700">
@@ -1136,11 +1156,11 @@ export default function RecruiterJobDetailPage() {
                 )}
               </div>
             )}
-            {(job.contact_name || job.contact_email) && (
-              <div>
-                <h3 className="text-sm font-medium text-slate-500">
-                  Client Contact
-                </h3>
+            <div>
+              <h3 className="text-sm font-medium text-slate-500">
+                Job Contact
+              </h3>
+              {job.contact_name || job.contact_email ? (
                 <div className="mt-1 flex items-center gap-2 text-sm text-slate-700">
                   {job.contact_name && <span className="font-medium">{job.contact_name}</span>}
                   {job.contact_name && job.contact_email && <span className="text-slate-400">|</span>}
@@ -1153,8 +1173,10 @@ export default function RecruiterJobDetailPage() {
                     </a>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="mt-1 text-sm italic text-slate-400">Not set</p>
+              )}
+            </div>
             <div>
               <h3 className="text-sm font-medium text-slate-500">
                 Description

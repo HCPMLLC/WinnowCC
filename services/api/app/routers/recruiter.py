@@ -2135,6 +2135,19 @@ def update_recruiter_job(
     }
     content_changed = bool(update_data.keys() & content_fields)
 
+    # Map contact_name / contact_email into primary_contact JSONB
+    _cn = update_data.pop("contact_name", None)
+    _ce = update_data.pop("contact_email", None)
+    if _cn is not None or _ce is not None:
+        pc = dict(job.primary_contact or {})
+        if _cn is not None:
+            pc["name"] = _cn or None
+        if _ce is not None:
+            pc["email"] = _ce or None
+        # Remove empty keys
+        pc = {k: v for k, v in pc.items() if v}
+        update_data["primary_contact"] = pc or None
+
     for field, value in update_data.items():
         setattr(job, field, value)
 

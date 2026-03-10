@@ -106,6 +106,8 @@ class RecruiterJobUpdate(BaseModel):
     job_id_external: str | None = Field(None, max_length=100)
     job_category: str | None = Field(None, max_length=100)
     assigned_to_user_id: int | None = None
+    contact_name: str | None = Field(None, max_length=255)
+    contact_email: EmailStr | None = None
 
     @field_validator("remote_policy")
     @classmethod
