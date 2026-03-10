@@ -800,3 +800,52 @@ def recruiter_migration_history(
         }
         for j in jobs
     ]
+
+
+@router.post("/repair-contacts")
+def repair_contact_names(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    db: Session = Depends(get_session),
+):
+    """Repair migrated contacts: split 'name' → first_name/last_name.
+
+    Fixes contacts that were imported with a combined 'name' field
+    instead of separate first_name/last_name fields.
+    """
+    from app.models.recruiter_client import RecruiterClient
+
+    clients = (
+        db.execute(
+            select(RecruiterClient).where(
+                RecruiterClient.recruiter_profile_id == profile.id,
+                RecruiterClient.contacts.isnot(None),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    repaired = 0
+    for client in clients:
+        contacts = client.contacts
+        if not contacts:
+            continue
+        changed = False
+        for entry in contacts:
+            # Split combined "name" into first_name / last_name
+            if "name" in entry and "first_name" not in entry:
+                parts = (entry.pop("name") or "").split(" ", 1)
+                entry["first_name"] = parts[0] if parts else ""
+                entry["last_name"] = parts[1] if len(parts) > 1 else ""
+                changed = True
+            # Rename "title" to keep it but ensure role is present
+            if "title" in entry and "role" not in entry:
+                entry["role"] = entry.pop("title")
+                changed = True
+        if changed:
+            # Force SQLAlchemy to detect JSONB mutation
+            client.contacts = list(contacts)
+            repaired += 1
+
+    db.commit()
+    return {"repaired_clients": repaired}

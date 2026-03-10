@@ -380,8 +380,8 @@ def _import_contacts(
                 # Append to contacts JSONB array
                 contact_entry = {
                     k: v for k, v in {
-                        "name": name, "email": email, "phone": phone,
-                        "title": title, "role": role,
+                        "first_name": first_name, "last_name": last_name,
+                        "email": email, "phone": phone, "role": role,
                     }.items() if v
                 }
                 if contact_entry:
