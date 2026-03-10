@@ -3,7 +3,7 @@
 import logging
 import os
 import tempfile
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
@@ -282,13 +282,20 @@ def list_my_jobs(
         EmployerJob.archived == archived,
     )
     if status_filter:
-        allowed = ("draft", "active", "paused", "closed")
+        allowed = ("draft", "active", "paused", "closed", "expired")
         if status_filter not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status filter. Must be one of: {', '.join(allowed)}",
             )
-        stmt = stmt.where(EmployerJob.status == status_filter)
+        if status_filter == "expired":
+            today = date.today()
+            stmt = stmt.where(
+                EmployerJob.close_date < today,
+                EmployerJob.status.in_(("active", "paused")),
+            )
+        else:
+            stmt = stmt.where(EmployerJob.status == status_filter)
 
     # Sort: deadline descending (nulls last), then matched candidates descending
     stmt = stmt.order_by(
@@ -1095,6 +1102,79 @@ def unarchive_job(
     session.refresh(job)
 
     return {"message": "Job unarchived successfully", "job_id": job.id}
+
+
+@router.post("/jobs/bulk-archive")
+def bulk_archive_jobs(
+    ids: list[int] = Query(..., max_length=100),
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Archive multiple job postings at once."""
+    if not ids or len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 job IDs.",
+        )
+    jobs = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id.in_(ids),
+            EmployerJob.employer_id == employer.id,
+            EmployerJob.archived == False,  # noqa: E712
+        )
+    ).scalars().all()
+    now = datetime.now(UTC)
+    archived_ids = []
+    for job in jobs:
+        old_status = job.status
+        job.archived = True
+        job.archived_at = now
+        job.archived_reason = "bulk"
+        job.status = "closed"
+        archived_ids.append(job.id)
+        _enqueue_distribution_jobs(job.id, old_status, "closed", content_changed=False)
+        try:
+            from app.services.job_pipeline import deactivate_employer_job_proxy
+            from app.services.queue import get_queue
+
+            get_queue().enqueue(deactivate_employer_job_proxy, job.id)
+        except Exception:
+            logger.debug("Failed to enqueue deactivate for job %s", job.id)
+    session.commit()
+    return {"archived": len(archived_ids), "ids": archived_ids}
+
+
+@router.post("/jobs/bulk-delete")
+def bulk_delete_jobs(
+    ids: list[int] = Query(..., max_length=100),
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Delete multiple job postings at once."""
+    if not ids or len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 job IDs.",
+        )
+    jobs = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id.in_(ids),
+            EmployerJob.employer_id == employer.id,
+        )
+    ).scalars().all()
+    deleted_ids = []
+    for job in jobs:
+        try:
+            from app.services.job_pipeline import deactivate_employer_job_proxy
+            from app.services.queue import get_queue
+
+            get_queue().enqueue(deactivate_employer_job_proxy, job.id)
+        except Exception:
+            logger.debug("Failed to enqueue deactivate for job %s", job.id)
+        deleted_ids.append(job.id)
+        session.delete(job)
+    session.commit()
+    return {"deleted": len(deleted_ids), "ids": deleted_ids}
 
 
 @router.get("/jobs/{job_id}/top-candidates", response_model=TopCandidatesResponse)

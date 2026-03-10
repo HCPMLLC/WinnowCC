@@ -39,6 +39,11 @@ export default function JobsPage() {
   const [archivedJobs, setArchivedJobs] = useState<Job[]>([]);
   const [statusFilter, setStatusFilter] = useState("");
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [bulkAction, setBulkAction] = useState<
+    "idle" | "archiving" | "deleting"
+  >("idle");
 
   async function fetchJobs(archived: boolean) {
     try {
@@ -63,6 +68,7 @@ export default function JobsPage() {
 
   useEffect(() => {
     setIsLoading(true);
+    setSelected(new Set());
     fetchJobs(false).finally(() => setIsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [statusFilter]);
@@ -71,6 +77,7 @@ export default function JobsPage() {
     if (viewTab === "archived") {
       fetchJobs(true);
     }
+    setSelected(new Set());
     // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchJobs is a closure over statusFilter, already tracked
   }, [viewTab]);
 
@@ -90,6 +97,90 @@ export default function JobsPage() {
   }
 
   const displayedJobs = viewTab === "active" ? jobs : archivedJobs;
+  const allSelected =
+    displayedJobs.length > 0 && displayedJobs.every((j) => selected.has(j.id));
+
+  function toggleSelect(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(displayedJobs.map((j) => j.id)));
+    }
+  }
+
+  async function handleBulkArchive() {
+    if (selected.size === 0) return;
+    if (
+      !window.confirm(
+        `Archive ${selected.size} job${selected.size !== 1 ? "s" : ""}? They will be closed and moved to the Archived tab.`,
+      )
+    )
+      return;
+
+    setBulkAction("archiving");
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      for (const id of selected) params.append("ids", String(id));
+      const res = await fetch(
+        `${API_BASE}/api/employer/jobs/bulk-archive?${params.toString()}`,
+        { method: "POST", credentials: "include" },
+      );
+      if (res.ok) {
+        setSelected(new Set());
+        fetchJobs(false);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Failed to archive jobs");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setBulkAction("idle");
+    }
+  }
+
+  async function handleBulkDelete() {
+    if (selected.size === 0) return;
+    if (
+      !window.confirm(
+        `Delete ${selected.size} job${selected.size !== 1 ? "s" : ""}? This cannot be undone.`,
+      )
+    )
+      return;
+
+    setBulkAction("deleting");
+    setError("");
+    try {
+      const params = new URLSearchParams();
+      for (const id of selected) params.append("ids", String(id));
+      const res = await fetch(
+        `${API_BASE}/api/employer/jobs/bulk-delete?${params.toString()}`,
+        { method: "POST", credentials: "include" },
+      );
+      if (res.ok) {
+        setSelected(new Set());
+        fetchJobs(false);
+        if (viewTab === "archived") fetchJobs(true);
+      } else {
+        const data = await res.json().catch(() => ({}));
+        setError(data.detail || "Failed to delete jobs");
+      }
+    } catch {
+      setError("Network error");
+    } finally {
+      setBulkAction("idle");
+    }
+  }
 
   return (
     <div>
@@ -138,10 +229,10 @@ export default function JobsPage() {
         </nav>
       </div>
 
-      {/* Status filter (active tab only) */}
+      {/* Status filter + bulk actions (active tab only) */}
       {viewTab === "active" && (
         <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center gap-4">
+          <div className="flex flex-wrap items-center gap-4">
             <label className="text-sm font-medium text-slate-700">
               Filter by status:
             </label>
@@ -155,8 +246,57 @@ export default function JobsPage() {
               <option value="active">Active</option>
               <option value="paused">Paused</option>
               <option value="closed">Closed</option>
+              <option value="expired">Expired</option>
             </select>
+
+            {displayedJobs.length > 0 && (
+              <>
+                <div className="h-5 w-px bg-slate-200" />
+                <label className="flex cursor-pointer items-center gap-2 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={allSelected}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  />
+                  Select all ({displayedJobs.length})
+                </label>
+              </>
+            )}
+
+            {selected.size > 0 && (
+              <>
+                <span className="text-sm font-medium text-slate-700">
+                  {selected.size} selected
+                </span>
+                <div className="h-5 w-px bg-slate-200" />
+                <button
+                  onClick={handleBulkArchive}
+                  disabled={bulkAction !== "idle"}
+                  className="rounded-md bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
+                >
+                  {bulkAction === "archiving"
+                    ? "Archiving..."
+                    : `Archive Selected (${selected.size})`}
+                </button>
+                <button
+                  onClick={handleBulkDelete}
+                  disabled={bulkAction !== "idle"}
+                  className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+                >
+                  {bulkAction === "deleting"
+                    ? "Deleting..."
+                    : `Delete Selected (${selected.size})`}
+                </button>
+              </>
+            )}
           </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mb-4 rounded-md bg-red-50 p-3 text-sm text-red-700">
+          {error}
         </div>
       )}
 
@@ -193,6 +333,19 @@ export default function JobsPage() {
         <div className="space-y-4">
           {displayedJobs.map((job) => (
             <div key={job.id} className="flex items-center gap-4">
+              {viewTab === "active" && (
+                <div
+                  className="flex items-center pt-1"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selected.has(job.id)}
+                    onChange={() => toggleSelect(job.id)}
+                    className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                  />
+                </div>
+              )}
               <Link href={`/employer/jobs/${job.id}`} className="flex-1">
                 <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md">
                   <div className="flex items-start justify-between">

@@ -1913,13 +1913,20 @@ def list_recruiter_jobs(
         RecruiterJob.recruiter_profile_id == profile.id,
     )
     if status_filter:
-        allowed = ("draft", "active", "paused", "closed")
+        allowed = ("draft", "active", "paused", "closed", "expired")
         if status_filter not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status filter. Must be one of: {', '.join(allowed)}",
             )
-        stmt = stmt.where(RecruiterJob.status == status_filter)
+        if status_filter == "expired":
+            now = datetime.now(UTC)
+            stmt = stmt.where(
+                RecruiterJob.closes_at < now,
+                RecruiterJob.status.in_(("active", "paused")),
+            )
+        else:
+            stmt = stmt.where(RecruiterJob.status == status_filter)
 
     if search:
         pattern = f"%{search}%"

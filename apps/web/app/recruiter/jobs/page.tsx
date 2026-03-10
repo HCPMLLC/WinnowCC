@@ -911,6 +911,7 @@ export default function RecruiterJobsPage() {
             <option value="active">Active</option>
             <option value="paused">Paused</option>
             <option value="closed">Closed</option>
+            <option value="expired">Expired</option>
           </select>
 
           <label className="text-sm font-medium text-slate-700">
