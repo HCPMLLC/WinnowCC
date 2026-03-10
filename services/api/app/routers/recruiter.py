@@ -1913,7 +1913,10 @@ def list_recruiter_jobs(
         RecruiterJob.recruiter_profile_id == profile.id,
     )
     if status_filter:
-        allowed = ("draft", "active", "paused", "closed", "expired")
+        allowed = (
+            "draft", "active", "paused", "closed",
+            "expired", "no_deadline", "no_job_id",
+        )
         if status_filter not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -1924,6 +1927,15 @@ def list_recruiter_jobs(
             stmt = stmt.where(
                 RecruiterJob.closes_at < now,
                 RecruiterJob.status.in_(("active", "paused")),
+            )
+        elif status_filter == "no_deadline":
+            stmt = stmt.where(RecruiterJob.closes_at.is_(None))
+        elif status_filter == "no_job_id":
+            stmt = stmt.where(
+                or_(
+                    RecruiterJob.job_id_external.is_(None),
+                    RecruiterJob.job_id_external == "",
+                )
             )
         else:
             stmt = stmt.where(RecruiterJob.status == status_filter)

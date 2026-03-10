@@ -26,6 +26,7 @@ interface RecruiterJob {
   positions_to_fill: number;
   positions_filled: number;
   department: string | null;
+  job_id_external: string | null;
   matched_candidates_count: number;
   created_at: string;
   posted_at: string | null;
@@ -926,6 +927,8 @@ export default function RecruiterJobsPage() {
             <option value="paused">Paused</option>
             <option value="closed">Closed</option>
             <option value="expired">Expired</option>
+            <option value="no_deadline">No Deadline</option>
+            <option value="no_job_id">No Job ID</option>
           </select>
 
           <label className="text-sm font-medium text-slate-700">
@@ -1056,6 +1059,9 @@ export default function RecruiterJobsPage() {
               >
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
+                    <p className="mb-1 text-xs font-medium text-slate-400">
+                      ID: {job.job_id_external || job.id}
+                    </p>
                     <div className="mb-2 flex items-center gap-3">
                       <h3 className="text-lg font-semibold text-slate-900">
                         {job.title}

@@ -261,6 +261,8 @@ export default function JobsPage() {
               <option value="paused">Paused</option>
               <option value="closed">Closed</option>
               <option value="expired">Expired</option>
+              <option value="no_deadline">No Deadline</option>
+              <option value="no_job_id">No Job ID</option>
             </select>
 
             {displayedJobs.length > 0 && (
