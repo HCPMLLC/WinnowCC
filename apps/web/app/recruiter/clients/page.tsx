@@ -86,6 +86,127 @@ function getClientContacts(c: Client): ContactEntry[] {
   return [];
 }
 
+function ClientCard({ c, isChild }: { c: Client; isChild?: boolean }) {
+  const clientContacts = getClientContacts(c);
+  const primaryContact = clientContacts[0];
+  return (
+    <Link href={`/recruiter/clients/${c.id}`}>
+      <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${isChild ? "border-l-4 border-l-slate-300" : ""}`}>
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <div className="mb-1 flex items-center gap-3">
+              <h3 className="text-lg font-semibold text-slate-900">{c.company_name}</h3>
+              <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLORS[c.status] ?? "bg-slate-100 text-slate-600"}`}>{c.status}</span>
+              {c.contract_vehicle && (
+                <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+                  {c.contract_vehicle}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm text-slate-500">
+              {isChild && c.parent_company_name && <span className="text-slate-400">Under: {c.parent_company_name}</span>}
+              {c.industry && <span>{c.industry}</span>}
+              {(primaryContact?.first_name || primaryContact?.last_name) && <span>{[primaryContact.first_name, primaryContact.last_name].filter(Boolean).join(" ")}{primaryContact.role ? ` (${primaryContact.role})` : ""}</span>}
+              {clientContacts.length > 1 && <span>+{clientContacts.length - 1} more contact{clientContacts.length > 2 ? "s" : ""}</span>}
+              {c.contract_type && <span className="capitalize">{c.contract_type.replace("_", " ")}</span>}
+              {c.fee_percentage && <span>{c.fee_percentage}% fee</span>}
+            </div>
+            <div className="mt-2 flex gap-4 text-sm text-slate-500">
+              <span className="font-medium text-slate-700">{c.job_count} job{c.job_count !== 1 ? "s" : ""}</span>
+              <span>Added {new Date(c.created_at).toLocaleDateString()}</span>
+            </div>
+          </div>
+          <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
+function ClientTree({ clients }: { clients: Client[] }) {
+  const [expanded, setExpanded] = useState<Set<number>>(new Set());
+
+  // Build parent→children map
+  const childrenMap = new Map<number, Client[]>();
+  const topLevel: Client[] = [];
+
+  for (const c of clients) {
+    if (c.parent_client_id) {
+      const siblings = childrenMap.get(c.parent_client_id) || [];
+      siblings.push(c);
+      childrenMap.set(c.parent_client_id, siblings);
+    } else {
+      topLevel.push(c);
+    }
+  }
+
+  function toggleExpand(id: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      {topLevel.map((parent) => {
+        const children = childrenMap.get(parent.id) || [];
+        const hasChildren = children.length > 0;
+        const isExpanded = expanded.has(parent.id);
+
+        return (
+          <div key={parent.id}>
+            <div className="flex items-start gap-2">
+              {hasChildren ? (
+                <button
+                  onClick={() => toggleExpand(parent.id)}
+                  className="mt-5 flex h-6 w-6 shrink-0 items-center justify-center rounded text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+                  title={isExpanded ? "Collapse" : `Expand (${children.length})`}
+                >
+                  <svg className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              ) : (
+                <div className="w-6 shrink-0" />
+              )}
+              <div className="flex-1">
+                <ClientCard c={parent} />
+                {hasChildren && !isExpanded && (
+                  <button
+                    onClick={() => toggleExpand(parent.id)}
+                    className="mt-1 ml-2 text-xs text-slate-400 hover:text-slate-600"
+                  >
+                    {children.length} sub-client{children.length !== 1 ? "s" : ""}
+                  </button>
+                )}
+              </div>
+            </div>
+            {hasChildren && isExpanded && (
+              <div className="ml-8 mt-2 space-y-2">
+                {children.map((child) => (
+                  <ClientCard key={child.id} c={child} isChild />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+
+      {/* Orphaned children (parent not in current filtered results) */}
+      {clients
+        .filter((c) => c.parent_client_id && !topLevel.some((p) => p.id === c.parent_client_id))
+        .map((c) => (
+          <div key={c.id} className="ml-8">
+            <ClientCard c={c} isChild />
+          </div>
+        ))}
+    </div>
+  );
+}
+
 export default function RecruiterClientsPage() {
   const [clients, setClients] = useState<Client[]>([]);
   const [loading, setLoading] = useState(true);
@@ -373,44 +494,7 @@ export default function RecruiterClientsPage() {
           <button onClick={() => setShowForm(true)} className="mt-4 rounded-md bg-slate-900 px-6 py-2 text-sm font-medium text-white hover:bg-slate-800">Add Your First Client</button>
         </div>
       ) : (
-        <div className="space-y-4">
-          {clients.map((c) => {
-            const clientContacts = getClientContacts(c);
-            const primaryContact = clientContacts[0];
-            return (
-              <Link key={c.id} href={`/recruiter/clients/${c.id}`}>
-                <div className={`rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition-shadow hover:shadow-md ${c.parent_client_id ? "ml-8 border-l-4 border-l-slate-300" : ""}`}>
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="mb-1 flex items-center gap-3">
-                        <h3 className="text-lg font-semibold text-slate-900">{c.company_name}</h3>
-                        <span className={`rounded-full px-2 py-0.5 text-xs font-medium capitalize ${STATUS_COLORS[c.status] ?? "bg-slate-100 text-slate-600"}`}>{c.status}</span>
-                        {c.contract_vehicle && (
-                          <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
-                            {c.contract_vehicle}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-wrap gap-4 text-sm text-slate-500">
-                        {c.parent_company_name && <span className="text-slate-400">Under: {c.parent_company_name}</span>}
-                        {c.industry && <span>{c.industry}</span>}
-                        {(primaryContact?.first_name || primaryContact?.last_name) && <span>{[primaryContact.first_name, primaryContact.last_name].filter(Boolean).join(" ")}{primaryContact.role ? ` (${primaryContact.role})` : ""}</span>}
-                        {clientContacts.length > 1 && <span>+{clientContacts.length - 1} more contact{clientContacts.length > 2 ? "s" : ""}</span>}
-                        {c.contract_type && <span className="capitalize">{c.contract_type.replace("_", " ")}</span>}
-                        {c.fee_percentage && <span>{c.fee_percentage}% fee</span>}
-                      </div>
-                      <div className="mt-2 flex gap-4 text-sm text-slate-500">
-                        <span className="font-medium text-slate-700">{c.job_count} job{c.job_count !== 1 ? "s" : ""}</span>
-                        <span>Added {new Date(c.created_at).toLocaleDateString()}</span>
-                      </div>
-                    </div>
-                    <svg className="h-5 w-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
-                  </div>
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+        <ClientTree clients={clients} />
       )}
     </div>
   );
