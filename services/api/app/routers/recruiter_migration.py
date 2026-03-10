@@ -837,8 +837,8 @@ def repair_contact_names(
         .all()
     )
 
-    # Group contacts by client_id
-    client_contacts: dict[int, list[dict]] = {}
+    # Group contacts by client_id, deduped by email/name
+    client_contacts: dict[int, dict[str, dict]] = {}
     for e in entities:
         cid = e.winnow_entity_id
         if not cid:
@@ -862,7 +862,11 @@ def repair_contact_names(
             if v
         }
         if entry:
-            client_contacts.setdefault(cid, []).append(entry)
+            # Deduplicate by email (or name if no email)
+            dedup_key = email or f"{first}|{last}"
+            contacts_for = client_contacts.setdefault(cid, {})
+            if dedup_key not in contacts_for:
+                contacts_for[dedup_key] = entry
 
     # Filter to only this recruiter's clients
     my_client_ids = set(
@@ -878,12 +882,13 @@ def repair_contact_names(
     from sqlalchemy.orm.attributes import flag_modified
 
     repaired = 0
-    for cid, new_contacts in client_contacts.items():
+    for cid, contacts_map in client_contacts.items():
         if cid not in my_client_ids:
             continue
         client = db.get(RecruiterClient, cid)
         if not client:
             continue
+        new_contacts = list(contacts_map.values())
         client.contacts = new_contacts
         flag_modified(client, "contacts")
         # Update legacy fields from first contact
