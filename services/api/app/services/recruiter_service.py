@@ -147,6 +147,131 @@ def get_client_job_count(session: Session, client_id: int) -> int:
     )
 
 
+def get_client_job_summary(
+    session: Session, profile_id: int, client_id: int
+) -> dict:
+    """Build job summary for a client and its children.
+
+    Returns data shaped for ``ClientJobSummaryResponse``.
+    """
+    from app.schemas.recruiter_crm import (
+        ClientJobGroup,
+        ClientJobSummaryResponse,
+        ContactJobGroup,
+        JobSummaryItem,
+    )
+
+    # Fetch the client
+    client = session.execute(
+        select(RecruiterClient).where(
+            RecruiterClient.id == client_id,
+            RecruiterClient.recruiter_profile_id == profile_id,
+        )
+    ).scalar_one_or_none()
+    if client is None:
+        return None
+
+    # Collect client IDs: self + children
+    children = session.execute(
+        select(RecruiterClient).where(
+            RecruiterClient.parent_client_id == client_id,
+            RecruiterClient.recruiter_profile_id == profile_id,
+        )
+    ).scalars().all()
+
+    client_map = {client.id: (client.company_name, True)}
+    for ch in children:
+        client_map[ch.id] = (ch.company_name, False)
+
+    all_ids = list(client_map.keys())
+
+    # Fetch all jobs for these clients
+    jobs = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.client_id.in_(all_ids),
+            RecruiterJob.recruiter_profile_id == profile_id,
+        ).order_by(RecruiterJob.closes_at.desc().nulls_last())
+    ).scalars().all()
+
+    def _to_item(j: RecruiterJob) -> JobSummaryItem:
+        cname = None
+        cemail = None
+        if j.primary_contact:
+            cname = j.primary_contact.get("name")
+            cemail = j.primary_contact.get("email")
+        return JobSummaryItem(
+            id=j.id,
+            title=j.title,
+            status=j.status,
+            job_id_external=j.job_id_external,
+            closes_at=j.closes_at,
+            contact_name=cname,
+            contact_email=cemail,
+            positions_to_fill=j.positions_to_fill or 1,
+            positions_filled=j.positions_filled or 0,
+        )
+
+    # Group by client + status
+    by_client: dict[int, dict[str, list]] = {}
+    for j in jobs:
+        cid = j.client_id
+        if cid not in by_client:
+            by_client[cid] = {}
+        by_client[cid].setdefault(j.status, []).append(_to_item(j))
+
+    groups = []
+    # Self first, then children alphabetically
+    ordered_ids = [client.id] + sorted(
+        [ch.id for ch in children],
+        key=lambda cid: client_map[cid][0].lower(),
+    )
+    for cid in ordered_ids:
+        if cid not in by_client:
+            continue
+        name, is_self = client_map[cid]
+        status_jobs = by_client[cid]
+        total = sum(len(v) for v in status_jobs.values())
+        groups.append(ClientJobGroup(
+            client_id=cid,
+            client_name=name,
+            is_self=is_self,
+            jobs_by_status=status_jobs,
+            total_jobs=total,
+        ))
+
+    # Group by primary contact
+    by_contact: dict[str, list] = {}
+    for j in jobs:
+        key = "Unassigned"
+        if j.primary_contact and j.primary_contact.get("name"):
+            key = j.primary_contact["name"]
+        by_contact.setdefault(key, []).append(j)
+
+    contact_groups = []
+    for cname in sorted(by_contact.keys()):
+        cjobs = by_contact[cname]
+        cemail = None
+        for cj in cjobs:
+            if cj.primary_contact and cj.primary_contact.get("email"):
+                cemail = cj.primary_contact["email"]
+                break
+        items = [_to_item(j) for j in cjobs]
+        contact_groups.append(ContactJobGroup(
+            contact_name=cname,
+            contact_email=cemail,
+            jobs=items,
+            total_jobs=len(items),
+        ))
+
+    return ClientJobSummaryResponse(
+        client_id=client.id,
+        client_name=client.company_name,
+        groups=groups,
+        by_contact=contact_groups,
+        total_jobs=len(jobs),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pipeline Candidates
 # ---------------------------------------------------------------------------

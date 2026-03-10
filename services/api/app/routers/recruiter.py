@@ -336,6 +336,26 @@ def get_client(
     return resp
 
 
+@router.get("/clients/{client_id}/job-summary")
+def get_client_job_summary(
+    client_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Job summary for a client and its children."""
+    from app.services.recruiter_service import (
+        get_client_job_summary as svc_summary,
+    )
+
+    result = svc_summary(session, profile.id, client_id)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Client not found.",
+        )
+    return result.model_dump(mode="json")
+
+
 @router.put("/clients/{client_id}", response_model=RecruiterClientResponse)
 def update_client(
     client_id: int,

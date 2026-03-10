@@ -83,6 +83,41 @@ interface Activity {
   created_at: string;
 }
 
+interface JobSummaryItem {
+  id: number;
+  title: string;
+  status: string;
+  job_id_external: string | null;
+  closes_at: string | null;
+  contact_name: string | null;
+  contact_email: string | null;
+  positions_to_fill: number;
+  positions_filled: number;
+}
+
+interface ClientJobGroup {
+  client_id: number;
+  client_name: string;
+  is_self: boolean;
+  jobs_by_status: Record<string, JobSummaryItem[]>;
+  total_jobs: number;
+}
+
+interface ContactJobGroup {
+  contact_name: string;
+  contact_email: string | null;
+  jobs: JobSummaryItem[];
+  total_jobs: number;
+}
+
+interface JobSummary {
+  client_id: number;
+  client_name: string;
+  groups: ClientJobGroup[];
+  by_contact: ContactJobGroup[];
+  total_jobs: number;
+}
+
 const EMPTY_CONTACT: ContactEntry = { first_name: "", last_name: "", email: "", phone: "", role: "" };
 
 function getClientContacts(c: Client): ContactEntry[] {
@@ -102,6 +137,8 @@ export default function ClientDetailPage() {
   const [client, setClient] = useState<Client | null>(null);
   const [allClients, setAllClients] = useState<ClientOption[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
+  const [jobSummary, setJobSummary] = useState<JobSummary | null>(null);
+  const [jobTab, setJobTab] = useState<"by_client" | "by_contact">("by_client");
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -135,10 +172,12 @@ export default function ClientDetailPage() {
       fetch(`${API_BASE}/api/recruiter/clients/${clientId}`, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
       fetch(`${API_BASE}/api/recruiter/activities?client_id=${clientId}&limit=20`, { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
       fetch(`${API_BASE}/api/recruiter/clients`, { credentials: "include" }).then((r) => (r.ok ? r.json() : [])),
+      fetch(`${API_BASE}/api/recruiter/clients/${clientId}/job-summary`, { credentials: "include" }).then((r) => (r.ok ? r.json() : null)),
     ])
-      .then(([c, acts, allC]) => {
+      .then(([c, acts, allC, js]) => {
         setClient(c);
         setActivities(acts || []);
+        setJobSummary(js);
         setAllClients((allC || []).filter((cl: ClientOption) => cl.id !== parseInt(clientId)));
         if (c) {
           setForm({
@@ -386,6 +425,116 @@ export default function ClientDetailPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Jobs Summary */}
+      {jobSummary && jobSummary.total_jobs > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">
+              Jobs <span className="ml-1 text-sm font-normal text-slate-500">({jobSummary.total_jobs})</span>
+            </h2>
+            <div className="flex rounded-lg border border-slate-200 text-sm">
+              <button
+                onClick={() => setJobTab("by_client")}
+                className={`px-3 py-1.5 font-medium ${jobTab === "by_client" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"} rounded-l-lg`}
+              >
+                By Client
+              </button>
+              <button
+                onClick={() => setJobTab("by_contact")}
+                className={`px-3 py-1.5 font-medium ${jobTab === "by_contact" ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"} rounded-r-lg`}
+              >
+                By Contact
+              </button>
+            </div>
+          </div>
+
+          {jobTab === "by_client" ? (
+            <div className="space-y-4">
+              {jobSummary.groups.map((group) => (
+                <div key={group.client_id}>
+                  <h3 className="mb-2 text-sm font-semibold text-slate-700">
+                    {group.client_name}
+                    {group.is_self && <span className="ml-1 text-xs font-normal text-slate-400">(this client)</span>}
+                    <span className="ml-1 text-xs font-normal text-slate-500">({group.total_jobs})</span>
+                  </h3>
+                  {Object.entries(group.jobs_by_status).map(([st, jobs]) => (
+                    <div key={st} className="mb-2 ml-2">
+                      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-slate-400">{st} ({jobs.length})</p>
+                      <div className="space-y-1">
+                        {jobs.map((job) => (
+                          <Link
+                            key={job.id}
+                            href={`/recruiter/jobs/${job.id}/edit`}
+                            className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 text-sm hover:bg-slate-50"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <span className="font-medium text-slate-800">{job.title}</span>
+                              {job.job_id_external && (
+                                <span className="ml-2 text-xs text-slate-400">{job.job_id_external}</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 text-xs text-slate-500">
+                              {job.contact_name && <span>{job.contact_name}</span>}
+                              {job.closes_at && (
+                                <span>{new Date(job.closes_at).toLocaleDateString()}</span>
+                              )}
+                              <span>{job.positions_filled}/{job.positions_to_fill}</span>
+                            </div>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {jobSummary.by_contact.length === 0 ? (
+                <p className="text-sm text-slate-500">No contacts assigned to jobs.</p>
+              ) : (
+                jobSummary.by_contact.map((cg, idx) => (
+                  <div key={idx}>
+                    <h3 className="mb-2 text-sm font-semibold text-slate-700">
+                      {cg.contact_name}
+                      {cg.contact_email && (
+                        <span className="ml-2 text-xs font-normal text-slate-400">{cg.contact_email}</span>
+                      )}
+                      <span className="ml-1 text-xs font-normal text-slate-500">({cg.total_jobs})</span>
+                    </h3>
+                    <div className="space-y-1 ml-2">
+                      {cg.jobs.map((job) => (
+                        <Link
+                          key={job.id}
+                          href={`/recruiter/jobs/${job.id}/edit`}
+                          className="flex items-center justify-between rounded-md border border-slate-100 px-3 py-2 text-sm hover:bg-slate-50"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <span className="font-medium text-slate-800">{job.title}</span>
+                            {job.job_id_external && (
+                              <span className="ml-2 text-xs text-slate-400">{job.job_id_external}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-slate-500">
+                            <span className={`rounded-full px-2 py-0.5 ${job.status === "open" ? "bg-emerald-100 text-emerald-700" : job.status === "closed" ? "bg-slate-100 text-slate-600" : "bg-amber-100 text-amber-700"}`}>
+                              {job.status}
+                            </span>
+                            {job.closes_at && (
+                              <span>{new Date(job.closes_at).toLocaleDateString()}</span>
+                            )}
+                            <span>{job.positions_filled}/{job.positions_to_fill}</span>
+                          </div>
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
       )}
 

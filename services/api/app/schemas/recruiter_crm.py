@@ -156,6 +156,54 @@ class RecruiterClientResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Client Job Summary
+# ---------------------------------------------------------------------------
+
+
+class JobSummaryItem(BaseModel):
+    """Single job in a client job summary."""
+
+    id: int
+    title: str
+    status: str
+    job_id_external: str | None = None
+    closes_at: datetime | None = None
+    contact_name: str | None = None
+    contact_email: str | None = None
+    positions_to_fill: int = 1
+    positions_filled: int = 0
+
+
+class ClientJobGroup(BaseModel):
+    """Jobs grouped under a single client."""
+
+    client_id: int
+    client_name: str
+    is_self: bool = False
+    jobs_by_status: dict[str, list[JobSummaryItem]]
+    total_jobs: int
+
+
+class ContactJobGroup(BaseModel):
+    """Jobs grouped under a single primary contact."""
+
+    contact_name: str
+    contact_email: str | None = None
+    jobs: list[JobSummaryItem]
+    total_jobs: int
+
+
+class ClientJobSummaryResponse(BaseModel):
+    """Full job summary for a client and its children."""
+
+    client_id: int
+    client_name: str
+    groups: list[ClientJobGroup]
+    by_contact: list[ContactJobGroup]
+    total_jobs: int
+
+
+# ---------------------------------------------------------------------------
 # Pipeline Candidates
 # ---------------------------------------------------------------------------
 
