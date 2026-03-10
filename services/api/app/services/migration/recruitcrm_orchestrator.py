@@ -545,38 +545,89 @@ def _import_jobs(
                                 if primary_contact:
                                     break
 
-            rjob = RecruiterJob(
-                recruiter_profile_id=recruiter_profile_id,
-                title=title,
-                description=description or f"Imported from Recruit CRM: {title}",
-                requirements=requirements,
-                nice_to_haves=nice_to_haves,
-                client_company_name=company_name or None,
-                client_id=client_id,
-                location=location,
-                employment_type=employment_type,
-                salary_min=salary_min,
-                salary_max=salary_max,
-                status=status,
-                department=department,
-                job_category=job_category,
-                job_id_external=job_id_external,
-                primary_contact=primary_contact,
-                positions_to_fill=positions_to_fill or 1,
-                closes_at=close_date,
-                start_at=start_date,
+            # Dedup by (title, company) scoped to recruiter
+            dedup_stmt = select(RecruiterJob).where(
+                RecruiterJob.recruiter_profile_id == recruiter_profile_id,
+                func.lower(RecruiterJob.title) == title.lower(),
             )
-            db.add(rjob)
-            db.flush()
+            if company_name:
+                dedup_stmt = dedup_stmt.where(
+                    func.lower(RecruiterJob.client_company_name)
+                    == company_name.lower()
+                )
+            existing_job = db.execute(dedup_stmt).scalar_one_or_none()
 
-            if slug:
-                slug_map[f"job:{slug}"] = rjob.id
+            if existing_job:
+                # Merge: fill in missing fields on existing record
+                if job_id_external and not existing_job.job_id_external:
+                    existing_job.job_id_external = job_id_external
+                if close_date and not existing_job.closes_at:
+                    existing_job.closes_at = close_date
+                if start_date and not existing_job.start_at:
+                    existing_job.start_at = start_date
+                if client_id and not existing_job.client_id:
+                    existing_job.client_id = client_id
+                if primary_contact and not existing_job.primary_contact:
+                    existing_job.primary_contact = primary_contact
+                if description and not existing_job.description:
+                    existing_job.description = description
+                if requirements and not existing_job.requirements:
+                    existing_job.requirements = requirements
+                if nice_to_haves and not existing_job.nice_to_haves:
+                    existing_job.nice_to_haves = nice_to_haves
+                if location and not existing_job.location:
+                    existing_job.location = location
+                if employment_type and not existing_job.employment_type:
+                    existing_job.employment_type = employment_type
+                if department and not existing_job.department:
+                    existing_job.department = department
+                if job_category and not existing_job.job_category:
+                    existing_job.job_category = job_category
+                if salary_min and not existing_job.salary_min:
+                    existing_job.salary_min = salary_min
+                if salary_max and not existing_job.salary_max:
+                    existing_job.salary_max = salary_max
 
-            _record_entity(
-                migration_job_id, "job", slug or str(i),
-                "recruiter_job", rjob.id, row, "imported", db,
-            )
-            type_stats["imported"] += 1
+                if slug:
+                    slug_map[f"job:{slug}"] = existing_job.id
+                _record_entity(
+                    migration_job_id, "job", slug or str(i),
+                    "recruiter_job", existing_job.id, row, "merged", db,
+                )
+                type_stats["merged"] += 1
+            else:
+                rjob = RecruiterJob(
+                    recruiter_profile_id=recruiter_profile_id,
+                    title=title,
+                    description=description or f"Imported from Recruit CRM: {title}",
+                    requirements=requirements,
+                    nice_to_haves=nice_to_haves,
+                    client_company_name=company_name or None,
+                    client_id=client_id,
+                    location=location,
+                    employment_type=employment_type,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    status=status,
+                    department=department,
+                    job_category=job_category,
+                    job_id_external=job_id_external,
+                    primary_contact=primary_contact,
+                    positions_to_fill=positions_to_fill or 1,
+                    closes_at=close_date,
+                    start_at=start_date,
+                )
+                db.add(rjob)
+                db.flush()
+
+                if slug:
+                    slug_map[f"job:{slug}"] = rjob.id
+
+                _record_entity(
+                    migration_job_id, "job", slug or str(i),
+                    "recruiter_job", rjob.id, row, "imported", db,
+                )
+                type_stats["imported"] += 1
 
             if (i + 1) % BATCH_SIZE == 0:
                 db.commit()
