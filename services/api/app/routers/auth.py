@@ -13,7 +13,7 @@ from fastapi import (
     Request,
     Response,
 )
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -546,6 +546,50 @@ def admin_set_role(
         "role": user.role,
         "is_admin": user.is_admin,
     }
+
+
+ROLE_UPGRADE_MAP: dict[str, dict[str, str]] = {
+    # current_role -> { added_role -> new_role }
+    "candidate": {"employer": "both", "recruiter": "both"},
+    "employer": {"candidate": "both", "recruiter": "both"},
+    "recruiter": {"candidate": "both", "employer": "both"},
+}
+
+
+class RoleUpgradeRequest(BaseModel):
+    add_role: str = Field(..., pattern=r"^(candidate|employer|recruiter)$")
+
+
+@router.post("/upgrade-role")
+def upgrade_role(
+    payload: RoleUpgradeRequest,
+    user: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Self-service role upgrade. Adds a role to the current user.
+
+    A candidate can add "employer" or "recruiter" (becomes "both").
+    An employer can add "candidate" or "recruiter" (becomes "both").
+    Already "both" or "admin" users cannot upgrade further.
+    """
+    current = user.role or "candidate"
+    if current in ("both", "admin"):
+        return {"status": "ok", "role": current, "message": "Already has full access."}
+
+    upgrades = ROLE_UPGRADE_MAP.get(current)
+    if not upgrades or payload.add_role not in upgrades:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Cannot add '{payload.add_role}' to current role '{current}'.",
+        )
+
+    new_role = upgrades[payload.add_role]
+    user.role = new_role
+    user.mfa_required = True
+    session.commit()
+
+    logger.info("User %s upgraded role: %s -> %s", user.email, current, new_role)
+    return {"status": "ok", "role": new_role, "previous_role": current}
 
 
 @router.post("/oauth/callback", response_model=MeResponse)

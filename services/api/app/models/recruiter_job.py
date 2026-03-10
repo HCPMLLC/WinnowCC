@@ -75,6 +75,13 @@ class RecruiterJob(Base):
         Integer, ForeignKey("employer_jobs.id", ondelete="SET NULL"), nullable=True
     )
 
+    # Recruiter-to-recruiter link (Sub's job → Prime's job)
+    upstream_recruiter_job_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("recruiter_jobs.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     # Status & application
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default="draft"
@@ -111,3 +118,6 @@ class RecruiterJob(Base):
         "RecruiterPipelineCandidate", back_populates="job"
     )
     employer_job = relationship("EmployerJob")
+    upstream_job = relationship(
+        "RecruiterJob", remote_side=[id], foreign_keys=[upstream_recruiter_job_id]
+    )

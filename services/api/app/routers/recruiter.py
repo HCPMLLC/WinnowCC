@@ -3180,6 +3180,41 @@ def link_employer_job(
     }
 
 
+@router.patch("/jobs/{job_id}/link-upstream-job")
+def link_upstream_job(
+    job_id: int,
+    upstream_job_id: int | None = Query(None),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Link or unlink a Sub's job to/from a Prime's recruiter job."""
+    from app.services.job_linking import link_upstream_recruiter_job
+
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    try:
+        link_upstream_recruiter_job(session, job, upstream_job_id)
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail=str(e)
+        ) from e
+
+    session.commit()
+    return {
+        "message": "linked" if upstream_job_id else "unlinked",
+        "upstream_recruiter_job_id": upstream_job_id,
+    }
+
+
 # ============================================================================
 # CANDIDATE SUBMISSIONS
 # ============================================================================

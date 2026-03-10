@@ -56,3 +56,22 @@ def manual_link_recruiter_job(
         if not employer_job:
             raise ValueError(f"Employer job {employer_job_id} not found")
     recruiter_job.employer_job_id = employer_job_id
+
+
+def link_upstream_recruiter_job(
+    session: Session,
+    recruiter_job: RecruiterJob,
+    upstream_job_id: int | None,
+) -> None:
+    """Link or unlink a Sub's job to/from a Prime's recruiter job.
+
+    Validates that the upstream job exists and belongs to a *different*
+    recruiter (a Sub cannot link to its own job).
+    """
+    if upstream_job_id is not None:
+        upstream = session.get(RecruiterJob, upstream_job_id)
+        if not upstream:
+            raise ValueError(f"Upstream recruiter job {upstream_job_id} not found")
+        if upstream.recruiter_profile_id == recruiter_job.recruiter_profile_id:
+            raise ValueError("Cannot link to your own job as upstream")
+    recruiter_job.upstream_recruiter_job_id = upstream_job_id
