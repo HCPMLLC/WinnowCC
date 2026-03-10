@@ -112,6 +112,26 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
         logger.info(f"Registered {job_type}: {registered.id} (cron: {cron_string})")
 
 
+def _start_scaler_loop():
+    """Periodically send pressure requests to scale the worker service."""
+    worker_url = os.getenv("WORKER_HEALTH_URL")
+    if not worker_url:
+        logger.info("WORKER_HEALTH_URL not set, scaler loop disabled.")
+        return
+
+    from app.services.worker_scaler import scale_worker
+
+    logger.info("Starting worker scaler loop (every 30s).")
+    while True:
+        try:
+            result = scale_worker()
+            if result.get("pressure_sent", 0) > 0:
+                logger.info("Scaler result: %s", result)
+        except Exception:
+            logger.exception("Scaler loop error")
+        time.sleep(30)
+
+
 def main():
     global _shutdown_requested
 
@@ -120,6 +140,9 @@ def main():
 
     # Cloud Run requires a listening port for health checks
     threading.Thread(target=_start_health_server, daemon=True).start()
+
+    # Start worker autoscaler loop
+    threading.Thread(target=_start_scaler_loop, daemon=True).start()
 
     config = get_scheduler_config()
     logger.info(f"Scheduler configuration: {config}")

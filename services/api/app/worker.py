@@ -1,7 +1,9 @@
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from socketserver import ThreadingMixIn
 
 from dotenv import load_dotenv
 from redis import Redis
@@ -15,11 +17,29 @@ redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_conn = Redis.from_url(redis_url)
 
 
+class _ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle each request in a new thread so pressure POSTs don't block health GETs."""
+
+    daemon_threads = True
+
+
 class _HealthHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.end_headers()
         self.wfile.write(b'{"status":"ok"}')
+
+    def do_POST(self):
+        if self.path == "/_scale/pressure":
+            # Hold the connection open for 55s to create Cloud Run concurrency pressure.
+            # With --concurrency=1, this forces Cloud Run to spin up another instance.
+            time.sleep(55)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'{"status":"pressure_held"}')
+        else:
+            self.send_response(404)
+            self.end_headers()
 
     def log_message(self, format, *args):
         pass  # suppress request logs
@@ -27,7 +47,7 @@ class _HealthHandler(BaseHTTPRequestHandler):
 
 def _start_health_server():
     port = int(os.getenv("PORT", "8080"))
-    server = HTTPServer(("0.0.0.0", port), _HealthHandler)
+    server = _ThreadingHTTPServer(("0.0.0.0", port), _HealthHandler)
     server.serve_forever()
 
 
