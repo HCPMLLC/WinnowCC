@@ -218,7 +218,38 @@ def scheduled_archive_expired_jobs() -> dict:
                 )
 
         logger.info("Archived %d expired employer jobs", count)
-        return {"status": "completed", "archived_count": count, "error": None}
+
+        # Also close recruiter jobs whose closes_at has passed
+        from app.models.recruiter_job import RecruiterJob
+
+        now = datetime.now(UTC)
+        expired_recruiter = (
+            session.query(RecruiterJob)
+            .filter(
+                and_(
+                    RecruiterJob.closes_at < now,
+                    RecruiterJob.status.in_(["active", "paused"]),
+                )
+            )
+            .all()
+        )
+
+        recruiter_count = 0
+        for rjob in expired_recruiter:
+            rjob.status = "closed"
+            recruiter_count += 1
+
+        if recruiter_count:
+            session.commit()
+
+        logger.info("Closed %d expired recruiter jobs", recruiter_count)
+
+        return {
+            "status": "completed",
+            "archived_count": count,
+            "recruiter_closed_count": recruiter_count,
+            "error": None,
+        }
 
     except Exception as e:
         logger.exception("Failed to archive expired jobs: %s", e)

@@ -550,6 +550,12 @@ class JobFraudDetector:
 
 def _is_job_stale(job: Job, now: datetime) -> bool:
     """Check whether a job should be considered stale."""
+    if job.application_deadline:
+        deadline = job.application_deadline
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=UTC)
+        if now > deadline:
+            return True
     if job.last_seen_at:
         return (now - job.last_seen_at).days > STALE_LAST_SEEN_DAYS
     if job.posted_at:

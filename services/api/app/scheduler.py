@@ -26,6 +26,7 @@ from redis import Redis  # noqa: E402
 from rq_scheduler import Scheduler  # noqa: E402
 
 from app.services.scheduled_jobs import (  # noqa: E402
+    scheduled_archive_expired_jobs,
     scheduled_check_stale_jobs,
     scheduled_expire_introductions,
     scheduled_hard_delete_expired,
@@ -86,6 +87,7 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
         ("expire_introductions", "0 3 * * *", scheduled_expire_introductions, "default"),
         ("outreach", "*/15 * * * *", scheduled_process_outreach, "default"),
         ("stale_check", "0 2 * * *", scheduled_check_stale_jobs, "default"),
+        ("archive_expired", "0 2 * * *", scheduled_archive_expired_jobs, "default"),
         ("job_purge", "0 4 * * 0", scheduled_purge_inactive_jobs, "default"),
         ("hard_delete", "0 5 * * *", scheduled_hard_delete_expired, "default"),
         ("weekly_digest", "0 7 * * 0", scheduled_send_weekly_digests, "low"),
