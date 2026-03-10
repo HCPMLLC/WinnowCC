@@ -17,27 +17,28 @@ from pydantic import (
 
 ALLOWED_CONTRACT_TYPES = ["contingency", "retained", "rpo", "contract_staffing"]
 ALLOWED_CLIENT_STATUSES = ["active", "inactive", "prospect"]
-ALLOWED_CONTACT_ROLES = ["Purchaser", "Hiring Manager", "Prime Contractor"]
+ALLOWED_CONTACT_ROLES = [
+    "Purchaser", "Hiring Manager", "Prime Contractor", "Subcontractor",
+]
 
 # Import canonical industry list from employer schemas
 from app.schemas.employer import ALLOWED_INDUSTRIES
 
 
 class ContactEntry(BaseModel):
-    """A single contact on a client record."""
+    """A single contact on a client record.
+
+    Used for both input and output. Validation is lenient so data
+    already stored in the DB doesn't break response serialization.
+    """
+
+    model_config = ConfigDict(extra="ignore")
 
     first_name: str | None = Field(None, max_length=128)
     last_name: str | None = Field(None, max_length=128)
-    email: EmailStr | None = None
+    email: str | None = None
     phone: str | None = Field(None, max_length=50)
     role: str | None = None
-
-    @field_validator("role")
-    @classmethod
-    def validate_role(cls, v: str | None) -> str | None:
-        if v is not None and v not in ALLOWED_CONTACT_ROLES:
-            raise ValueError(f"role must be one of: {', '.join(ALLOWED_CONTACT_ROLES)}")
-        return v
 
 
 class RecruiterClientCreate(BaseModel):

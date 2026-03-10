@@ -67,7 +67,7 @@ const INDUSTRIES = [
   "Other",
 ];
 
-const CONTACT_ROLES = ["Purchaser", "Hiring Manager", "Prime Contractor"];
+const CONTACT_ROLES = ["Purchaser", "Hiring Manager", "Prime Contractor", "Subcontractor"];
 
 const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-800",

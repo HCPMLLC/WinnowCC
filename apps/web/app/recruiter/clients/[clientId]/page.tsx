@@ -36,7 +36,7 @@ const INDUSTRIES = [
   "Other",
 ];
 
-const CONTACT_ROLES = ["Purchaser", "Hiring Manager", "Prime Contractor"];
+const CONTACT_ROLES = ["Purchaser", "Hiring Manager", "Prime Contractor", "Subcontractor"];
 
 interface ContactEntry {
   first_name: string;
