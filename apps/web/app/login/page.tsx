@@ -138,7 +138,12 @@ function LoginForm() {
         window.location.href = dest;
       }
     } catch (e: any) {
-      setErr(e?.message || (isSignUp ? "Signup failed" : "Login failed"));
+      const msg = e?.message || "";
+      if (msg.toLowerCase().includes("failed to fetch") || msg.toLowerCase().includes("networkerror")) {
+        setErr("Unable to reach the server. Please check your internet connection and try again in a moment.");
+      } else {
+        setErr(msg || (isSignUp ? "Signup failed" : "Login failed"));
+      }
     } finally {
       setBusy(false);
     }

@@ -34,7 +34,6 @@ logger = logging.getLogger(__name__)
 
 # IMPORTANT: import routers only AFTER env is loaded
 # --- Rate limiting ---
-from slowapi import _rate_limit_exceeded_handler  # noqa: E402
 from slowapi.errors import RateLimitExceeded  # noqa: E402
 
 from app.middleware.rate_limit import limiter  # noqa: E402
@@ -116,9 +115,32 @@ from app.routers.webhooks import router as webhooks_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
 
-# Rate limiter state + exception handler
+# Rate limiter state + CORS-aware exception handler
 app.state.limiter = limiter
-app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
+
+async def _rate_limit_exceeded_handler_cors(request, exc):
+    """Return 429 with CORS headers so the browser doesn't block the response."""
+    from starlette.responses import JSONResponse
+
+    origin = request.headers.get("origin", "")
+    headers = {}
+    if origin in ALLOWED_ORIGINS:
+        headers["access-control-allow-origin"] = origin
+        headers["access-control-allow-credentials"] = "true"
+        headers["vary"] = "Origin"
+    return JSONResponse(
+        status_code=429,
+        content={
+            "detail": str(exc.detail)
+            if hasattr(exc, "detail")
+            else "Rate limit exceeded. Please try again shortly."
+        },
+        headers=headers,
+    )
+
+
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler_cors)
 
 
 # Global unhandled-exception handler — ensures all errors return a proper
