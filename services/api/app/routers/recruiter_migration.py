@@ -825,26 +825,31 @@ def repair_contact_names(
         .all()
     )
 
+    from sqlalchemy.orm.attributes import flag_modified
+
     repaired = 0
     for client in clients:
         contacts = client.contacts
         if not contacts:
             continue
         changed = False
+        new_contacts = []
         for entry in contacts:
+            e = dict(entry)  # copy to avoid mutation issues
             # Split combined "name" into first_name / last_name
-            if "name" in entry and "first_name" not in entry:
-                parts = (entry.pop("name") or "").split(" ", 1)
-                entry["first_name"] = parts[0] if parts else ""
-                entry["last_name"] = parts[1] if len(parts) > 1 else ""
+            if "name" in e and "first_name" not in e:
+                parts = (e.pop("name") or "").split(" ", 1)
+                e["first_name"] = parts[0] if parts else ""
+                e["last_name"] = parts[1] if len(parts) > 1 else ""
                 changed = True
             # Rename "title" to keep it but ensure role is present
-            if "title" in entry and "role" not in entry:
-                entry["role"] = entry.pop("title")
+            if "title" in e and "role" not in e:
+                e["role"] = e.pop("title")
                 changed = True
+            new_contacts.append(e)
         if changed:
-            # Force SQLAlchemy to detect JSONB mutation
-            client.contacts = list(contacts)
+            client.contacts = new_contacts
+            flag_modified(client, "contacts")
             repaired += 1
 
     db.commit()
