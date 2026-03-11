@@ -2291,6 +2291,45 @@ def bulk_update_recruiter_job_status(
     return {"updated": updated, "requested": len(ids)}
 
 
+@router.post("/jobs/bulk-refresh")
+def bulk_refresh_recruiter_job_candidates(
+    ids: list[int] = Query(..., max_length=100),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Enqueue candidate refresh for multiple recruiter jobs at once."""
+    if not ids or len(ids) > 100:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Provide 1-100 job IDs.",
+        )
+
+    jobs = (
+        session.execute(
+            select(RecruiterJob).where(
+                RecruiterJob.id.in_(ids),
+                RecruiterJob.recruiter_profile_id == profile.id,
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    from app.services.job_pipeline import populate_recruiter_job_candidates
+    from app.services.queue import get_queue
+
+    q = get_queue("bulk")
+    enqueued = 0
+    for job in jobs:
+        try:
+            q.enqueue(populate_recruiter_job_candidates, job.id)
+            enqueued += 1
+        except Exception:
+            logger.debug("Failed to enqueue refresh for recruiter job %s", job.id)
+
+    return {"enqueued": enqueued, "requested": len(ids)}
+
+
 @router.patch("/jobs/{job_id}", response_model=RecruiterJobResponse)
 def update_recruiter_job(
     job_id: int,
@@ -2671,201 +2710,30 @@ def refresh_recruiter_job_candidates(
     def _generate():
         import json as _json
 
-        from app.db.session import get_session_factory
-        from app.models.recruiter import RecruiterProfile as RP
-        from app.models.recruiter_job import RecruiterJob as RJ
-        from app.models.recruiter_job_candidate import (
-            RecruiterJobCandidate as RJC,
+        msg = _json.dumps(
+            {
+                "percent": 5,
+                "phase": "loading",
+                "message": "Starting candidate refresh...",
+            }
         )
-        from app.services.matching import (
-            find_top_candidates_for_recruiter_job,
-        )
+        yield f"data: {msg}\n\n"
 
-        db = get_session_factory()()
         try:
-            rj = db.execute(select(RJ).where(RJ.id == the_job_id)).scalar_one_or_none()
-            if not rj:
-                msg = _json.dumps(
-                    {"percent": 100, "phase": "error", "message": "Job not found"}
-                )
-                yield f"data: {msg}\n\n"
-                return
-
-            # Generate embedding if missing (backfill existing jobs)
-            if rj.embedding is None:
-                try:
-                    from app.services.embedding import generate_embedding
-
-                    text = (
-                        f"Job Title: {rj.title}\n"
-                        f"Company: {rj.client_company_name or ''}\n"
-                        f"Description: {(rj.description or '')[:2000]}\n"
-                        f"Requirements: {(rj.requirements or '')[:1000]}\n"
-                        f"Location: {rj.location or ''}"
-                    )
-                    rj.embedding = generate_embedding(text)
-                    db.commit()
-                except Exception:
-                    logger.debug("Failed to generate embedding for job %s", the_job_id)
+            from app.services.job_pipeline import populate_recruiter_job_candidates
 
             msg = _json.dumps(
-                {
-                    "percent": 5,
-                    "phase": "loading",
-                    "message": "Loading candidate profiles...",
-                }
+                {"percent": 10, "phase": "scoring", "message": "Scoring candidates..."}
             )
             yield f"data: {msg}\n\n"
 
-            # Count eligible candidates (platform + sourced)
-            rp = db.execute(
-                select(RP).where(RP.id == rj.recruiter_profile_id)
-            ).scalar_one()
-            latest_sub = (
-                select(
-                    CandidateProfile.user_id,
-                    func.max(CandidateProfile.version).label("max_version"),
-                )
-                .where(CandidateProfile.user_id.is_not(None))
-                .group_by(CandidateProfile.user_id)
-            ).subquery()
-            platform_count = (
-                db.execute(
-                    select(func.count()).select_from(
-                        select(CandidateProfile.id)
-                        .join(
-                            latest_sub,
-                            (CandidateProfile.user_id == latest_sub.c.user_id)
-                            & (CandidateProfile.version == latest_sub.c.max_version),
-                        )
-                        .where(
-                            CandidateProfile.open_to_opportunities == True,  # noqa: E712
-                            CandidateProfile.profile_visibility.in_(
-                                ["public", "anonymous"]
-                            ),
-                        )
-                        .subquery()
-                    )
-                ).scalar()
-                or 0
-            )
-            sourced_count = (
-                db.execute(
-                    select(func.count(CandidateProfile.id)).where(
-                        CandidateProfile.user_id.is_(None),
-                        cast(
-                            CandidateProfile.profile_json["sourced_by_user_id"],
-                            String,
-                        )
-                        == str(rp.user_id),
-                    )
-                ).scalar()
-                or 0
-            )
-            total_profiles = platform_count + sourced_count
-
-            msg = _json.dumps(
-                {
-                    "percent": 10,
-                    "phase": "scoring",
-                    "message": f"Scoring {total_profiles} candidates...",
-                }
-            )
-            yield f"data: {msg}\n\n"
-
-            # Run matching (this is the heavy part)
-            results = find_top_candidates_for_recruiter_job(
-                db, rj, rp.user_id, limit=100
-            )
-
-            msg = _json.dumps(
-                {
-                    "percent": 80,
-                    "phase": "saving",
-                    "message": f"Found {len(results)} matches, saving...",
-                }
-            )
-            yield f"data: {msg}\n\n"
-
-            # Delete old cached rows
-            from sqlalchemy import delete as sa_delete
-
-            db.execute(sa_delete(RJC).where(RJC.recruiter_job_id == the_job_id))
-
-            inserted = 0
-            for r in results:
-                if r["match_score"] <= 50:
-                    continue
-                db.add(
-                    RJC(
-                        recruiter_job_id=the_job_id,
-                        candidate_profile_id=r["id"],
-                        match_score=r["match_score"],
-                        matched_skills=r.get("matched_skills"),
-                    )
-                )
-                inserted += 1
-
-            db.commit()
-
-            msg = _json.dumps(
-                {"percent": 90, "phase": "pipeline", "message": "Updating pipeline..."}
-            )
-            yield f"data: {msg}\n\n"
-
-            # Auto-populate pipeline if recruiter setting is enabled
-            pipeline_added = 0
-            try:
-                from app.models.recruiter import RecruiterProfile as RP
-                from app.models.recruiter_pipeline_candidate import (
-                    RecruiterPipelineCandidate,
-                )
-
-                recruiter_profile = db.execute(
-                    select(RP).where(RP.id == rj.recruiter_profile_id)
-                ).scalar_one_or_none()
-
-                if recruiter_profile and recruiter_profile.auto_populate_pipeline:
-                    cached = (
-                        db.execute(
-                            select(RJC).where(RJC.recruiter_job_id == the_job_id)
-                        )
-                        .scalars()
-                        .all()
-                    )
-                    for rjc in cached:
-                        exists = db.execute(
-                            select(RecruiterPipelineCandidate.id).where(
-                                RecruiterPipelineCandidate.recruiter_profile_id
-                                == recruiter_profile.id,
-                                RecruiterPipelineCandidate.candidate_profile_id
-                                == rjc.candidate_profile_id,
-                            )
-                        ).scalar_one_or_none()
-                        if not exists:
-                            db.add(
-                                RecruiterPipelineCandidate(
-                                    recruiter_profile_id=recruiter_profile.id,
-                                    recruiter_job_id=the_job_id,
-                                    candidate_profile_id=rjc.candidate_profile_id,
-                                    source="auto-match",
-                                    stage="sourced",
-                                    match_score=rjc.match_score,
-                                )
-                            )
-                            pipeline_added += 1
-                    if pipeline_added:
-                        db.commit()
-            except Exception:
-                logger.warning("Auto-populate pipeline failed for job %s", the_job_id)
+            populate_recruiter_job_candidates(the_job_id)
 
             msg = _json.dumps(
                 {
                     "percent": 100,
                     "phase": "done",
-                    "message": f"{inserted} candidates matched",
-                    "inserted": inserted,
-                    "pipeline_added": pipeline_added,
+                    "message": "Candidate refresh complete",
                 }
             )
             yield f"data: {msg}\n\n"
@@ -2874,8 +2742,6 @@ def refresh_recruiter_job_candidates(
             logger.exception("Refresh streaming failed for job %s", the_job_id)
             msg = _json.dumps({"percent": 100, "phase": "error", "message": str(exc)})
             yield f"data: {msg}\n\n"
-        finally:
-            db.close()
 
     return StreamingResponse(
         _generate(),

@@ -26,6 +26,14 @@ def get_scheduler_default_location() -> str:
     return os.getenv("SCHEDULER_DEFAULT_LOCATION", "")
 
 
+def get_scheduler_recruiter_refresh_cron() -> str:
+    """Get cron expression for recruiter candidate refresh schedule.
+
+    Default: "0 7 * * *" = Daily at 7am UTC (after 6am ingestion)
+    """
+    return os.getenv("SCHEDULER_RECRUITER_REFRESH_CRON", "0 7 * * *")
+
+
 def get_scheduler_config() -> dict:
     """Get all scheduler configuration as a dictionary."""
     return {

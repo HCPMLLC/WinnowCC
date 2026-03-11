@@ -74,8 +74,9 @@ export default function RecruiterJobsPage() {
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState("");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [bulkAction, setBulkAction] = useState<"idle" | "deleting" | "updating">("idle");
+  const [bulkAction, setBulkAction] = useState<"idle" | "deleting" | "updating" | "refreshing">("idle");
   const [bulkStatus, setBulkStatus] = useState("active");
+  const [refreshBanner, setRefreshBanner] = useState("");
   const syncProgress = useProgress();
 
   // Form state
@@ -218,6 +219,34 @@ export default function RecruiterJobsPage() {
       }
       setSelected(new Set());
       fetchJobs();
+    } catch {
+      setError("Network error");
+    } finally {
+      setBulkAction("idle");
+    }
+  }
+
+  async function handleBulkRefresh() {
+    if (selected.size === 0) return;
+
+    setBulkAction("refreshing");
+    try {
+      const batches = chunkArray([...selected], 100);
+      for (const batch of batches) {
+        const params = new URLSearchParams();
+        for (const id of batch) params.append("ids", String(id));
+        const res = await fetch(`${API_BASE}/api/recruiter/jobs/bulk-refresh?${params.toString()}`, {
+          method: "POST",
+          credentials: "include",
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(parseApiError(data, "Failed to refresh candidates"));
+          return;
+        }
+      }
+      setRefreshBanner(`Candidate refresh is processing in the background for ${selected.size} job${selected.size !== 1 ? "s" : ""}.`);
+      setSelected(new Set());
     } catch {
       setError("Network error");
     } finally {
@@ -992,6 +1021,15 @@ export default function RecruiterJobsPage() {
                 {bulkAction === "updating" ? "Applying..." : "Apply Status"}
               </button>
               <button
+                onClick={handleBulkRefresh}
+                disabled={bulkAction !== "idle"}
+                className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+              >
+                {bulkAction === "refreshing"
+                  ? "Refreshing..."
+                  : "Refresh Candidates"}
+              </button>
+              <button
                 onClick={handleBulkDelete}
                 disabled={bulkAction !== "idle"}
                 className="rounded-md bg-red-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
@@ -1004,6 +1042,19 @@ export default function RecruiterJobsPage() {
           )}
         </div>
       </div>
+
+      {/* Refresh banner */}
+      {refreshBanner && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800">
+          <span>{refreshBanner}</span>
+          <button
+            onClick={() => { setRefreshBanner(""); fetchJobs(); }}
+            className="ml-4 rounded bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700"
+          >
+            Dismiss &amp; Reload
+          </button>
+        </div>
+      )}
 
       {/* Jobs List */}
       {isLoading ? (

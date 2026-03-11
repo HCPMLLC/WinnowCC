@@ -34,12 +34,14 @@ from app.services.scheduled_jobs import (  # noqa: E402
     scheduled_process_outreach,
     scheduled_promote_queued_imports,
     scheduled_purge_inactive_jobs,
+    scheduled_refresh_recruiter_candidates,
     scheduled_send_weekly_digests,
 )
 from app.services.scheduler_config import (  # noqa: E402
     get_scheduler_config,
     get_scheduler_enabled,
     get_scheduler_ingest_cron,
+    get_scheduler_recruiter_refresh_cron,
 )
 
 logging.basicConfig(
@@ -82,6 +84,7 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
     """Register all cron jobs, clearing duplicates first."""
     # Map of job_type -> (cron_string, func, queue_name)
     cron_expr = get_scheduler_ingest_cron()
+    recruiter_refresh_cron = get_scheduler_recruiter_refresh_cron()
     jobs_to_schedule = [
         ("ingest", cron_expr, scheduled_ingest_jobs, "default"),
         ("expire_introductions", "0 3 * * *", scheduled_expire_introductions, "default"),
@@ -92,6 +95,12 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
         ("hard_delete", "0 5 * * *", scheduled_hard_delete_expired, "default"),
         ("weekly_digest", "0 7 * * 0", scheduled_send_weekly_digests, "low"),
         ("promote_imports", "*/2 * * * *", scheduled_promote_queued_imports, "default"),
+        (
+            "recruiter_candidate_refresh",
+            recruiter_refresh_cron,
+            scheduled_refresh_recruiter_candidates,
+            "bulk",
+        ),
     ]
 
     # Cancel all existing scheduled jobs to avoid duplicates

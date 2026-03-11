@@ -478,6 +478,62 @@ def scheduled_promote_queued_imports() -> dict:
         return {"status": "failed", "error": str(e)}
 
 
+def scheduled_refresh_recruiter_candidates() -> dict:
+    """Refresh candidate matches for all active recruiter jobs.
+
+    Runs daily after job ingestion.  Fan-out enqueues each active job
+    onto the ``bulk`` queue via ``safe_enqueue`` (500-job cap).
+    """
+    from sqlalchemy import select
+
+    from app.models.recruiter_job import RecruiterJob
+    from app.services.job_pipeline import populate_recruiter_job_candidates
+    from app.services.queue import get_queue
+
+    session = get_session_factory()()
+    try:
+        active_jobs = (
+            session.execute(
+                select(RecruiterJob).where(RecruiterJob.status == "active")
+            )
+            .scalars()
+            .all()
+        )
+
+        q = get_queue("bulk")
+        enqueued = 0
+        skipped = 0
+        for job in active_jobs:
+            if enqueued >= 500:
+                skipped += len(active_jobs) - enqueued - skipped
+                break
+            result = q.safe_enqueue(populate_recruiter_job_candidates, job.id)
+            if result is not None:
+                enqueued += 1
+            else:
+                skipped += 1
+
+        logger.info(
+            "scheduled_refresh_recruiter_candidates: "
+            "%d enqueued, %d skipped, %d active",
+            enqueued,
+            skipped,
+            len(active_jobs),
+        )
+        return {
+            "status": "completed",
+            "active_jobs": len(active_jobs),
+            "enqueued": enqueued,
+            "skipped": skipped,
+        }
+    except Exception as e:
+        logger.exception("scheduled_refresh_recruiter_candidates failed: %s", e)
+        session.rollback()
+        return {"status": "failed", "error": str(e)}
+    finally:
+        session.close()
+
+
 def scheduled_sync_distribution_metrics() -> dict:
     """Sync metrics for all live job distributions across all employers.
 

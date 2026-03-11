@@ -7,12 +7,12 @@ from sqlalchemy import select
 from app.db.session import get_session_factory
 from app.models.candidate_profile import CandidateProfile
 from app.models.job import Job
+from app.models.job_parsed_detail import JobParsedDetail
 from app.services.embedding import (
     generate_embedding,
     prepare_job_text,
     prepare_profile_text,
 )
-from app.models.job_parsed_detail import JobParsedDetail
 from app.services.job_ingestion import ingest_jobs
 from app.services.matching import compute_matches
 from app.services.tailor import create_tailored_docs
@@ -160,12 +160,18 @@ def refresh_candidates_for_profile(user_id: int) -> None:
 
 
 def populate_recruiter_job_candidates(job_id: int) -> None:
-    """Background job: compute and cache candidate matches for a recruiter job."""
+    """Background job: compute and cache candidate matches for a recruiter job.
+
+    Includes embedding backfill, auto-populate pipeline, and a 25-point
+    match threshold.  Used by the SSE refresh endpoint, bulk refresh, and
+    the daily scheduled refresh.
+    """
     from sqlalchemy import delete as sa_delete
 
     from app.models.recruiter import RecruiterProfile
     from app.models.recruiter_job import RecruiterJob
     from app.models.recruiter_job_candidate import RecruiterJobCandidate
+    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
     from app.services.matching import find_top_candidates_for_recruiter_job
 
     session = get_session_factory()()
@@ -184,6 +190,25 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
             )
             return
 
+        # Backfill embedding if missing
+        if job.embedding is None:
+            try:
+                text = (
+                    f"Job Title: {job.title}\n"
+                    f"Company: {job.client_company_name or ''}\n"
+                    f"Description: {(job.description or '')[:2000]}\n"
+                    f"Requirements: {(job.requirements or '')[:1000]}\n"
+                    f"Location: {job.location or ''}"
+                )
+                job.embedding = generate_embedding(text)
+                session.commit()
+            except Exception:
+                logger.debug(
+                    "populate_recruiter_job_candidates: "
+                    "embedding backfill failed for job %s",
+                    job_id,
+                )
+
         results = find_top_candidates_for_recruiter_job(session, job, rp.user_id)
 
         # Delete old cached rows
@@ -195,7 +220,7 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
 
         inserted = 0
         for r in results:
-            if r["match_score"] <= 50:
+            if r["match_score"] <= 25:
                 continue
             session.add(
                 RecruiterJobCandidate(
@@ -208,10 +233,55 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
             inserted += 1
 
         session.commit()
+
+        # Auto-populate pipeline if recruiter setting is enabled
+        pipeline_added = 0
+        if rp.auto_populate_pipeline:
+            try:
+                cached = (
+                    session.execute(
+                        select(RecruiterJobCandidate).where(
+                            RecruiterJobCandidate.recruiter_job_id == job_id
+                        )
+                    )
+                    .scalars()
+                    .all()
+                )
+                for rjc in cached:
+                    exists = session.execute(
+                        select(RecruiterPipelineCandidate.id).where(
+                            RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
+                            RecruiterPipelineCandidate.candidate_profile_id
+                            == rjc.candidate_profile_id,
+                        )
+                    ).scalar_one_or_none()
+                    if not exists:
+                        session.add(
+                            RecruiterPipelineCandidate(
+                                recruiter_profile_id=rp.id,
+                                recruiter_job_id=job_id,
+                                candidate_profile_id=rjc.candidate_profile_id,
+                                source="auto-match",
+                                stage="sourced",
+                                match_score=rjc.match_score,
+                            )
+                        )
+                        pipeline_added += 1
+                if pipeline_added:
+                    session.commit()
+            except Exception:
+                logger.warning(
+                    "populate_recruiter_job_candidates: "
+                    "pipeline auto-populate failed for job %s",
+                    job_id,
+                )
+
         logger.info(
-            "populate_recruiter_job_candidates: job %s — %s candidates cached",
+            "populate_recruiter_job_candidates: job %s — "
+            "%s cached, %s pipeline added",
             job_id,
             inserted,
+            pipeline_added,
         )
     except Exception:
         session.rollback()

@@ -932,11 +932,16 @@ def find_top_candidates_for_recruiter_job(
 ) -> list[dict]:
     """Find top candidates for a recruiter job.
 
-    Searches two pools:
+    Searches three pools:
       A) Platform candidates — opted-in, latest version per user.
       B) Recruiter's own sourced candidates (user_id IS NULL,
          profile_json.sourced_by_user_id == recruiter_user_id).
+      C) Pipeline candidates — candidates already in this recruiter's
+         pipeline who have a candidate_profile_id.
     """
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+
     # Pool A: platform candidates
     platform_profiles = _latest_platform_profiles(session)
 
@@ -953,7 +958,40 @@ def find_top_candidates_for_recruiter_job(
         .all()
     )
 
-    all_profiles = platform_profiles + sourced_profiles
+    # Pool C: pipeline candidates for this recruiter (may overlap with A/B)
+    rp = session.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == recruiter_user_id)
+    ).scalar_one_or_none()
+    pipeline_profiles: list = []
+    if rp:
+        pipeline_cp_ids = (
+            session.execute(
+                select(RecruiterPipelineCandidate.candidate_profile_id).where(
+                    RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
+                    RecruiterPipelineCandidate.candidate_profile_id.is_not(None),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if pipeline_cp_ids:
+            pipeline_profiles = (
+                session.execute(
+                    select(CandidateProfile).where(
+                        CandidateProfile.id.in_(pipeline_cp_ids)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+    # Deduplicate by profile id (pipeline candidates may already be in A or B)
+    seen_ids: set[int] = set()
+    all_profiles: list = []
+    for cp in platform_profiles + sourced_profiles + pipeline_profiles:
+        if cp.id not in seen_ids:
+            seen_ids.add(cp.id)
+            all_profiles.append(cp)
 
     # Get job embedding for semantic blending (same approach as candidate
     # matching in compute_matches).
