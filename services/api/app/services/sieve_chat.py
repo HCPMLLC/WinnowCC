@@ -1507,7 +1507,7 @@ manage billing subscription, and configure team access.
 15. CAREER PAGES (/employer/career-pages) \u2605 KEY FEATURE
     Branded job portals showcasing your open positions with an AI-powered \
 application experience.
-    - Hosted at careers.winnowcc.ai/your-slug, or connect a custom domain \
+    - Hosted at winnowcc.ai/careers/your-slug, or connect a custom domain \
 (e.g., careers.yourcompany.com) on Pro/Enterprise
     - Visual builder: customize colors, fonts, logo, hero section, and \
 job display layout
@@ -1961,7 +1961,7 @@ def _format_career_pages_state(ctx: dict) -> str:
     lines = []
     for p in pages:
         status = "published" if p.get("published") else "draft"
-        url = f"careers.winnowcc.ai/{p['slug']}"
+        url = f"winnowcc.ai/careers/{p['slug']}"
         domain = p.get("custom_domain")
         if domain:
             verified = "verified" if p.get("domain_verified") else "pending"
@@ -2380,7 +2380,7 @@ getting notified about candidate updates, explain @mentions.
 application experience.
 
     WHAT CAREER PAGES ARE:
-    - A branded career page hosted at careers.winnowcc.ai/your-slug
+    - A branded career page hosted at winnowcc.ai/careers/your-slug
     - Optional custom domain (e.g., careers.youragency.com) with SSL — \
 available on Team and Agency plans
     - Full visual builder: customize colors, fonts, logo, hero section, \
