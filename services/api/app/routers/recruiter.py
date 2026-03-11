@@ -1579,6 +1579,131 @@ def get_sourced_candidate(
     }
 
 
+@router.post("/candidates/{candidate_profile_id}/reparse")
+def reparse_candidate_resume(
+    candidate_profile_id: int,
+    user: User = Depends(require_recruiter),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict[str, Any]:
+    """Re-parse a platform candidate's resume with the LLM parser.
+
+    Triggers a fresh LLM parse of the candidate's most recent resume document,
+    producing a new profile version with more complete extraction.
+    """
+    from app.models.job_run import JobRun
+    from app.models.resume_document import ResumeDocument
+    from app.services.resume_parse_job import parse_resume_job
+
+    cp = session.get(CandidateProfile, candidate_profile_id)
+    if cp is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found.",
+        )
+
+    # Verify access — same logic as GET endpoint
+    pj = cp.profile_json or {}
+    sourced_by = str(pj.get("sourced_by_user_id") or "")
+    source = pj.get("source", "")
+    allowed = (
+        cp.user_id == user.id
+        or sourced_by == str(user.id)
+        or source == "linkedin_extension"
+    )
+    if not allowed:
+        from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+
+        in_pipeline = session.execute(
+            select(RecruiterPipelineCandidate.id)
+            .where(
+                RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+                RecruiterPipelineCandidate.candidate_profile_id == candidate_profile_id,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        allowed = in_pipeline is not None
+    if not allowed:
+        from app.models.recruiter_job_candidate import RecruiterJobCandidate
+
+        in_job = session.execute(
+            select(RecruiterJobCandidate.id)
+            .join(RecruiterJob, RecruiterJob.id == RecruiterJobCandidate.recruiter_job_id)
+            .where(
+                RecruiterJob.recruiter_profile_id == profile.id,
+                RecruiterJobCandidate.candidate_profile_id == candidate_profile_id,
+            )
+            .limit(1)
+        ).scalar_one_or_none()
+        allowed = in_job is not None
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found.",
+        )
+
+    # Resolve to the latest profile version
+    if cp.user_id:
+        latest = session.execute(
+            select(CandidateProfile)
+            .where(CandidateProfile.user_id == cp.user_id)
+            .order_by(CandidateProfile.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if latest:
+            cp = latest
+
+    # Find the resume document to reparse
+    resume = None
+    if cp.resume_document_id:
+        resume = session.get(ResumeDocument, cp.resume_document_id)
+        if resume and resume.deleted_at is not None:
+            resume = None
+
+    # Fallback: find the most recent resume for this user
+    if resume is None and cp.user_id:
+        resume = session.execute(
+            select(ResumeDocument)
+            .where(ResumeDocument.user_id == cp.user_id, ResumeDocument.deleted_at.is_(None))
+            .order_by(ResumeDocument.created_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+    if resume is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No resume document found for this candidate.",
+        )
+
+    # Create job run and trigger parse
+    job_run = JobRun(
+        job_type="resume_parse",
+        status="queued",
+        resume_document_id=resume.id,
+    )
+    session.add(job_run)
+    session.commit()
+    session.refresh(job_run)
+
+    parse_resume_job(resume.id, job_run.id)
+    session.refresh(job_run)
+
+    # Get the fresh profile
+    new_profile = session.execute(
+        select(CandidateProfile)
+        .where(CandidateProfile.user_id == cp.user_id)
+        .order_by(CandidateProfile.version.desc())
+        .limit(1)
+    ).scalar_one_or_none()
+
+    return {
+        "status": job_run.status,
+        "error_message": job_run.error_message,
+        "candidate_profile_id": new_profile.id if new_profile else cp.id,
+        "profile_json": new_profile.profile_json if new_profile else pj,
+    }
+
+
 @router.put("/candidates/{candidate_profile_id}")
 def update_sourced_candidate(
     candidate_profile_id: int,

@@ -42,7 +42,10 @@ interface EducationEntry {
 interface CertEntry {
   name?: string;
   issuing_org?: string;
+  issuer?: string; // LLM parser field name
   date?: string;
+  date_obtained?: string; // LLM parser field name
+  expiry_date?: string; // LLM parser field name
 }
 
 interface VolunteerEntry {
@@ -164,6 +167,8 @@ export default function CandidateDetailPage() {
   const [introSent, setIntroSent] = useState(false);
   const [matchedJobs, setMatchedJobs] = useState<MatchedJob[]>([]);
   const [matchedJobsTotal, setMatchedJobsTotal] = useState(0);
+  const [reparsing, setReparsing] = useState(false);
+  const [reparseError, setReparseError] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -228,7 +233,13 @@ export default function CandidateDetailPage() {
     setSkills(
       (pj.skills || []).map((s) => skillName(s)).filter(Boolean).join(", ")
     );
-    setCertifications(pj.certifications?.length ? pj.certifications : []);
+    setCertifications(
+      (pj.certifications?.length ? pj.certifications : []).map((c) => ({
+        ...c,
+        issuing_org: c.issuing_org || c.issuer || "",
+        date: c.date || c.date_obtained || "",
+      }))
+    );
     setVolunteer(pj.volunteer?.length ? pj.volunteer : []);
     setPublications(pj.publications?.length ? pj.publications : []);
     setProjects(pj.projects?.length ? pj.projects : []);
@@ -326,6 +337,38 @@ export default function CandidateDetailPage() {
       /* ignore */
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleReparse() {
+    setReparsing(true);
+    setReparseError(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/recruiter/candidates/${candidateId}/reparse`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "succeeded" && data.profile_json) {
+          setCandidate({
+            candidate_profile_id: data.candidate_profile_id,
+            profile_json: data.profile_json,
+            created_at: candidate?.created_at || null,
+            updated_at: new Date().toISOString(),
+          });
+          populateForm(data.profile_json);
+        } else if (data.status === "failed") {
+          setReparseError(data.error_message || "Reparse failed.");
+        }
+      } else {
+        const err = await res.json().catch(() => null);
+        setReparseError(err?.detail || "Reparse failed.");
+      }
+    } catch {
+      setReparseError("Network error during reparse.");
+    } finally {
+      setReparsing(false);
     }
   }
 
@@ -427,6 +470,15 @@ export default function CandidateDetailPage() {
               Introduction Sent
             </span>
           )}
+          {!editing && isPlatformCandidate && (
+            <button
+              onClick={handleReparse}
+              disabled={reparsing}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+            >
+              {reparsing ? "Reparsing..." : "Reparse Resume"}
+            </button>
+          )}
           <button
             onClick={() => (editing ? setEditing(false) : startEditing())}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
@@ -435,6 +487,13 @@ export default function CandidateDetailPage() {
           </button>
         </div>
       </div>
+
+      {reparseError && (
+        <div className="rounded-md bg-red-50 p-3 text-sm text-red-700">
+          {reparseError}
+          <button onClick={() => setReparseError(null)} className="ml-2 font-medium underline">Dismiss</button>
+        </div>
+      )}
 
       {showIntroModal && candidate && (
         <IntroductionRequestModal
@@ -906,8 +965,8 @@ export default function CandidateDetailPage() {
                 {displayCerts.map((cert, idx) => (
                   <div key={idx} className="text-sm">
                     <span className="font-medium text-slate-900">{cert.name}</span>
-                    {cert.issuing_org && <span className="text-slate-500"> &middot; {cert.issuing_org}</span>}
-                    {cert.date && <span className="text-slate-400"> &middot; {cert.date}</span>}
+                    {(cert.issuing_org || cert.issuer) && <span className="text-slate-500"> &middot; {cert.issuing_org || cert.issuer}</span>}
+                    {(cert.date || cert.date_obtained) && <span className="text-slate-400"> &middot; {cert.date || cert.date_obtained}</span>}
                   </div>
                 ))}
               </div>
