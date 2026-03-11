@@ -259,20 +259,41 @@ export default function RecruiterJobsPage() {
 
   async function handleBackfillFields() {
     setBackfillStatus("running");
+    setBackfillResult(null);
     try {
       const res = await fetch(`${API_BASE}/api/recruiter/jobs/backfill-required-fields`, {
         method: "POST",
         credentials: "include",
       });
-      if (res.ok) {
-        const data = await res.json();
-        setBackfillResult(data);
-        setBackfillStatus("done");
-      } else {
+      if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         setError(parseApiError(data, "Failed to start backfill"));
         setBackfillStatus("idle");
+        return;
       }
+      const reader = res.body?.getReader();
+      if (!reader) { setBackfillStatus("idle"); return; }
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() || "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          try {
+            const ev = JSON.parse(line.slice(6));
+            setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled ?? ev.processed ?? 0, remaining: ev.remaining ?? ev.total_missing });
+            if (ev.done) {
+              setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled, remaining: ev.remaining });
+              setBackfillStatus("done");
+            }
+          } catch { /* ignore parse errors */ }
+        }
+      }
+      if (backfillStatus !== "done") setBackfillStatus("done");
     } catch {
       setError("Network error");
       setBackfillStatus("idle");
@@ -1104,15 +1125,17 @@ export default function RecruiterJobsPage() {
       )}
       {backfillStatus === "running" && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Analyzing job descriptions... this may take a few minutes.
+          Analyzing job descriptions...
+          {backfillResult && (
+            <> Processed {backfillResult.enqueued} of {Math.min(50, backfillResult.total_missing)} (batch of 50). {backfillResult.total_missing} total missing.</>
+          )}
         </div>
       )}
       {backfillStatus === "done" && backfillResult && (
         <div className="mb-4 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
           <span>
-            Backfill queued: <strong>{backfillResult.enqueued}</strong> of{" "}
-            {backfillResult.total_missing} jobs being processed in the background.
-            {backfillResult.remaining > 0 && ` ${backfillResult.remaining} remaining — run again after this batch completes.`}
+            Backfill complete: <strong>{backfillResult.enqueued}</strong> of 50 jobs had fields extracted.
+            {backfillResult.remaining > 0 && <> <strong>{backfillResult.remaining}</strong> jobs still missing — click again for the next batch.</>}
           </span>
           <button
             onClick={() => { setBackfillStatus("idle"); setBackfillResult(null); fetchJobs(); }}

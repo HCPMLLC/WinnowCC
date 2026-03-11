@@ -1,6 +1,6 @@
 """Admin recruiter management router."""
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -331,18 +331,22 @@ def refresh_matches(
 
 @router.post("/jobs/backfill-required-fields")
 def admin_backfill_required_fields(
+    batch_size: int = Query(default=50, ge=1, le=200),
     session: Session = Depends(get_session),
     admin: User = Depends(require_admin_user),
 ) -> dict:
-    """Enqueue Haiku re-parse for recruiter jobs missing required fields.
+    """Synchronously re-parse recruiter jobs missing required fields.
 
-    Targets jobs where job_id_external IS NULL or closes_at IS NULL.
-    Uses the bulk queue with safe_enqueue and a 500-job cap.
+    Processes up to ``batch_size`` jobs inline (no worker needed).
+    Returns how many were filled.  Call repeatedly until remaining=0.
     """
+    import logging
+
     from sqlalchemy import or_
 
     from app.services.job_pipeline import backfill_recruiter_job_fields
-    from app.services.queue import get_queue
+
+    log = logging.getLogger(__name__)
 
     missing = (
         session.execute(
@@ -357,17 +361,21 @@ def admin_backfill_required_fields(
         .all()
     )
 
-    q = get_queue("bulk")
-    enqueued = 0
-    for jid in missing:
-        if enqueued >= 500:
-            break
-        result = q.safe_enqueue(backfill_recruiter_job_fields, jid)
-        if result is not None:
-            enqueued += 1
+    batch = missing[:batch_size]
+    filled = 0
+    errors = 0
+    for jid in batch:
+        try:
+            if backfill_recruiter_job_fields(jid):
+                filled += 1
+        except Exception:
+            log.debug("backfill failed for job %s", jid)
+            errors += 1
 
     return {
         "total_missing": len(missing),
-        "enqueued": enqueued,
-        "remaining": max(0, len(missing) - enqueued),
+        "processed": len(batch),
+        "filled": filled,
+        "errors": errors,
+        "remaining": max(0, len(missing) - len(batch)),
     }

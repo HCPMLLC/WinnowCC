@@ -2336,16 +2336,14 @@ def bulk_update_recruiter_job_status(
 def backfill_required_fields(
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
-) -> dict:
-    """Enqueue AI re-parse for this recruiter's jobs missing required fields.
+) -> StreamingResponse:
+    """AI re-parse for this recruiter's jobs missing required fields.
 
-    Extracts Solicitation Number and Application Deadline from stored
-    job text using Claude Haiku.
+    Processes synchronously (no worker dependency) in batches of up to
+    50, streaming SSE progress.  Extracts Solicitation Number and
+    Application Deadline from stored job text using Claude Haiku.
     """
     from sqlalchemy import or_
-
-    from app.services.job_pipeline import backfill_recruiter_job_fields
-    from app.services.queue import get_queue
 
     missing = (
         session.execute(
@@ -2361,20 +2359,49 @@ def backfill_required_fields(
         .all()
     )
 
-    q = get_queue("bulk")
-    enqueued = 0
-    for jid in missing:
-        if enqueued >= 500:
-            break
-        result = q.safe_enqueue(backfill_recruiter_job_fields, jid)
-        if result is not None:
-            enqueued += 1
+    batch = missing[:50]
+    total = len(missing)
 
-    return {
-        "total_missing": len(missing),
-        "enqueued": enqueued,
-        "remaining": max(0, len(missing) - enqueued),
-    }
+    def _generate():
+        import json as _json
+
+        from app.services.job_pipeline import (
+            backfill_recruiter_job_fields,
+        )
+
+        filled = 0
+        for i, jid in enumerate(batch):
+            try:
+                if backfill_recruiter_job_fields(jid):
+                    filled += 1
+            except Exception:
+                logger.debug("backfill failed for job %s", jid)
+            pct = int((i + 1) / len(batch) * 100)
+            msg = _json.dumps({
+                "processed": i + 1,
+                "filled": filled,
+                "total_missing": total,
+                "percent": pct,
+            })
+            yield f"data: {msg}\n\n"
+
+        msg = _json.dumps({
+            "done": True,
+            "processed": len(batch),
+            "filled": filled,
+            "total_missing": total,
+            "remaining": total - len(batch),
+        })
+        yield f"data: {msg}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @router.post("/jobs/bulk-refresh")
