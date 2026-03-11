@@ -470,7 +470,7 @@ export default function CandidateDetailPage() {
               Introduction Sent
             </span>
           )}
-          {!editing && isPlatformCandidate && (
+          {!editing && (
             <button
               onClick={handleReparse}
               disabled={reparsing}

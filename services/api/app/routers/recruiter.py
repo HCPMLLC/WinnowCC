@@ -1586,10 +1586,10 @@ def reparse_candidate_resume(
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> dict[str, Any]:
-    """Re-parse a platform candidate's resume with the LLM parser.
+    """Re-parse a candidate's resume with the LLM parser.
 
-    Triggers a fresh LLM parse of the candidate's most recent resume document,
-    producing a new profile version with more complete extraction.
+    For platform candidates: triggers full parse_resume_job (new profile version).
+    For recruiter-sourced candidates: triggers recruiter_llm_reparse (in-place update).
     """
     from app.models.job_run import JobRun
     from app.models.resume_document import ResumeDocument
@@ -1675,33 +1675,51 @@ def reparse_candidate_resume(
             detail="No resume document found for this candidate.",
         )
 
-    # Create job run and trigger parse
-    job_run = JobRun(
-        job_type="resume_parse",
-        status="queued",
-        resume_document_id=resume.id,
-    )
-    session.add(job_run)
-    session.commit()
-    session.refresh(job_run)
+    is_sourced = bool(source) or bool(pj.get("sourced_by_user_id"))
 
-    parse_resume_job(resume.id, job_run.id)
-    session.refresh(job_run)
+    if is_sourced:
+        # Recruiter-sourced: run LLM reparse in-place on existing profile
+        from app.services.recruiter_llm_reparse import recruiter_llm_reparse_job
 
-    # Get the fresh profile
-    new_profile = session.execute(
-        select(CandidateProfile)
-        .where(CandidateProfile.user_id == cp.user_id)
-        .order_by(CandidateProfile.version.desc())
-        .limit(1)
-    ).scalar_one_or_none()
+        cp.llm_parse_status = "pending"
+        session.commit()
 
-    return {
-        "status": job_run.status,
-        "error_message": job_run.error_message,
-        "candidate_profile_id": new_profile.id if new_profile else cp.id,
-        "profile_json": new_profile.profile_json if new_profile else pj,
-    }
+        recruiter_llm_reparse_job(cp.id, resume.id)
+        session.refresh(cp)
+
+        return {
+            "status": cp.llm_parse_status or "succeeded",
+            "error_message": None,
+            "candidate_profile_id": cp.id,
+            "profile_json": cp.profile_json or pj,
+        }
+    else:
+        # Platform candidate: full parse creating a new profile version
+        job_run = JobRun(
+            job_type="resume_parse",
+            status="queued",
+            resume_document_id=resume.id,
+        )
+        session.add(job_run)
+        session.commit()
+        session.refresh(job_run)
+
+        parse_resume_job(resume.id, job_run.id)
+        session.refresh(job_run)
+
+        new_profile = session.execute(
+            select(CandidateProfile)
+            .where(CandidateProfile.user_id == cp.user_id)
+            .order_by(CandidateProfile.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+
+        return {
+            "status": job_run.status,
+            "error_message": job_run.error_message,
+            "candidate_profile_id": new_profile.id if new_profile else cp.id,
+            "profile_json": new_profile.profile_json if new_profile else pj,
+        }
 
 
 @router.put("/candidates/{candidate_profile_id}")
