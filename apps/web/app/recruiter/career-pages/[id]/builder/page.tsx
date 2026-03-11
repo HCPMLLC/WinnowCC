@@ -73,7 +73,7 @@ export default function CareerPageBuilderPage() {
     setSaving(false);
   }
 
-  if (loading) return <div className="flex justify-center items-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
+  if (loading) return <div className="flex justify-center items-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-blue-600" /></div>;
   if (!page) return <div className="flex justify-center items-center min-h-screen text-gray-600">Not found</div>;
 
   const tabs = [
@@ -100,7 +100,7 @@ export default function CareerPageBuilderPage() {
           <button onClick={savePage} disabled={saving || saved} className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">
             {saved ? <><Check className="w-4 h-4 text-green-600" /> Saved</> : saving ? <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</> : <><Save className="w-4 h-4" /> Save</>}
           </button>
-          <button onClick={publishPage} disabled={saving} className={`flex items-center gap-2 px-4 py-2 rounded-lg ${page.published ? "bg-gray-100 text-gray-700" : "bg-primary text-white"}`}>
+          <button onClick={publishPage} disabled={saving} className={`flex items-center gap-2 px-4 py-2 rounded-lg ${page.published ? "bg-gray-100 text-gray-700" : "bg-blue-600 text-white"}`}>
             <Globe className="w-4 h-4" /> {page.published ? "Unpublish" : "Publish"}
           </button>
         </div>
@@ -110,7 +110,7 @@ export default function CareerPageBuilderPage() {
         <aside className="w-80 bg-white border-r min-h-[calc(100vh-65px)]">
           <nav className="p-4 border-b">
             {tabs.map(tab => (
-              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg mb-1 ${activeTab === tab.id ? "bg-primary/10 text-primary" : "text-gray-700 hover:bg-gray-100"}`}>
+              <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`w-full flex items-center gap-2 px-3 py-2 rounded-lg mb-1 ${activeTab === tab.id ? "bg-blue-100 text-blue-600" : "text-gray-700 hover:bg-gray-100"}`}>
                 {tab.icon} {tab.label}
               </button>
             ))}
@@ -178,7 +178,7 @@ function LayoutPanel({ config, onChange }: { config: any; onChange: (c: any) => 
         <h3 className="font-medium mb-3">Hero Style</h3>
         <div className="grid grid-cols-2 gap-2">
           {["image", "video", "gradient", "minimal"].map(s => (
-            <button key={s} onClick={() => onChange({ ...config, hero_style: s })} className={`px-3 py-2 text-sm rounded-lg border capitalize ${config.hero_style === s ? "border-primary bg-primary/10 text-primary" : "hover:bg-gray-50"}`}>{s}</button>
+            <button key={s} onClick={() => onChange({ ...config, hero_style: s })} className={`px-3 py-2 text-sm rounded-lg border capitalize ${config.hero_style === s ? "border-blue-600 bg-blue-100 text-blue-600" : "hover:bg-gray-50"}`}>{s}</button>
           ))}
         </div>
       </div>
@@ -186,7 +186,7 @@ function LayoutPanel({ config, onChange }: { config: any; onChange: (c: any) => 
         <h3 className="font-medium mb-3">Job Display</h3>
         <div className="grid grid-cols-3 gap-2">
           {["grid", "list", "compact"].map(d => (
-            <button key={d} onClick={() => onChange({ ...config, job_display: d })} className={`px-3 py-2 text-sm rounded-lg border capitalize ${config.job_display === d ? "border-primary bg-primary/10 text-primary" : "hover:bg-gray-50"}`}>{d}</button>
+            <button key={d} onClick={() => onChange({ ...config, job_display: d })} className={`px-3 py-2 text-sm rounded-lg border capitalize ${config.job_display === d ? "border-blue-600 bg-blue-100 text-blue-600" : "hover:bg-gray-50"}`}>{d}</button>
           ))}
         </div>
       </div>

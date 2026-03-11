@@ -41,7 +41,7 @@ export default function CareerPagesPage() {
     if (res.ok) setPages(pages.filter(p => p.id !== id));
   }
 
-  if (loading) return <div className="flex justify-center p-12"><div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" /></div>;
+  if (loading) return <div className="flex justify-center p-12"><div className="animate-spin h-8 w-8 border-2 border-blue-600 border-t-transparent rounded-full" /></div>;
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -50,7 +50,7 @@ export default function CareerPagesPage() {
           <h1 className="text-3xl font-bold text-gray-900">Career Pages</h1>
           <p className="text-gray-600 mt-1">Branded pages to showcase your open positions</p>
         </div>
-        <Link href="/recruiter/career-pages/new" className="flex items-center gap-2 bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary/90">
+        <Link href="/recruiter/career-pages/new" className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
           <Plus className="w-5 h-5" /> Create Career Page
         </Link>
       </div>
@@ -60,7 +60,7 @@ export default function CareerPagesPage() {
           <Globe className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h3 className="text-lg font-medium mb-2">No career pages yet</h3>
           <p className="text-gray-600 mb-6">Create a branded career page with Sieve AI-powered applications.</p>
-          <Link href="/recruiter/career-pages/new" className="inline-flex items-center gap-2 bg-primary text-white px-6 py-3 rounded-lg">
+          <Link href="/recruiter/career-pages/new" className="inline-flex items-center gap-2 bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700">
             <Plus className="w-5 h-5" /> Create Your First Page
           </Link>
         </div>
@@ -77,7 +77,7 @@ export default function CareerPagesPage() {
                     </span>
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <a href={page.public_url} target="_blank" className="flex items-center gap-1 hover:text-primary">
+                    <a href={page.public_url} target="_blank" className="flex items-center gap-1 hover:text-blue-600">
                       <Globe className="w-4 h-4" /> careers.winnowcc.ai/{page.slug} <ExternalLink className="w-3 h-3" />
                     </a>
                     <span className="flex items-center gap-1"><Eye className="w-4 h-4" /> {page.view_count} views</span>
