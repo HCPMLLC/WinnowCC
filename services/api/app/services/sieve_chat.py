@@ -1107,8 +1107,16 @@ def load_employer_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
+    # Prefer real name fields before falling back to email prefix
+    user_full = (
+        user.full_name
+        or " ".join(p for p in [user.first_name, user.last_name] if p)
+        or ""
+    ).strip()
     context["name"] = (
-        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+        user_full
+        if user_full
+        else user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
     )
 
     profile = session.execute(
@@ -1236,6 +1244,40 @@ def load_employer_context(user_id: int, session: Session) -> dict:
         "intro_limit": intro_limit,
         "sieve_limit": sieve_limit,
     }
+
+    # Career pages
+    try:
+        from app.models.career_page import CareerPage
+
+        career_pages = (
+            session.execute(
+                select(CareerPage).where(
+                    CareerPage.tenant_id == profile.id,
+                    CareerPage.tenant_type == "employer",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cp_list = []
+        for cp in career_pages:
+            cp_info: dict = {
+                "id": str(cp.id),
+                "name": cp.name,
+                "slug": cp.slug,
+                "published": cp.published,
+                "views": cp.view_count or 0,
+                "applications": cp.application_count or 0,
+            }
+            if cp.custom_domain:
+                cp_info["custom_domain"] = cp.custom_domain
+                cp_info["domain_verified"] = cp.custom_domain_verified
+            cp_list.append(cp_info)
+        context["career_pages"] = cp_list
+        context["career_pages_count"] = len(cp_list)
+    except Exception:
+        context["career_pages"] = []
+        context["career_pages_count"] = 0
 
     return context
 
@@ -1397,6 +1439,7 @@ FORMATTING:
 [Boards](/employer/connections), [Analytics](/employer/analytics), \
 [Pipeline](/employer/pipeline), [Intelligence](/employer/intelligence), \
 [Migrate](/employer/migrate), [Compliance](/employer/compliance), \
+[Career Pages](/employer/career-pages), \
 [Settings](/employer/settings), [Pricing](/employer/pricing)
 
 \u2550\u2550\u2550 WINNOW PLATFORM FEATURES (EMPLOYER) \u2550\u2550\u2550
@@ -1461,6 +1504,25 @@ Manage permissions and coordinate hiring. Configure from \
     Edit company profile (name, size, industry, website, description), \
 manage billing subscription, and configure team access.
 
+15. CAREER PAGES (/employer/career-pages) \u2605 KEY FEATURE
+    Branded job portals showcasing your open positions with an AI-powered \
+application experience.
+    - Hosted at careers.winnowcc.ai/your-slug, or connect a custom domain \
+(e.g., careers.yourcompany.com) on Pro/Enterprise
+    - Visual builder: customize colors, fonts, logo, hero section, and \
+job display layout
+    - Sieve AI greets visitors and guides them through a conversational \
+application flow (resume upload \u2192 follow-up questions \u2192 cross-job \
+recommendations \u2192 submit)
+    - Embeddable JavaScript widget for your company website
+    - Analytics: views, visitors, applications started vs completed
+    - Tier limits: Free=0, Starter=1, Pro=3, Enterprise=unlimited pages
+    - Custom domains: Pro and Enterprise only
+    - HOW TO SET UP: Go to [Career Pages](/employer/career-pages) \u2192 \
+"Create Career Page" \u2192 customize branding \u2192 enable Sieve AI \u2192 publish
+    - CUSTOM DOMAIN: enter domain \u2192 get CNAME target \u2192 add DNS record \u2192 \
+verify \u2192 SSL auto-provisions
+
 \u2550\u2550\u2550 CURRENT PLAN: {tier.upper()} \u2550\u2550\u2550
 
 Usage this month:
@@ -1509,7 +1571,8 @@ expired {intros.get("expired", 0)}
 - Analytics: {analytics.get("impressions", 0)} impressions, \
 {analytics.get("clicks", 0)} clicks, \
 {analytics.get("applications", 0)} applications
-
+- Career pages: {ctx.get("career_pages_count", 0)}
+{_format_career_pages_state(ctx)}
 TOP ACTIVE JOBS:
 {jobs_detail}
 
@@ -1545,6 +1608,22 @@ When asked about salary or market data:
 - Note that detailed salary intelligence is \
 {salary_intel_note}
 - For benchmarking, suggest the [Intelligence](/employer/intelligence) page.
+
+\u2550\u2550\u2550 CAREER PAGE GUIDELINES \u2550\u2550\u2550
+
+When asked about career pages, job portals, branded pages, custom \
+domains, or embedding jobs on their website:
+1. Check their current career pages state above.
+2. If no career pages: walk through setup at \
+[Career Pages](/employer/career-pages) \u2192 "Create Career Page" \u2192 \
+customize branding \u2192 enable Sieve AI \u2192 publish.
+3. If they have a page: help optimize (check if published, enable Sieve, \
+suggest custom domain on Pro/Enterprise, review analytics).
+4. For custom domains: explain CNAME setup, DNS propagation (up to 48h), \
+and auto SSL provisioning. Requires Pro or Enterprise.
+5. For embeddable widgets: generate API key, copy JS snippet, add domain \
+to CORS whitelist.
+6. Always link to [Career Pages](/employer/career-pages).
 
 \u2550\u2550\u2550 RESPONSE GUIDELINES \u2550\u2550\u2550
 
@@ -1645,8 +1724,16 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     user = session.execute(select(User).where(User.id == user_id)).scalar_one_or_none()
     if not user:
         return context
+    # Prefer real name fields before falling back to email prefix
+    user_full = (
+        user.full_name
+        or " ".join(p for p in [user.first_name, user.last_name] if p)
+        or ""
+    ).strip()
     context["name"] = (
-        user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
+        user_full
+        if user_full
+        else user.email.split("@")[0].replace(".", " ").replace("_", " ").title()
     )
 
     profile = session.execute(
@@ -1805,6 +1892,40 @@ def load_recruiter_context(user_id: int, session: Session) -> dict:
     except Exception:
         context["sequences"] = {"total": 0, "active": 0, "active_enrollments": 0}
 
+    # Career pages
+    try:
+        from app.models.career_page import CareerPage
+
+        career_pages = (
+            session.execute(
+                select(CareerPage).where(
+                    CareerPage.tenant_id == profile.id,
+                    CareerPage.tenant_type == "recruiter",
+                )
+            )
+            .scalars()
+            .all()
+        )
+        cp_list = []
+        for cp in career_pages:
+            cp_info: dict = {
+                "id": str(cp.id),
+                "name": cp.name,
+                "slug": cp.slug,
+                "published": cp.published,
+                "views": cp.view_count or 0,
+                "applications": cp.application_count or 0,
+            }
+            if cp.custom_domain:
+                cp_info["custom_domain"] = cp.custom_domain
+                cp_info["domain_verified"] = cp.custom_domain_verified
+            cp_list.append(cp_info)
+        context["career_pages"] = cp_list
+        context["career_pages_count"] = len(cp_list)
+    except Exception:
+        context["career_pages"] = []
+        context["career_pages_count"] = 0
+
     return context
 
 
@@ -1829,6 +1950,28 @@ def _format_migration_state(ctx: dict) -> str:
                 parts.append(f"{stats['errors']} errors")
             detail = f" ({', '.join(parts)})" if parts else ""
         lines.append(f"  #{m['id']} {platform} — {status}{detail}")
+    return "\n".join(lines) + "\n"
+
+
+def _format_career_pages_state(ctx: dict) -> str:
+    """Format career page state for the system prompt."""
+    pages = ctx.get("career_pages", [])
+    if not pages:
+        return ""
+    lines = []
+    for p in pages:
+        status = "published" if p.get("published") else "draft"
+        url = f"careers.winnowcc.ai/{p['slug']}"
+        domain = p.get("custom_domain")
+        if domain:
+            verified = "verified" if p.get("domain_verified") else "pending"
+            domain_note = f" | custom domain: {domain} ({verified})"
+        else:
+            domain_note = ""
+        lines.append(
+            f"  • {p['name']} — {status} | {url}{domain_note}"
+            f" | {p.get('views', 0)} views, {p.get('applications', 0)} applications"
+        )
     return "\n".join(lines) + "\n"
 
 
@@ -1984,6 +2127,7 @@ link using the markdown format [Page Name](/recruiter/page-path).
 [Intelligence](/recruiter/intelligence), [Analytics](/recruiter/analytics), \
 [Sieve AI](/recruiter/sieve), [Migration](/recruiter/migrate), \
 [Sequences](/recruiter/sequences), [Notifications](/recruiter/notifications), \
+[Career Pages](/recruiter/career-pages), \
 [Settings](/recruiter/settings), [Pricing](/recruiter/pricing)
 - For specific job links, use [job title](/recruiter/jobs/ID).
 - For specific candidate links, use [candidate name](/recruiter/candidates/ID).
@@ -2231,6 +2375,86 @@ explain this feature.
     When a recruiter asks about collaborating with teammates or \
 getting notified about candidate updates, explain @mentions.
 
+22. CAREER PAGES (/recruiter/career-pages) ★ KEY FEATURE
+    Branded job portals that showcase your open positions with an AI-powered \
+application experience.
+
+    WHAT CAREER PAGES ARE:
+    - A branded career page hosted at careers.winnowcc.ai/your-slug
+    - Optional custom domain (e.g., careers.youragency.com) with SSL — \
+available on Team and Agency plans
+    - Full visual builder: customize colors, fonts, logo, hero section, \
+job display layout, and Sieve AI settings
+    - Jobs from your recruiter job orders are automatically listed
+    - Candidates can browse, search, and filter open positions
+    - Sieve AI greets visitors and guides them through the application \
+in a conversational flow
+
+    SIEVE-GUIDED APPLICATION FLOW:
+    When a candidate visits your career page and starts an application:
+    1. Sieve greets them with a customizable welcome message
+    2. Candidate uploads their resume — Sieve parses it instantly
+    3. Sieve identifies missing profile fields and asks follow-up questions \
+conversationally (experience, skills, availability, etc.)
+    4. A completeness score tracks progress — candidates can submit at 70%+
+    5. Before submitting, Sieve shows cross-job recommendations: "Based on \
+your profile, you'd also be a great fit for [Job B] and [Job C]"
+    6. Candidate can apply to multiple jobs in one session
+    7. On submission, an IPS (Interview Probability Score) is calculated \
+and the application is created in the recruiter's pipeline
+    This replaces traditional "fill out a form" applications with a \
+conversational AI experience that improves completion rates.
+
+    CUSTOM SCREENING QUESTIONS:
+    - Add custom questions to any job (text, select, boolean, number, date)
+    - Sieve asks these naturally during conversation — not as a rigid form
+    - Candidate answers are extracted with confidence scoring
+
+    EMBEDDABLE WIDGET:
+    - Generate a JavaScript snippet to embed your career page on any external \
+website
+    - Widget API keys with CORS whitelist and rate limiting
+    - Manage keys at [Career Pages](/recruiter/career-pages)
+
+    CUSTOM DOMAINS:
+    - Connect your own domain (e.g., careers.youragency.com) to your \
+career page
+    - Winnow provides the CNAME target — add it in your DNS provider
+    - SSL is provisioned automatically after DNS verification
+    - Available on Team and Agency plans
+
+    HOW TO SET UP A CAREER PAGE:
+    1. Go to [Career Pages](/recruiter/career-pages) and click "Create Career Page"
+    2. Enter a name → auto-generates a URL slug
+    3. Use the visual builder to customize branding (colors, logo, fonts)
+    4. Configure the layout: hero style, job display (grid/list/compact), \
+filters
+    5. Enable Sieve AI and customize her welcome message and tone \
+(professional/casual/enthusiastic)
+    6. Click "Publish" to go live
+    7. Share the URL or embed the widget on your website
+
+    TIER LIMITS — career pages:
+    - Trial: 1 page | Solo: 1 page | Team: 5 pages | Agency: unlimited
+    - Custom domains: Team and Agency only
+
+    ANALYTICS:
+    - Track page views, unique visitors, job views, applications \
+started vs completed, and Sieve conversations per day.
+
+23. DOMAIN VERIFICATION
+    For custom domains on career pages:
+    1. Go to career page settings → "Custom Domain"
+    2. Enter your domain (e.g., careers.youragency.com)
+    3. Winnow generates a CNAME target (e.g., your-slug.careers.winnowcc.ai)
+    4. Add the CNAME record in your DNS provider (GoDaddy, Cloudflare, \
+Namecheap, Route 53, etc.)
+    5. Click "Verify" — Winnow checks DNS propagation
+    6. Once verified, SSL is provisioned automatically
+    7. Your career page is now live at your custom domain
+    DNS propagation can take a few minutes to 48 hours. If verification \
+fails, double-check the CNAME record and try again.
+
 ═══ CURRENT PLAN: {tier.upper()} ({limits["price"]}) ═══
 
 Usage this month:
@@ -2287,6 +2511,8 @@ management, please visit WinnowCC.ai."
 - Auto-populate pipeline: {"on" if ctx.get("auto_populate_pipeline") else "off"}
 - Sequences: {seq_summary}
 - Candidates without resume: {ctx.get("candidates_without_resume", "unknown")}
+- Career pages: {ctx.get("career_pages_count", 0)}
+{_format_career_pages_state(ctx)}
 {_format_migration_state(ctx)}
 ═══ RESPONSE GUIDELINES ═══
 
@@ -2334,6 +2560,33 @@ Phase 2 if applicable.
 on the migration page and suggest retrying. If the worker seems stale, \
 suggest cancelling and re-uploading.
 5. Always include a link to [Migration](/recruiter/migrate).
+
+CAREER PAGE WORKFLOW — when a recruiter asks about career pages, \
+job portals, branded pages, custom domains, or embedding jobs on \
+their website:
+1. Check their current career pages state (shown in CURRENT RECRUITER \
+STATE above).
+2. If they have NO career pages yet, walk them through setup:
+   a. Go to [Career Pages](/recruiter/career-pages) → "Create Career Page"
+   b. Name it and customize branding (logo, colors, fonts)
+   c. Configure Sieve AI's welcome message and tone
+   d. Publish and share the URL
+3. If they already have a career page, help them optimize:
+   - Check if it's published (unpublished = invisible)
+   - Suggest enabling Sieve AI if it's disabled
+   - Offer custom domain setup if on Team/Agency
+   - Review analytics (views vs applications = conversion insight)
+4. For custom domain questions:
+   - Explain the CNAME setup: enter domain → get CNAME target → \
+add DNS record → verify → SSL auto-provisions
+   - If verification fails: check the CNAME record, allow up to \
+48 hours for DNS propagation, try verifying again
+   - Custom domains require Team or Agency plan
+5. For embeddable widget questions:
+   - Generate widget API key at [Career Pages](/recruiter/career-pages)
+   - Copy the JavaScript snippet and paste into their website's HTML
+   - Widget respects CORS whitelist — add their domain
+6. Always link to [Career Pages](/recruiter/career-pages).
 
 GENERAL GUIDELINES:
 - Always point to the specific Winnow feature that solves their need — \
