@@ -72,7 +72,7 @@ export async function middleware(req: NextRequest) {
     if (pathname.startsWith("/careers/")) return NextResponse.next();
     // Rewrite to custom domain resolver page
     const url = req.nextUrl.clone();
-    url.pathname = "/careers/_custom";
+    url.pathname = "/careers/custom-domain";
     url.searchParams.set("domain", host.replace(/:\d+$/, ""));
     return NextResponse.rewrite(url);
   }
