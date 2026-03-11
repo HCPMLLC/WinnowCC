@@ -41,6 +41,13 @@ export async function middleware(req: NextRequest) {
   const host = req.headers.get("host") || "";
   const { pathname } = req.nextUrl;
 
+  // Known Winnow hosts (main site + subdomains)
+  const isWinnowHost =
+    host.includes("winnowcc.ai") ||
+    host.includes("localhost") ||
+    host.includes("127.0.0.1") ||
+    host.includes(".run.app");
+
   // careers.winnowcc.ai subdomain — all pages are public, no auth needed.
   // Rewrite /slug → /careers/slug so Next.js routes to app/careers/[slug]
   if (host.startsWith("careers.")) {
@@ -51,6 +58,22 @@ export async function middleware(req: NextRequest) {
     // Rewrite /{slug} → /careers/{slug}
     const url = req.nextUrl.clone();
     url.pathname = `/careers${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // Custom domain (e.g., jobs.hcpm.llc) — rewrite all requests to the
+  // custom domain resolver page which looks up the slug via API
+  if (!isWinnowHost) {
+    // Allow static assets and API calls through
+    if (pathname.startsWith("/_next") || pathname.startsWith("/api")) {
+      return NextResponse.next();
+    }
+    // Already resolved to a career page path — pass through
+    if (pathname.startsWith("/careers/")) return NextResponse.next();
+    // Rewrite to custom domain resolver page
+    const url = req.nextUrl.clone();
+    url.pathname = "/careers/_custom";
+    url.searchParams.set("domain", host.replace(/:\d+$/, ""));
     return NextResponse.rewrite(url);
   }
 

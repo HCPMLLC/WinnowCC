@@ -134,6 +134,13 @@ def get_career_page_by_slug(db: Session, slug: str) -> CareerPage | None:
     return result.scalar_one_or_none()
 
 
+def get_career_page_by_domain(db: Session, domain: str) -> CareerPage | None:
+    result = db.execute(
+        select(CareerPage).where(CareerPage.custom_domain == domain)
+    )
+    return result.scalar_one_or_none()
+
+
 def list_career_pages(
     db: Session, tenant_id: int, tenant_type: str
 ) -> list[CareerPage]:

@@ -200,6 +200,7 @@ ALLOWED_ORIGINS = [
     "https://www.winnowcc.ai",  # Production — www
     "https://winnow-web-cdn2d6pc5q-uc.a.run.app",  # Cloud Run direct
     "https://careers.winnowcc.ai",  # Career pages subdomain
+    "https://jobs.hcpm.llc",  # Custom career page domain
 ]
 
 # Also keep the dynamic CORS_ORIGIN env var for flexibility

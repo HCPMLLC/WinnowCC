@@ -1,6 +1,8 @@
 """Admin career pages management router."""
 
-from fastapi import APIRouter, Depends
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -117,3 +119,32 @@ def list_career_pages(
         )
 
     return results
+
+
+class SetCustomDomainRequest(BaseModel):
+    custom_domain: str | None = None
+    verified: bool = True
+
+
+@router.patch("/{page_id}/custom-domain")
+def set_custom_domain(
+    page_id: UUID,
+    body: SetCustomDomainRequest,
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+):
+    """Set or clear a custom domain on a career page."""
+    page = session.execute(
+        select(CareerPage).where(CareerPage.id == page_id)
+    ).scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="Career page not found")
+    page.custom_domain = body.custom_domain
+    page.custom_domain_verified = body.verified
+    session.commit()
+    return {
+        "id": str(page.id),
+        "slug": page.slug,
+        "custom_domain": page.custom_domain,
+        "custom_domain_verified": page.custom_domain_verified,
+    }

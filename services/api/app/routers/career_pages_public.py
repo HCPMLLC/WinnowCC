@@ -15,6 +15,7 @@ from app.schemas.career_page import (
     PublicJobSummary,
 )
 from app.services.career_page_service import (
+    get_career_page_by_domain,
     get_career_page_by_slug,
     increment_page_view,
 )
@@ -126,3 +127,15 @@ def list_public_jobs(
         page_size=page_size,
         filters={"locations": [], "departments": []},
     )
+
+
+@router.get("/resolve-domain/{domain}")
+def resolve_custom_domain(
+    domain: str,
+    db: Annotated[Session, Depends(get_session)],
+):
+    """Resolve a custom domain to a career page slug."""
+    page = get_career_page_by_domain(db, domain)
+    if not page:
+        raise HTTPException(status_code=404, detail="Domain not found")
+    return {"slug": page.slug, "published": page.published}
