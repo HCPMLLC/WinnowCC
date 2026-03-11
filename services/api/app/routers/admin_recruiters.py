@@ -465,3 +465,59 @@ def backfill_from_migration(
         "skipped": skipped,
         "no_data_in_csv": no_data,
     }
+
+
+@router.get("/jobs/duplicate-report")
+def duplicate_report(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Report duplicate recruiter jobs (same title + company)."""
+    from sqlalchemy import literal_column
+
+    # Find (title, company) groups with more than one job
+    stmt = (
+        select(
+            func.lower(RecruiterJob.title).label("title_lc"),
+            func.lower(
+                func.coalesce(
+                    RecruiterJob.client_company_name,
+                    literal_column("''"),
+                )
+            ).label("company_lc"),
+            func.count(RecruiterJob.id).label("cnt"),
+            func.array_agg(RecruiterJob.id).label("ids"),
+        )
+        .group_by("title_lc", "company_lc")
+        .having(func.count(RecruiterJob.id) > 1)
+        .order_by(func.count(RecruiterJob.id).desc())
+    )
+    rows = session.execute(stmt).all()
+
+    total_dupes = sum(r.cnt - 1 for r in rows)
+    total_jobs = session.execute(
+        select(func.count(RecruiterJob.id))
+    ).scalar()
+    missing_sol = session.execute(
+        select(func.count(RecruiterJob.id)).where(
+            RecruiterJob.job_id_external.is_(None)
+        )
+    ).scalar()
+
+    groups = [
+        {
+            "title": r.title_lc,
+            "company": r.company_lc,
+            "count": r.cnt,
+            "job_ids": sorted(r.ids),
+        }
+        for r in rows[:50]  # top 50 groups
+    ]
+
+    return {
+        "total_jobs": total_jobs,
+        "missing_solicitation_number": missing_sol,
+        "duplicate_groups": len(rows),
+        "total_duplicate_rows": total_dupes,
+        "top_groups": groups,
+    }
