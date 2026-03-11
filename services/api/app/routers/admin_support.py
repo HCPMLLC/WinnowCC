@@ -643,6 +643,52 @@ def queue_monitor(
 
 
 # ---------------------------------------------------------------------------
+# Endpoint 4b: POST /flush-queue/{queue_name}
+# ---------------------------------------------------------------------------
+
+
+@router.post("/flush-queue/{queue_name}")
+def flush_queue(
+    queue_name: str,
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+):
+    """Empty all pending jobs from a specific queue."""
+    from rq import Queue
+
+    from app.services.worker_health import QUEUE_NAMES, get_redis_connection
+
+    if queue_name not in QUEUE_NAMES:
+        raise HTTPException(status_code=400, detail=f"Unknown queue: {queue_name}")
+
+    conn = get_redis_connection()
+    q = Queue(queue_name, connection=conn)
+    count = q.count
+    q.empty()
+
+    return {"message": f"Flushed {count} pending jobs from '{queue_name}' queue."}
+
+
+@router.post("/flush-all-queues")
+def flush_all_queues(
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+):
+    """Empty all pending jobs from all queues."""
+    from rq import Queue
+
+    from app.services.worker_health import QUEUE_NAMES, get_redis_connection
+
+    conn = get_redis_connection()
+    total = 0
+    for name in QUEUE_NAMES:
+        q = Queue(name, connection=conn)
+        count = q.count
+        q.empty()
+        total += count
+
+    return {"message": f"Flushed {total} pending jobs from all queues."}
+
+
+# ---------------------------------------------------------------------------
 # Endpoint 5: GET /feature-usage
 # ---------------------------------------------------------------------------
 
