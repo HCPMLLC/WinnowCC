@@ -39,8 +39,12 @@ export default function AuthenticatedSieve() {
   const isPublicPage =
     PUBLIC_PATHS.includes(pathname) || pathname.startsWith("/privacy/");
 
+  // Recruiters and employers access Sieve via sidebar (/recruiter/sieve, /employer/sieve)
+  const isRecruiterOrEmployer =
+    pathname.startsWith("/recruiter") || pathname.startsWith("/employer");
+
   useEffect(() => {
-    if (isPublicPage) return;
+    if (isPublicPage || isRecruiterOrEmployer) return;
     fetch(`${API_BASE}/api/auth/me`, { credentials: "include" })
       .then((res) => {
         if (res.ok) {
@@ -51,7 +55,7 @@ export default function AuthenticatedSieve() {
       .catch(() => {});
   }, [fetchTriggers, isPublicPage]);
 
-  if (!isAuthenticated || isPublicPage) return null;
+  if (!isAuthenticated || isPublicPage || isRecruiterOrEmployer) return null;
 
   return (
     <SieveWidget
