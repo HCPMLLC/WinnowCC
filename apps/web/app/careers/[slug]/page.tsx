@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare } from "lucide-react";
+import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare, Building2, Calendar } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -34,11 +34,13 @@ interface CareerPageData {
 interface JobData {
   id: number;
   title: string;
+  company: string | null;
   location: string | null;
   location_type: string | null;
   salary_min: number | null;
   salary_max: number | null;
   salary_currency: string | null;
+  application_deadline: string | null;
   posted_at: string;
 }
 
@@ -203,6 +205,9 @@ export default function PublicCareerPage() {
               return (
                 <div key={job.id} className="bg-white rounded-xl border p-5 hover:shadow-md transition-shadow">
                   <h3 className="text-lg font-semibold text-gray-900 mb-1">{job.title}</h3>
+                  {job.company && (
+                    <p className="flex items-center gap-1 text-sm text-gray-600 mb-2"><Building2 className="w-3.5 h-3.5" />{job.company}</p>
+                  )}
                   <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
                     {job.location && (
                       <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{job.location}</span>
@@ -212,6 +217,9 @@ export default function PublicCareerPage() {
                     )}
                     {salary && layout.show_salary_ranges && (
                       <span className="flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" />{salary}</span>
+                    )}
+                    {job.application_deadline && (
+                      <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Deadline: {new Date(job.application_deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                     )}
                   </div>
                   <Link

@@ -154,11 +154,13 @@ class PublicCareerPageResponse(BaseModel):
 class PublicJobSummary(BaseModel):
     id: int
     title: str
+    company: str | None = None
     location: str | None
     location_type: str | None
     salary_min: int | None
     salary_max: int | None
     salary_currency: str | None
+    application_deadline: datetime | None = None
     posted_at: datetime
     ips_score: int | None = None
     ips_label: str | None = None

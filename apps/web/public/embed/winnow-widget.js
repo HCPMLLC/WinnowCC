@@ -86,17 +86,25 @@
             job.ips_score +
             "% Match</span>";
         }
+        var companyHtml = job.company
+          ? '<div style="font-size:14px;color:#444;margin-bottom:4px;font-weight:500;">' + escapeHtml(job.company) + "</div>"
+          : "";
+        var deadlineHtml = job.application_deadline
+          ? '<div style="font-size:12px;color:#999;margin-top:4px;">Deadline: ' + new Date(job.application_deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) + "</div>"
+          : "";
         return (
           '<div class="winnow-job" style="border:1px solid #e5e7eb;border-radius:8px;padding:16px;margin-bottom:12px;transition:box-shadow 0.2s;" onmouseover="this.style.boxShadow=\'0 4px 12px rgba(0,0,0,0.1)\'" onmouseout="this.style.boxShadow=\'none\'">' +
-          '<h3 style="margin:0 0 8px;font-size:16px;font-weight:600;color:#111;">' +
+          '<h3 style="margin:0 0 4px;font-size:16px;font-weight:600;color:#111;">' +
           escapeHtml(job.title) +
           "</h3>" +
-          '<div style="font-size:14px;color:#666;margin-bottom:8px;">' +
+          companyHtml +
+          '<div style="font-size:14px;color:#666;margin-bottom:4px;">' +
           (job.location
             ? "<span>" + escapeHtml(job.location) + "</span>"
             : "") +
           "</div>" +
           salaryHtml +
+          deadlineHtml +
           ipsHtml +
           '<button class="winnow-apply-btn" data-job-id="' +
           job.id +

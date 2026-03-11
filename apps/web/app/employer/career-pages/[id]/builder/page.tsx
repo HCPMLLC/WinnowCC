@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Eye, Save, Globe, Loader2, Check, Palette, Layout, Layers, MessageSquare, Image, Type } from "lucide-react";
+import { ArrowLeft, Eye, Save, Globe, Loader2, Check, Palette, Layout, Layers, MessageSquare, Image, Type, Building2, Calendar } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -194,16 +194,20 @@ export default function CareerPageBuilderPage() {
               </h3>
               <div className={`grid ${page.config.layout.job_display === "grid" ? "grid-cols-2" : ""} gap-4`}>
                 {[
-                  { title: "Senior Software Engineer", dept: "Engineering", loc: "Remote", sal: "$130k – $170k" },
-                  { title: "Product Designer", dept: "Design", loc: "New York, NY", sal: "$110k – $140k" },
-                  { title: "Marketing Manager", dept: "Marketing", loc: "Remote", sal: "$95k – $125k" },
+                  { title: "Senior Software Engineer", company: "Acme Corp", loc: "Remote", sal: "$130k – $170k", deadline: "Apr 15, 2026" },
+                  { title: "Product Designer", company: "TechStart Inc", loc: "New York, NY", sal: "$110k – $140k", deadline: "Apr 20, 2026" },
+                  { title: "Marketing Manager", company: "GrowthCo", loc: "Remote", sal: "$95k – $125k", deadline: "May 1, 2026" },
                 ].map((job, i) => (
                   <div key={i} className="border rounded-lg p-4 hover:shadow-md transition-shadow group">
                     <div className="flex items-start justify-between">
                       <div>
                         <h4 className="font-medium text-gray-900">{job.title}</h4>
-                        <p className="text-sm text-gray-500">{job.loc} · {job.dept}</p>
-                        {page.config.layout.show_salary_ranges && <p className="text-sm text-gray-500 mt-1">{job.sal}</p>}
+                        <p className="flex items-center gap-1 text-sm text-gray-600"><Building2 className="w-3.5 h-3.5" />{job.company}</p>
+                        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mt-1">
+                          <span>{job.loc}</span>
+                          {page.config.layout.show_salary_ranges && <span>· {job.sal}</span>}
+                        </div>
+                        <p className="flex items-center gap-1 text-xs text-gray-400 mt-1"><Calendar className="w-3 h-3" />Deadline: {job.deadline}</p>
                       </div>
                       {page.config.layout.show_ips_preview && (
                         <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full whitespace-nowrap">{85 + i * 3}% Match</span>

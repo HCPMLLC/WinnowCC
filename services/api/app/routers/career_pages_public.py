@@ -81,10 +81,11 @@ def list_public_jobs(
     )
     total = count_result.scalar() or 0
 
-    # Paginate
+    # Paginate — default sort by application deadline descending
     offset = (page - 1) * page_size
     query = query.offset(offset).limit(page_size).order_by(
-        Job.ingested_at.desc()
+        Job.application_deadline.desc().nulls_last(),
+        Job.ingested_at.desc(),
     )
 
     result = db.execute(query)
@@ -95,11 +96,13 @@ def list_public_jobs(
             PublicJobSummary(
                 id=job.id,
                 title=job.title,
+                company=job.company,
                 location=job.location,
                 location_type="remote" if job.remote_flag else "onsite",
                 salary_min=job.salary_min,
                 salary_max=job.salary_max,
                 salary_currency=job.currency,
+                application_deadline=job.application_deadline,
                 posted_at=job.posted_at or job.ingested_at,
             )
             for job in jobs
