@@ -4,7 +4,7 @@ import logging
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Body, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -158,3 +158,25 @@ def delete_page(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
         ) from None
+
+
+@router.post("/{page_id}/import-branding")
+def import_branding(
+    page_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_session)],
+    website_url: str = Body(..., embed=True),
+):
+    """Scrape a website and return extracted branding (colors, logo, fonts, hero)."""
+    from app.services.brand_scraper import scrape_brand
+
+    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    try:
+        get_career_page(db, page_id, tenant_id, tenant_type)
+    except CareerPageNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        ) from None
+
+    kit = scrape_brand(website_url)
+    return kit.model_dump()
