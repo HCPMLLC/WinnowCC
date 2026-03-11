@@ -6,7 +6,7 @@ from uuid import UUID
 
 from fastapi import Request
 from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.widget_api_key import WidgetApiKey, WidgetApiKeyUsage
 
@@ -34,13 +34,13 @@ def _extract_domain(url: str) -> str | None:
         return None
 
 
-async def validate_api_key(
-    db: AsyncSession, api_key: str, request: Request
+def validate_api_key(
+    db: Session, api_key: str, request: Request
 ) -> WidgetApiKey:
     """Validate widget API key. Raises on failure."""
     key_hash = WidgetApiKey.hash_key(api_key)
 
-    result = await db.execute(
+    result = db.execute(
         select(WidgetApiKey).where(WidgetApiKey.key_hash == key_hash)
     )
     key_record = result.scalar_one_or_none()
@@ -58,7 +58,7 @@ async def validate_api_key(
     # Check rate limit
     current_hour = datetime.utcnow().replace(minute=0, second=0, microsecond=0)
 
-    result = await db.execute(
+    result = db.execute(
         select(WidgetApiKeyUsage).where(
             and_(
                 WidgetApiKeyUsage.api_key_id == key_record.id,
@@ -87,13 +87,13 @@ async def validate_api_key(
 
     key_record.last_used_at = datetime.utcnow()
     key_record.request_count += 1
-    await db.commit()
+    db.commit()
 
     return key_record
 
 
-async def create_api_key(
-    db: AsyncSession,
+def create_api_key(
+    db: Session,
     tenant_id: int,
     tenant_type: str,
     name: str | None = None,
@@ -114,16 +114,16 @@ async def create_api_key(
     )
 
     db.add(key_record)
-    await db.commit()
-    await db.refresh(key_record)
+    db.commit()
+    db.refresh(key_record)
 
     return key_record, full_key
 
 
-async def list_api_keys(
-    db: AsyncSession, tenant_id: int, tenant_type: str
+def list_api_keys(
+    db: Session, tenant_id: int, tenant_type: str
 ) -> list[WidgetApiKey]:
-    result = await db.execute(
+    result = db.execute(
         select(WidgetApiKey)
         .where(
             and_(
@@ -136,10 +136,10 @@ async def list_api_keys(
     return list(result.scalars().all())
 
 
-async def revoke_api_key(
-    db: AsyncSession, key_id: UUID, tenant_id: int, tenant_type: str
+def revoke_api_key(
+    db: Session, key_id: UUID, tenant_id: int, tenant_type: str
 ) -> None:
-    result = await db.execute(
+    result = db.execute(
         select(WidgetApiKey).where(
             and_(
                 WidgetApiKey.id == key_id,
@@ -151,13 +151,13 @@ async def revoke_api_key(
     key_record = result.scalar_one_or_none()
     if key_record:
         key_record.active = False
-        await db.commit()
+        db.commit()
 
 
-async def delete_api_key(
-    db: AsyncSession, key_id: UUID, tenant_id: int, tenant_type: str
+def delete_api_key(
+    db: Session, key_id: UUID, tenant_id: int, tenant_type: str
 ) -> None:
-    result = await db.execute(
+    result = db.execute(
         select(WidgetApiKey).where(
             and_(
                 WidgetApiKey.id == key_id,
@@ -168,5 +168,5 @@ async def delete_api_key(
     )
     key_record = result.scalar_one_or_none()
     if key_record:
-        await db.delete(key_record)
-        await db.commit()
+        db.delete(key_record)
+        db.commit()

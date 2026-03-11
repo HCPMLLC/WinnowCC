@@ -5,7 +5,7 @@ from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.career_page import CareerPage
 from app.schemas.career_page import CareerPageCreate, CareerPageUpdate
@@ -41,7 +41,7 @@ RECRUITER_CAREER_PAGE_LIMITS = {
 }
 
 
-async def get_career_page_limit(tenant_type: str, plan_tier: str) -> int:
+def get_career_page_limit(tenant_type: str, plan_tier: str) -> int:
     if tenant_type == "employer":
         return EMPLOYER_CAREER_PAGE_LIMITS.get(plan_tier, 0)
     elif tenant_type == "recruiter":
@@ -49,10 +49,8 @@ async def get_career_page_limit(tenant_type: str, plan_tier: str) -> int:
     return 0
 
 
-async def count_career_pages(
-    db: AsyncSession, tenant_id: int, tenant_type: str
-) -> int:
-    result = await db.execute(
+def count_career_pages(db: Session, tenant_id: int, tenant_type: str) -> int:
+    result = db.execute(
         select(func.count(CareerPage.id)).where(
             and_(
                 CareerPage.tenant_id == tenant_id,
@@ -63,33 +61,33 @@ async def count_career_pages(
     return result.scalar() or 0
 
 
-async def check_slug_available(
-    db: AsyncSession, slug: str, exclude_id: UUID | None = None
+def check_slug_available(
+    db: Session, slug: str, exclude_id: UUID | None = None
 ) -> bool:
     query = select(CareerPage.id).where(CareerPage.slug == slug)
     if exclude_id:
         query = query.where(CareerPage.id != exclude_id)
-    result = await db.execute(query)
+    result = db.execute(query)
     return result.scalar() is None
 
 
-async def create_career_page(
-    db: AsyncSession,
+def create_career_page(
+    db: Session,
     tenant_id: int,
     tenant_type: str,
     plan_tier: str,
     data: CareerPageCreate,
 ) -> CareerPage:
     # Check limit
-    limit = await get_career_page_limit(tenant_type, plan_tier)
-    current_count = await count_career_pages(db, tenant_id, tenant_type)
+    limit = get_career_page_limit(tenant_type, plan_tier)
+    current_count = count_career_pages(db, tenant_id, tenant_type)
 
     if current_count >= limit:
         raise CareerPageLimitExceeded(
             f"Career page limit reached ({limit} for {plan_tier} plan)"
         )
 
-    if not await check_slug_available(db, data.slug):
+    if not check_slug_available(db, data.slug):
         raise CareerPageSlugTaken(f"Slug '{data.slug}' is already taken")
 
     cname_target = f"{data.slug}.careers.winnowcc.ai"
@@ -106,17 +104,17 @@ async def create_career_page(
     )
 
     db.add(page)
-    await db.commit()
-    await db.refresh(page)
+    db.commit()
+    db.refresh(page)
 
     logger.info(f"Created career page {page.slug} for {tenant_type} {tenant_id}")
     return page
 
 
-async def get_career_page(
-    db: AsyncSession, page_id: UUID, tenant_id: int, tenant_type: str
+def get_career_page(
+    db: Session, page_id: UUID, tenant_id: int, tenant_type: str
 ) -> CareerPage:
-    result = await db.execute(
+    result = db.execute(
         select(CareerPage).where(
             and_(
                 CareerPage.id == page_id,
@@ -131,19 +129,15 @@ async def get_career_page(
     return page
 
 
-async def get_career_page_by_slug(
-    db: AsyncSession, slug: str
-) -> CareerPage | None:
-    result = await db.execute(
-        select(CareerPage).where(CareerPage.slug == slug)
-    )
+def get_career_page_by_slug(db: Session, slug: str) -> CareerPage | None:
+    result = db.execute(select(CareerPage).where(CareerPage.slug == slug))
     return result.scalar_one_or_none()
 
 
-async def list_career_pages(
-    db: AsyncSession, tenant_id: int, tenant_type: str
+def list_career_pages(
+    db: Session, tenant_id: int, tenant_type: str
 ) -> list[CareerPage]:
-    result = await db.execute(
+    result = db.execute(
         select(CareerPage)
         .where(
             and_(
@@ -156,17 +150,17 @@ async def list_career_pages(
     return list(result.scalars().all())
 
 
-async def update_career_page(
-    db: AsyncSession,
+def update_career_page(
+    db: Session,
     page_id: UUID,
     tenant_id: int,
     tenant_type: str,
     data: CareerPageUpdate,
 ) -> CareerPage:
-    page = await get_career_page(db, page_id, tenant_id, tenant_type)
+    page = get_career_page(db, page_id, tenant_id, tenant_type)
 
     if data.slug and data.slug != page.slug:
-        if not await check_slug_available(db, data.slug, exclude_id=page_id):
+        if not check_slug_available(db, data.slug, exclude_id=page_id):
             raise CareerPageSlugTaken(f"Slug '{data.slug}' is already taken")
         page.slug = data.slug
         page.cname_target = f"{data.slug}.careers.winnowcc.ai"
@@ -182,19 +176,19 @@ async def update_career_page(
 
     page.updated_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(page)
+    db.commit()
+    db.refresh(page)
     return page
 
 
-async def publish_career_page(
-    db: AsyncSession,
+def publish_career_page(
+    db: Session,
     page_id: UUID,
     tenant_id: int,
     tenant_type: str,
     publish: bool = True,
 ) -> CareerPage:
-    page = await get_career_page(db, page_id, tenant_id, tenant_type)
+    page = get_career_page(db, page_id, tenant_id, tenant_type)
 
     page.published = publish
     if publish and not page.published_at:
@@ -202,23 +196,23 @@ async def publish_career_page(
 
     page.updated_at = datetime.utcnow()
 
-    await db.commit()
-    await db.refresh(page)
+    db.commit()
+    db.refresh(page)
     return page
 
 
-async def delete_career_page(
-    db: AsyncSession, page_id: UUID, tenant_id: int, tenant_type: str
+def delete_career_page(
+    db: Session, page_id: UUID, tenant_id: int, tenant_type: str
 ) -> None:
-    page = await get_career_page(db, page_id, tenant_id, tenant_type)
-    await db.delete(page)
-    await db.commit()
+    page = get_career_page(db, page_id, tenant_id, tenant_type)
+    db.delete(page)
+    db.commit()
 
 
-async def increment_page_view(db: AsyncSession, page_id: UUID) -> None:
-    await db.execute(
+def increment_page_view(db: Session, page_id: UUID) -> None:
+    db.execute(
         CareerPage.__table__.update()
         .where(CareerPage.id == page_id)
         .values(view_count=CareerPage.view_count + 1)
     )
-    await db.commit()
+    db.commit()

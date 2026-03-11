@@ -5,7 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.user import User
@@ -54,12 +54,12 @@ def _get_tenant_info(user: User) -> tuple[int, str, str]:
 
 
 @router.get("", response_model=CareerPageListResponse)
-async def list_pages(
+def list_pages(
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, _ = _get_tenant_info(user)
-    pages = await list_career_pages(db, tenant_id, tenant_type)
+    pages = list_career_pages(db, tenant_id, tenant_type)
     return CareerPageListResponse(
         pages=[CareerPageResponse.model_validate(p) for p in pages],
         total=len(pages),
@@ -69,17 +69,15 @@ async def list_pages(
 @router.post(
     "", response_model=CareerPageResponse, status_code=status.HTTP_201_CREATED
 )
-async def create_page(
+def create_page(
     data: CareerPageCreate,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, plan_tier = _get_tenant_info(user)
 
     try:
-        page = await create_career_page(
-            db, tenant_id, tenant_type, plan_tier, data
-        )
+        page = create_career_page(db, tenant_id, tenant_type, plan_tier, data)
         return CareerPageResponse.model_validate(page)
     except CareerPageLimitExceeded as e:
         raise HTTPException(
@@ -92,14 +90,14 @@ async def create_page(
 
 
 @router.get("/{page_id}", response_model=CareerPageResponse)
-async def get_page(
+def get_page(
     page_id: UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, _ = _get_tenant_info(user)
     try:
-        page = await get_career_page(db, page_id, tenant_id, tenant_type)
+        page = get_career_page(db, page_id, tenant_id, tenant_type)
         return CareerPageResponse.model_validate(page)
     except CareerPageNotFound:
         raise HTTPException(
@@ -108,17 +106,15 @@ async def get_page(
 
 
 @router.put("/{page_id}", response_model=CareerPageResponse)
-async def update_page(
+def update_page(
     page_id: UUID,
     data: CareerPageUpdate,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, _ = _get_tenant_info(user)
     try:
-        page = await update_career_page(
-            db, page_id, tenant_id, tenant_type, data
-        )
+        page = update_career_page(db, page_id, tenant_id, tenant_type, data)
         return CareerPageResponse.model_validate(page)
     except CareerPageNotFound:
         raise HTTPException(
@@ -131,15 +127,15 @@ async def update_page(
 
 
 @router.post("/{page_id}/publish", response_model=CareerPageResponse)
-async def publish_page(
+def publish_page(
     page_id: UUID,
     data: CareerPagePublishRequest,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, _ = _get_tenant_info(user)
     try:
-        page = await publish_career_page(
+        page = publish_career_page(
             db, page_id, tenant_id, tenant_type, data.publish
         )
         return CareerPageResponse.model_validate(page)
@@ -150,14 +146,14 @@ async def publish_page(
 
 
 @router.delete("/{page_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_page(
+def delete_page(
     page_id: UUID,
     user: Annotated[User, Depends(get_current_user)],
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     tenant_id, tenant_type, _ = _get_tenant_info(user)
     try:
-        await delete_career_page(db, page_id, tenant_id, tenant_type)
+        delete_career_page(db, page_id, tenant_id, tenant_type)
     except CareerPageNotFound:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Not found"

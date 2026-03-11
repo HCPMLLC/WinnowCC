@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 
 from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.cross_job_recommendation import CrossJobRecommendation
 from app.models.job import Job
@@ -12,8 +12,8 @@ from app.models.job import Job
 logger = logging.getLogger(__name__)
 
 
-async def generate_cross_job_recommendations(
-    db: AsyncSession,
+def generate_cross_job_recommendations(
+    db: Session,
     candidate_id: int,
     applied_job_id: int,
     tenant_id: int,
@@ -30,7 +30,7 @@ async def generate_cross_job_recommendations(
     if tenant_type == "employer":
         filters.append(Job.employer_job_id.isnot(None))
 
-    result = await db.execute(select(Job).where(and_(*filters)).limit(20))
+    result = db.execute(select(Job).where(and_(*filters)).limit(20))
     other_jobs = list(result.scalars().all())
 
     if not other_jobs:
@@ -40,7 +40,7 @@ async def generate_cross_job_recommendations(
 
     for job in other_jobs:
         # Check cache
-        existing = await db.execute(
+        existing = db.execute(
             select(CrossJobRecommendation).where(
                 and_(
                     CrossJobRecommendation.candidate_id == candidate_id,
@@ -60,7 +60,7 @@ async def generate_cross_job_recommendations(
         ips_score = 75  # TODO: Call actual matching service
 
         if ips_score >= 60:
-            explanation = await _generate_match_explanation(job, ips_score)
+            explanation = _generate_match_explanation(job, ips_score)
 
             cross_rec = CrossJobRecommendation(
                 candidate_id=candidate_id,
@@ -73,15 +73,15 @@ async def generate_cross_job_recommendations(
             db.add(cross_rec)
             recommendations.append(cross_rec)
 
-    await db.commit()
+    db.commit()
 
     # Sort and limit
     recommendations.sort(key=lambda x: x.ips_score, reverse=True)
     return recommendations[:limit]
 
 
-async def get_cross_job_recommendations(
-    db: AsyncSession,
+def get_cross_job_recommendations(
+    db: Session,
     candidate_id: int,
     source_job_id: int = None,
 ) -> list[CrossJobRecommendation]:
@@ -98,13 +98,13 @@ async def get_cross_job_recommendations(
             CrossJobRecommendation.source_job_id == source_job_id
         )
 
-    result = await db.execute(
+    result = db.execute(
         query.order_by(CrossJobRecommendation.ips_score.desc())
     )
     return list(result.scalars().all())
 
 
-async def _generate_match_explanation(job: Job, ips_score: int) -> str:
+def _generate_match_explanation(job: Job, ips_score: int) -> str:
     """Generate explanation using Claude Haiku (~$0.001)."""
     # TODO: Integrate with Anthropic API
     if ips_score >= 85:

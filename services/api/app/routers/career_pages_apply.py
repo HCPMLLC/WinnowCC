@@ -16,7 +16,7 @@ from fastapi import (
     UploadFile,
 )
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.career_page_application import (
@@ -53,12 +53,12 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/public/apply", tags=["career-pages-apply"])
 
 
-async def get_application_by_token(
+def get_application_by_token(
     session_token: str,
-    db: AsyncSession,
+    db: Session,
 ) -> CareerPageApplication:
     """Get application by session token."""
-    result = await db.execute(
+    result = db.execute(
         select(CareerPageApplication).where(
             CareerPageApplication.session_token == session_token
         )
@@ -75,25 +75,25 @@ async def get_application_by_token(
 
 
 @router.post("/{slug}/start", response_model=ApplicationStartResponse)
-async def start_application_endpoint(
+def start_application_endpoint(
     slug: str,
     data: ApplicationStartRequest,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Start a new application for a job."""
-    career_page = await get_career_page_by_slug(db, slug)
+    career_page = get_career_page_by_slug(db, slug)
     if not career_page or not career_page.published:
         raise HTTPException(status_code=404, detail="Career page not found") from None
 
     # Get job
-    result = await db.execute(select(Job).where(Job.id == data.job_id))
+    result = db.execute(select(Job).where(Job.id == data.job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(status_code=404, detail="Job not found") from None
 
     # Start application
-    application = await start_application(
+    application = start_application(
         db,
         career_page_id=career_page.id,
         job_id=data.job_id,
@@ -108,7 +108,7 @@ async def start_application_endpoint(
     sieve_config = (career_page.config or {}).get("sieve", {})
 
     # Generate welcome message
-    welcome = await generate_welcome_message(db, application, sieve_config)
+    welcome = generate_welcome_message(db, application, sieve_config)
 
     return ApplicationStartResponse(
         application_id=application.id,
@@ -125,12 +125,12 @@ async def start_application_endpoint(
     "/status/{session_token}",
     response_model=ApplicationStatusResponse,
 )
-async def get_application_status(
+def get_application_status(
     session_token: str,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Get current application status."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     return ApplicationStatusResponse(
         application_id=application.id,
@@ -147,13 +147,13 @@ async def get_application_status(
     "/resume/{session_token}",
     response_model=ResumeUploadResponse,
 )
-async def upload_resume(
+def upload_resume(
     session_token: str,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
     file: UploadFile = File(...),
 ):
     """Upload and parse resume."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     if application.status == ApplicationStatus.COMPLETED:
         raise HTTPException(
@@ -173,7 +173,7 @@ async def upload_resume(
         ) from None
 
     # Read file content
-    content = await file.read()
+    content = file.file.read()
 
     # Parse resume using existing pipeline
     try:
@@ -188,7 +188,7 @@ async def upload_resume(
     # Store file URL (simplified)
     resume_url = f"/uploads/resumes/{application.id}/{file.filename}"
 
-    sieve_response, completeness, missing = await process_resume_upload(
+    sieve_response, completeness, missing = process_resume_upload(
         db, application, parsed_data, resume_url
     )
 
@@ -202,13 +202,13 @@ async def upload_resume(
 
 
 @router.post("/chat/{session_token}", response_model=SieveChatResponse)
-async def chat_with_sieve(
+def chat_with_sieve(
     session_token: str,
     data: SieveChatRequest,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Send a message to Sieve during application."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     if application.status == ApplicationStatus.COMPLETED:
         raise HTTPException(
@@ -222,7 +222,7 @@ async def chat_with_sieve(
         fields_updated,
         questions_answered,
         suggest_submit,
-    ) = await process_chat_message(db, application, data.message)
+    ) = process_chat_message(db, application, data.message)
 
     return SieveChatResponse(
         message=sieve_response,
@@ -238,12 +238,12 @@ async def chat_with_sieve(
     "/cross-jobs/{session_token}",
     response_model=CrossJobPitchResponse,
 )
-async def get_cross_job_pitch(
+def get_cross_job_pitch(
     session_token: str,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Get cross-job recommendations and Sieve's pitch."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     if application.completeness_score < 70:
         raise HTTPException(
@@ -251,7 +251,7 @@ async def get_cross_job_pitch(
             detail=("Profile not complete enough for recommendations"),
         ) from None
 
-    pitch, recommendations = await generate_cross_job_pitch(db, application)
+    pitch, recommendations = generate_cross_job_pitch(db, application)
 
     return CrossJobPitchResponse(
         matches=[
@@ -273,13 +273,13 @@ async def get_cross_job_pitch(
     "/submit/{session_token}",
     response_model=ApplicationSubmitResponse,
 )
-async def submit_application_endpoint(
+def submit_application_endpoint(
     session_token: str,
     data: ApplicationSubmitRequest,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Submit the completed application."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     if application.status == ApplicationStatus.COMPLETED:
         raise HTTPException(
@@ -294,7 +294,7 @@ async def submit_application_endpoint(
         ) from None
 
     try:
-        result = await submit_application(db, application, data.apply_to_additional)
+        result = submit_application(db, application, data.apply_to_additional)
     except Exception as e:
         logger.error("Submission error: %s", e)
         raise HTTPException(status_code=500, detail="Submission failed") from None
@@ -310,12 +310,12 @@ async def submit_application_endpoint(
 
 
 @router.get("/conversation/{session_token}")
-async def get_conversation_history(
+def get_conversation_history(
     session_token: str,
-    db: Annotated[AsyncSession, Depends(get_session)],
+    db: Annotated[Session, Depends(get_session)],
 ):
     """Get full conversation history for the application."""
-    application = await get_application_by_token(session_token, db)
+    application = get_application_by_token(session_token, db)
 
     return {
         "conversation": application.conversation_history or [],

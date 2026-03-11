@@ -15,7 +15,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import and_, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.models.career_page import CareerPage
 from app.models.career_page_application import (
@@ -48,8 +48,8 @@ def _get_anthropic_client():
     return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"), max_retries=3)
 
 
-async def start_application(
-    db: AsyncSession,
+def start_application(
+    db: Session,
     career_page_id: UUID,
     job_id: int,
     email: str | None = None,
@@ -63,7 +63,7 @@ async def start_application(
 
     # Check for existing application with same email
     if email:
-        existing = await db.execute(
+        existing = db.execute(
             select(CareerPageApplication).where(
                 and_(
                     CareerPageApplication.career_page_id == career_page_id,
@@ -78,7 +78,7 @@ async def start_application(
             return existing_app
 
     # Get job details for context
-    result = await db.execute(select(Job).where(Job.id == job_id))
+    result = db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
 
     if not job:
@@ -107,8 +107,8 @@ async def start_application(
     )
 
     db.add(application)
-    await db.commit()
-    await db.refresh(application)
+    db.commit()
+    db.refresh(application)
 
     logger.info(
         "Started application %s for job %s",
@@ -118,16 +118,16 @@ async def start_application(
     return application
 
 
-async def generate_welcome_message(
-    db: AsyncSession,
+def generate_welcome_message(
+    db: Session,
     application: CareerPageApplication,
     sieve_config: dict[str, Any],
 ) -> str:
     """Generate Sieve's welcome message for the application."""
-    result = await db.execute(select(Job).where(Job.id == application.job_id))
+    result = db.execute(select(Job).where(Job.id == application.job_id))
     job = result.scalar_one()
 
-    cp_result = await db.execute(
+    cp_result = db.execute(
         select(CareerPage).where(CareerPage.id == application.career_page_id)
     )
     career_page = cp_result.scalar_one()
@@ -180,12 +180,12 @@ Output only the message, no quotes or formatting."""
         }
     ]
 
-    await db.commit()
+    db.commit()
     return welcome
 
 
-async def process_resume_upload(
-    db: AsyncSession,
+def process_resume_upload(
+    db: Session,
     application: CareerPageApplication,
     parsed_resume_data: dict[str, Any],
     resume_file_url: str,
@@ -195,13 +195,13 @@ async def process_resume_upload(
 
     Returns (sieve_response, completeness_score, missing_fields).
     """
-    profile_data = await get_profile_data_from_parsed_resume(parsed_resume_data)
+    profile_data = get_profile_data_from_parsed_resume(parsed_resume_data)
 
     completeness = calculate_completeness_score(profile_data)
     missing = get_missing_fields(profile_data)
 
     # Add job-specific requirements
-    result = await db.execute(select(Job).where(Job.id == application.job_id))
+    result = db.execute(select(Job).where(Job.id == application.job_id))
     job = result.scalar_one()
     job_requirements = get_job_specific_requirements(job)
 
@@ -218,7 +218,7 @@ async def process_resume_upload(
     application.last_activity_at = datetime.utcnow()
 
     # Generate Sieve response
-    sieve_response = await _generate_resume_response(
+    sieve_response = _generate_resume_response(
         profile_data, completeness, missing, job.title
     )
 
@@ -241,12 +241,12 @@ async def process_resume_upload(
     )
     application.conversation_history = history
 
-    await db.commit()
+    db.commit()
 
     return sieve_response, completeness, missing
 
 
-async def _generate_resume_response(
+def _generate_resume_response(
     profile_data: dict,
     completeness: int,
     missing: list,
@@ -305,8 +305,8 @@ Output only the message."""
         )
 
 
-async def process_chat_message(
-    db: AsyncSession,
+def process_chat_message(
+    db: Session,
     application: CareerPageApplication,
     user_message: str,
 ) -> tuple[str, int, list[str], list[str], bool]:
@@ -319,13 +319,13 @@ async def process_chat_message(
     profile_data = dict(application.resume_parsed_data or {})
     missing_fields = list(application.missing_fields or [])
 
-    custom_questions = await _get_unanswered_questions(db, application)
+    custom_questions = _get_unanswered_questions(db, application)
 
     context = generate_completeness_prompt(
         missing_fields, custom_questions, profile_data
     )
 
-    result = await db.execute(select(Job).where(Job.id == application.job_id))
+    result = db.execute(select(Job).where(Job.id == application.job_id))
     job = result.scalar_one()
 
     recent_history = (
@@ -334,7 +334,7 @@ async def process_chat_message(
         else []
     )
 
-    sieve_response, extracted_data = await _generate_chat_response(
+    sieve_response, extracted_data = _generate_chat_response(
         user_message,
         recent_history,
         context,
@@ -390,7 +390,7 @@ async def process_chat_message(
     )
     application.conversation_history = history
 
-    await db.commit()
+    db.commit()
 
     can_submit = application.can_submit
     suggest_submit = new_completeness >= 85 and can_submit
@@ -404,12 +404,12 @@ async def process_chat_message(
     )
 
 
-async def _get_unanswered_questions(
-    db: AsyncSession,
+def _get_unanswered_questions(
+    db: Session,
     application: CareerPageApplication,
 ) -> list[dict]:
     """Get custom questions not yet answered."""
-    result = await db.execute(
+    result = db.execute(
         select(JobCustomQuestion)
         .where(
             and_(
@@ -438,7 +438,7 @@ async def _get_unanswered_questions(
     ]
 
 
-async def _generate_chat_response(
+def _generate_chat_response(
     user_message: str,
     conversation_history: list,
     context: str,
@@ -524,17 +524,17 @@ Output ONLY the JSON, no other text."""
         )
 
 
-async def generate_cross_job_pitch(
-    db: AsyncSession,
+def generate_cross_job_pitch(
+    db: Session,
     application: CareerPageApplication,
 ) -> tuple[str, list[dict]]:
     """Generate cross-job recommendations and Sieve's pitch."""
-    cp_result = await db.execute(
+    cp_result = db.execute(
         select(CareerPage).where(CareerPage.id == application.career_page_id)
     )
     career_page = cp_result.scalar_one()
 
-    recommendations = await generate_cross_job_recommendations(
+    recommendations = generate_cross_job_recommendations(
         db,
         application.candidate_id,
         application.job_id,
@@ -557,7 +557,7 @@ async def generate_cross_job_pitch(
 
     # Get job titles
     job_ids = [rec.recommended_job_id for rec in recommendations]
-    jobs_result = await db.execute(select(Job).where(Job.id.in_(job_ids)))
+    jobs_result = db.execute(select(Job).where(Job.id.in_(job_ids)))
     jobs_map = {j.id: j for j in jobs_result.scalars().all()}
 
     for rec in rec_list:
@@ -567,18 +567,18 @@ async def generate_cross_job_pitch(
             rec["location"] = job_obj.location
 
     # Get applied job title
-    job_result = await db.execute(select(Job).where(Job.id == application.job_id))
+    job_result = db.execute(select(Job).where(Job.id == application.job_id))
     job = job_result.scalar_one()
 
-    pitch = await _generate_pitch_message(job.title, rec_list)
+    pitch = _generate_pitch_message(job.title, rec_list)
 
     application.cross_job_recommendations = rec_list
-    await db.commit()
+    db.commit()
 
     return pitch, rec_list
 
 
-async def _generate_pitch_message(
+def _generate_pitch_message(
     applied_job_title: str,
     recommendations: list[dict],
 ) -> str:
@@ -625,8 +625,8 @@ Output only the message."""
         )
 
 
-async def submit_application(
-    db: AsyncSession,
+def submit_application(
+    db: Session,
     application: CareerPageApplication,
     additional_job_ids: list[int] | None = None,
 ) -> dict[str, Any]:
@@ -644,7 +644,7 @@ async def submit_application(
     application.completed_at = datetime.utcnow()
 
     # Save custom question responses
-    await _save_question_responses(db, application)
+    _save_question_responses(db, application)
 
     # Apply to additional jobs if requested
     additional: list[int] = []
@@ -654,7 +654,7 @@ async def submit_application(
         application.additional_applications = additional_job_ids
 
     # Update career page application count
-    cp_result = await db.execute(
+    cp_result = db.execute(
         select(CareerPage).where(CareerPage.id == application.career_page_id)
     )
     career_page = cp_result.scalar_one()
@@ -662,7 +662,7 @@ async def submit_application(
         (career_page.application_count or 0) + 1 + len(additional)
     )
 
-    await db.commit()
+    db.commit()
 
     return {
         "application_id": str(application.id),
@@ -670,8 +670,8 @@ async def submit_application(
     }
 
 
-async def _save_question_responses(
-    db: AsyncSession,
+def _save_question_responses(
+    db: Session,
     application: CareerPageApplication,
 ) -> None:
     """Save custom question responses to database."""
@@ -694,4 +694,4 @@ async def _save_question_responses(
         )
         db.add(response)
 
-    await db.commit()
+    db.commit()

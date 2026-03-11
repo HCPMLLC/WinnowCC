@@ -210,7 +210,7 @@ def get_job_specific_requirements(
     return extra_fields
 
 
-async def get_profile_data_from_parsed_resume(
+def get_profile_data_from_parsed_resume(
     parsed_data: dict[str, Any],
 ) -> dict[str, Any]:
     """Extract structured profile data from parsed resume."""

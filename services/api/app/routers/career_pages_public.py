@@ -5,7 +5,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import and_, func, select
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import Session
 
 from app.db.session import get_session
 from app.models.job import Job
@@ -18,12 +18,6 @@ from app.services.career_page_service import (
     get_career_page_by_slug,
     increment_page_view,
 )
-from app.services.widget_auth import (
-    DomainNotAllowed,
-    InvalidApiKey,
-    RateLimitExceeded,
-    validate_api_key,
-)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(
@@ -31,68 +25,34 @@ router = APIRouter(
 )
 
 
-async def get_api_key(
-    request: Request, db: Annotated[AsyncSession, Depends(get_session)]
-):
-    """Extract and validate API key from request."""
-    api_key = None
-
-    auth_header = request.headers.get("authorization")
-    if auth_header and auth_header.startswith("Bearer "):
-        api_key = auth_header[7:]
-
-    if not api_key:
-        api_key = request.headers.get("x-api-key")
-    if not api_key:
-        api_key = request.query_params.get("api_key")
-
-    if api_key:
-        try:
-            await validate_api_key(db, api_key, request)
-        except InvalidApiKey:
-            raise HTTPException(status_code=401, detail="Invalid API key") from None
-        except RateLimitExceeded:
-            raise HTTPException(
-                status_code=429, detail="Rate limit exceeded"
-            ) from None
-        except DomainNotAllowed:
-            raise HTTPException(
-                status_code=403, detail="Domain not allowed"
-            ) from None
-
-    return api_key
-
-
 @router.get("/{slug}", response_model=PublicCareerPageResponse)
-async def get_public_career_page(
+def get_public_career_page(
     slug: str,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_session)],
-    _api_key: Annotated[str | None, Depends(get_api_key)] = None,
+    db: Annotated[Session, Depends(get_session)],
 ):
-    page = await get_career_page_by_slug(db, slug)
+    page = get_career_page_by_slug(db, slug)
 
     if not page or not page.published:
         raise HTTPException(
             status_code=404, detail="Career page not found"
         )
 
-    await increment_page_view(db, page.id)
+    increment_page_view(db, page.id)
     return PublicCareerPageResponse.model_validate(page)
 
 
 @router.get("/{slug}/jobs", response_model=PublicJobListResponse)
-async def list_public_jobs(
+def list_public_jobs(
     slug: str,
     request: Request,
-    db: Annotated[AsyncSession, Depends(get_session)],
-    _api_key: Annotated[str | None, Depends(get_api_key)] = None,
+    db: Annotated[Session, Depends(get_session)],
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=50),
     location: str | None = None,
     search: str | None = None,
 ):
-    career_page = await get_career_page_by_slug(db, slug)
+    career_page = get_career_page_by_slug(db, slug)
 
     if not career_page or not career_page.published:
         raise HTTPException(
@@ -116,7 +76,7 @@ async def list_public_jobs(
         )
 
     # Count total
-    count_result = await db.execute(
+    count_result = db.execute(
         select(func.count()).select_from(query.subquery())
     )
     total = count_result.scalar() or 0
@@ -127,7 +87,7 @@ async def list_public_jobs(
         Job.ingested_at.desc()
     )
 
-    result = await db.execute(query)
+    result = db.execute(query)
     jobs = list(result.scalars().all())
 
     return PublicJobListResponse(
