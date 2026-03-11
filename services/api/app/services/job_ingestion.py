@@ -285,6 +285,9 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
     return new_count
 
 
+MAX_FANOUT_PER_INGEST = 200
+
+
 def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
     """Run regex+taxonomy parser on newly ingested jobs and queue embeddings."""
     from app.services.job_parser import JobParserService
@@ -309,26 +312,53 @@ def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
     session.commit()
     logger.info("Parsed %d / %d new jobs during ingestion", parsed_count, len(jobs))
 
-    # Queue embedding generation and LLM skill enrichment
+    # Queue embedding generation and LLM skill enrichment (capped to prevent overflow)
     try:
         from app.services.queue import get_queue
 
         q = get_queue()
+        enqueued = 0
         for job in jobs:
+            if enqueued >= MAX_FANOUT_PER_INGEST:
+                logger.warning(
+                    "Fan-out cap reached (%d), skipping remaining %d embed jobs",
+                    MAX_FANOUT_PER_INGEST,
+                    len(jobs) - enqueued,
+                )
+                break
             try:
-                q.enqueue("app.services.job_pipeline.embed_job", job.id)
+                q.safe_enqueue(
+                    "app.services.job_pipeline.embed_job",
+                    job.id,
+                    job_id=f"embed_job_{job.id}",
+                )
+                enqueued += 1
             except Exception:
                 logger.debug("Failed to queue embedding for job %s", job.id)
+        skill_enqueued = 0
         for job_id in low_skill_jobs:
-            try:
-                q.enqueue(
-                    "app.services.job_pipeline.parse_board_job_skills", job_id
+            if enqueued >= MAX_FANOUT_PER_INGEST:
+                logger.warning(
+                    "Fan-out cap reached (%d), skipping remaining %d skill parse jobs",
+                    MAX_FANOUT_PER_INGEST,
+                    len(low_skill_jobs) - skill_enqueued,
                 )
+                break
+            try:
+                q.safe_enqueue(
+                    "app.services.job_pipeline.parse_board_job_skills",
+                    job_id,
+                    job_id=f"parse_skills_{job_id}",
+                )
+                enqueued += 1
+                skill_enqueued += 1
             except Exception:
                 logger.debug("Failed to queue LLM skill parse for job %s", job_id)
         if low_skill_jobs:
             logger.info(
-                "Queued %d jobs for LLM skill enrichment", len(low_skill_jobs)
+                "Queued %d / %d jobs for LLM skill enrichment",
+                skill_enqueued,
+                len(low_skill_jobs),
             )
     except Exception:
         logger.debug("Queue not available for post-ingestion tasks", exc_info=True)

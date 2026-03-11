@@ -905,9 +905,12 @@ def _create_recruiter_job(session, parsed, recruiter_profile_id, bf):
 # ---------------------------------------------------------------------------
 
 
+MAX_RECRUITER_JOB_FANOUT = 25
+
+
 def _refresh_recruiter_job_matches(session, batch_id: str) -> None:
     """After a recruiter resume batch completes, re-populate candidate matches
-    for all of their active jobs so the match counts update."""
+    for their most recent active jobs so the match counts update."""
     try:
         from app.models.recruiter_job import RecruiterJob
         from app.services.job_pipeline import populate_recruiter_job_candidates
@@ -920,10 +923,13 @@ def _refresh_recruiter_job_matches(session, batch_id: str) -> None:
             return
 
         active_jobs = session.execute(
-            select(RecruiterJob.id).where(
+            select(RecruiterJob.id)
+            .where(
                 RecruiterJob.recruiter_profile_id == batch.owner_profile_id,
                 RecruiterJob.status == "active",
             )
+            .order_by(RecruiterJob.id.desc())
+            .limit(MAX_RECRUITER_JOB_FANOUT)
         ).scalars().all()
 
         if not active_jobs:
@@ -931,12 +937,13 @@ def _refresh_recruiter_job_matches(session, batch_id: str) -> None:
 
         q = get_queue()
         for job_id in active_jobs:
-            q.enqueue(populate_recruiter_job_candidates, job_id)
+            q.safe_enqueue(populate_recruiter_job_candidates, job_id)
 
         logger.info(
-            "Enqueued candidate matching for %d active jobs (batch %s)",
+            "Enqueued candidate matching for %d active jobs (batch %s, cap %d)",
             len(active_jobs),
             batch_id,
+            MAX_RECRUITER_JOB_FANOUT,
         )
     except Exception:
         logger.warning(

@@ -90,10 +90,20 @@ def get_queue_stats() -> dict:
                 }
             )
 
+    from app.services.queue import QUEUE_DEPTH_DROP, QUEUE_DEPTH_WARN
+
+    if total_pending >= QUEUE_DEPTH_DROP:
+        pressure = "critical"
+    elif total_pending >= QUEUE_DEPTH_WARN:
+        pressure = "elevated"
+    else:
+        pressure = "normal"
+
     return {
         "queues": queues_data,
         "total_pending": total_pending,
         "total_failed": total_failed,
+        "pressure": pressure,
         "redis_connected": True,
         "checked_at": datetime.now(UTC).isoformat(),
     }

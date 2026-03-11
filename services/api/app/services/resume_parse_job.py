@@ -85,7 +85,7 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             from app.services.job_pipeline import embed_profile
             from app.services.queue import get_queue
 
-            get_queue().enqueue(embed_profile, resume.user_id, next_version)
+            get_queue().safe_enqueue(embed_profile, resume.user_id, next_version)
         except Exception:
             pass
 
@@ -93,7 +93,7 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             from app.services.job_pipeline import refresh_candidates_for_profile
             from app.services.queue import get_queue
 
-            get_queue().enqueue(refresh_candidates_for_profile, resume.user_id)
+            get_queue().safe_enqueue(refresh_candidates_for_profile, resume.user_id)
         except Exception:
             pass
 
@@ -120,7 +120,7 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
             )
             from app.services.queue import get_queue
 
-            get_queue("low").enqueue(
+            get_queue("low").safe_enqueue(
                 generate_enhancement_suggestions,
                 resume.user_id,
                 next_version,

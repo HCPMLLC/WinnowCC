@@ -14,6 +14,10 @@ _queues: dict[str, Queue] = {}
 # higher-priority queues are always processed before lower-priority ones.
 QUEUE_NAMES = ["critical", "default", "bulk", "low"]
 
+# Queue depth thresholds (env-overridable)
+QUEUE_DEPTH_WARN = int(os.getenv("QUEUE_DEPTH_WARN", "500"))
+QUEUE_DEPTH_DROP = int(os.getenv("QUEUE_DEPTH_DROP", "2000"))
+
 # Per-queue retry policies: (max_retries, backoff_intervals)
 _RETRY_POLICIES: dict[str, tuple[int, list[int]]] = {
     "critical": (3, [5, 15, 30]),
@@ -82,6 +86,45 @@ class RetryQueue(Queue):
         # Wake the worker in a background thread (non-blocking)
         threading.Thread(target=_wake_worker, daemon=True).start()
         return result
+
+    def safe_enqueue(self, *args, **kwargs):
+        """Enqueue a job only if the queue depth is below QUEUE_DEPTH_DROP.
+
+        Use this for background/enrichment jobs that are nice-to-have but
+        not critical. User-facing jobs should use regular ``enqueue()``.
+        Returns the RQ job on success, or None if the job was dropped.
+        """
+        try:
+            conn = self.connection
+            depth = conn.llen(self.key)
+        except Exception:
+            # If we can't check depth, let the job through
+            return self.enqueue(*args, **kwargs)
+
+        func_name = args[0] if args else kwargs.get("f", "unknown")
+        if callable(func_name):
+            func_name = getattr(func_name, "__name__", str(func_name))
+
+        if depth >= QUEUE_DEPTH_DROP:
+            logger.warning(
+                "Queue %s depth %d >= %d — dropping background job: %s",
+                self.name,
+                depth,
+                QUEUE_DEPTH_DROP,
+                func_name,
+            )
+            return None
+
+        if depth >= QUEUE_DEPTH_WARN:
+            logger.warning(
+                "Queue %s depth %d >= %d — elevated pressure, enqueueing: %s",
+                self.name,
+                depth,
+                QUEUE_DEPTH_WARN,
+                func_name,
+            )
+
+        return self.enqueue(*args, **kwargs)
 
 
 def get_redis_connection() -> redis.Redis:
