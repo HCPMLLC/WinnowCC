@@ -78,7 +78,7 @@ export default function CareerPagesPage() {
                   </div>
                   <div className="flex items-center gap-4 text-sm text-gray-500">
                     <a href={page.public_url} target="_blank" className="flex items-center gap-1 hover:text-blue-600">
-                      <Globe className="w-4 h-4" /> winnowcc.ai/careers/{page.slug} <ExternalLink className="w-3 h-3" />
+                      <Globe className="w-4 h-4" /> careers.winnowcc.ai/{page.slug} <ExternalLink className="w-3 h-3" />
                     </a>
                     <span className="flex items-center gap-1"><Eye className="w-4 h-4" /> {page.view_count} views</span>
                     <span>{page.application_count} applications</span>

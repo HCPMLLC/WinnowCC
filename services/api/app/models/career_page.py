@@ -71,7 +71,7 @@ class CareerPage(Base):
     def public_url(self) -> str:
         if self.custom_domain and self.custom_domain_verified:
             return f"https://{self.custom_domain}"
-        return f"https://winnowcc.ai/careers/{self.slug}"
+        return f"https://careers.winnowcc.ai/{self.slug}"
 
     @property
     def embed_url(self) -> str:

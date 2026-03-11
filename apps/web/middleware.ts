@@ -38,7 +38,26 @@ function decodeJwtPayload(token: string): Record<string, unknown> | null {
 }
 
 export async function middleware(req: NextRequest) {
+  const host = req.headers.get("host") || "";
   const { pathname } = req.nextUrl;
+
+  // careers.winnowcc.ai subdomain — all pages are public, no auth needed.
+  // Rewrite /slug → /careers/slug so Next.js routes to app/careers/[slug]
+  if (host.startsWith("careers.")) {
+    // Root of subdomain → let it pass (could show an index or 404)
+    if (pathname === "/") return NextResponse.next();
+    // Already under /careers/ — pass through
+    if (pathname.startsWith("/careers/")) return NextResponse.next();
+    // Rewrite /{slug} → /careers/{slug}
+    const url = req.nextUrl.clone();
+    url.pathname = `/careers${pathname}`;
+    return NextResponse.rewrite(url);
+  }
+
+  // Also allow /careers/* paths on the main domain (for preview/fallback)
+  if (pathname.startsWith("/careers/") || pathname === "/careers") {
+    return NextResponse.next();
+  }
 
   const isPublicPrefix = PUBLIC_PREFIXES.some(
     (p) => pathname === p || pathname.startsWith(p + "/")
