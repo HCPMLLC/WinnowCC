@@ -290,6 +290,117 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
         session.close()
 
 
+def backfill_recruiter_job_fields(job_id: int) -> bool:
+    """Re-parse a recruiter job's stored text to extract missing required fields.
+
+    Uses Claude Haiku to extract ``job_id_external`` (solicitation number)
+    and ``close_date`` (application deadline) from the job's existing
+    description + requirements text.  Only overwrites NULL fields.
+
+    Returns True if at least one field was filled.
+    """
+    import json
+    import os
+    from datetime import UTC, datetime
+
+    import anthropic
+
+    from app.models.recruiter_job import RecruiterJob
+
+    session = get_session_factory()()
+    try:
+        job = session.get(RecruiterJob, job_id)
+        if not job:
+            logger.warning("backfill_recruiter_job_fields: job %s not found", job_id)
+            return False
+
+        # Skip if both fields already present
+        if job.job_id_external and job.closes_at:
+            return False
+
+        text = (
+            f"Title: {job.title or ''}\n"
+            f"Description: {(job.description or '')[:4000]}\n"
+            f"Requirements: {(job.requirements or '')[:2000]}"
+        ).strip()
+        if len(text) < 20:
+            return False
+
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            logger.warning("backfill_recruiter_job_fields: ANTHROPIC_API_KEY not set")
+            return False
+
+        client = anthropic.Anthropic(api_key=api_key, max_retries=2)
+        response = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=200,
+            messages=[
+                {
+                    "role": "user",
+                    "content": (
+                        "Extract ONLY these two fields from this job posting. "
+                        "Return ONLY valid JSON.\n\n"
+                        '{"job_id_external": "solicitation number / RFQ / '
+                        'task order / req ID / posting number or null", '
+                        '"close_date": "YYYY-MM-DD application deadline '
+                        'or null"}\n\n'
+                        "Rules:\n"
+                        "- Search the ENTIRE text for any identifying number\n"
+                        "- For close_date look for: deadline, closing date, "
+                        "response date, due date, submit by\n"
+                        "- Return null if not found — do NOT fabricate\n\n"
+                        f"Job posting:\n{text}"
+                    ),
+                }
+            ],
+        )
+
+        raw = response.content[0].text.strip()
+        if "```" in raw:
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+            raw = raw.strip()
+
+        data = json.loads(raw)
+        updated = False
+
+        if not job.job_id_external and data.get("job_id_external"):
+            job.job_id_external = str(data["job_id_external"])[:100]
+            updated = True
+
+        if not job.closes_at and data.get("close_date"):
+            try:
+                d = datetime.strptime(data["close_date"], "%Y-%m-%d").date()
+                job.closes_at = datetime(
+                    d.year, d.month, d.day, tzinfo=UTC
+                )
+                updated = True
+            except (ValueError, TypeError):
+                pass
+
+        if updated:
+            session.commit()
+            logger.info(
+                "backfill_recruiter_job_fields: job %s — "
+                "id_ext=%s closes_at=%s",
+                job_id,
+                job.job_id_external,
+                job.closes_at,
+            )
+
+        return updated
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "backfill_recruiter_job_fields: failed for job %s", job_id
+        )
+        return False
+    finally:
+        session.close()
+
+
 def sync_employer_job_to_jobs(job_id: int) -> None:
     """Sync an employer job into the main jobs table as a proxy row.
 

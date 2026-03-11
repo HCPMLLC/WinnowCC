@@ -2332,6 +2332,51 @@ def bulk_update_recruiter_job_status(
     return result
 
 
+@router.post("/jobs/backfill-required-fields")
+def backfill_required_fields(
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Enqueue AI re-parse for this recruiter's jobs missing required fields.
+
+    Extracts Solicitation Number and Application Deadline from stored
+    job text using Claude Haiku.
+    """
+    from sqlalchemy import or_
+
+    from app.services.job_pipeline import backfill_recruiter_job_fields
+    from app.services.queue import get_queue
+
+    missing = (
+        session.execute(
+            select(RecruiterJob.id).where(
+                RecruiterJob.recruiter_profile_id == profile.id,
+                or_(
+                    RecruiterJob.job_id_external.is_(None),
+                    RecruiterJob.closes_at.is_(None),
+                ),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    q = get_queue("bulk")
+    enqueued = 0
+    for jid in missing:
+        if enqueued >= 500:
+            break
+        result = q.safe_enqueue(backfill_recruiter_job_fields, jid)
+        if result is not None:
+            enqueued += 1
+
+    return {
+        "total_missing": len(missing),
+        "enqueued": enqueued,
+        "remaining": max(0, len(missing) - enqueued),
+    }
+
+
 @router.post("/jobs/bulk-refresh")
 def bulk_refresh_recruiter_job_candidates(
     ids: list[int] = Query(..., max_length=100),

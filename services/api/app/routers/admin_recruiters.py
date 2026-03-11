@@ -327,3 +327,47 @@ def refresh_matches(
         q.enqueue(populate_recruiter_job_candidates, job_id)
 
     return {"queued": len(active_jobs)}
+
+
+@router.post("/jobs/backfill-required-fields")
+def admin_backfill_required_fields(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Enqueue Haiku re-parse for recruiter jobs missing required fields.
+
+    Targets jobs where job_id_external IS NULL or closes_at IS NULL.
+    Uses the bulk queue with safe_enqueue and a 500-job cap.
+    """
+    from sqlalchemy import or_
+
+    from app.services.job_pipeline import backfill_recruiter_job_fields
+    from app.services.queue import get_queue
+
+    missing = (
+        session.execute(
+            select(RecruiterJob.id).where(
+                or_(
+                    RecruiterJob.job_id_external.is_(None),
+                    RecruiterJob.closes_at.is_(None),
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    q = get_queue("bulk")
+    enqueued = 0
+    for jid in missing:
+        if enqueued >= 500:
+            break
+        result = q.safe_enqueue(backfill_recruiter_job_fields, jid)
+        if result is not None:
+            enqueued += 1
+
+    return {
+        "total_missing": len(missing),
+        "enqueued": enqueued,
+        "remaining": max(0, len(missing) - enqueued),
+    }
