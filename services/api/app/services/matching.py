@@ -443,7 +443,7 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
     if not prefs.get("target_titles"):
         titles = []
         for exp in enriched.get("experience", []):
-            t = exp.get("title", "").strip()
+            t = (exp.get("title") or "").strip()
             if t and t not in titles:
                 titles.append(t)
         if titles:
