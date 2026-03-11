@@ -94,6 +94,7 @@ export default function AdminLayout({
         { href: "/admin/recruiters", label: "Recruiters" },
         { href: "/admin/jobs", label: "Jobs" },
         { href: "/admin/job-quality", label: "Job Quality" },
+        { href: "/admin/career-pages", label: "Career Pages" },
         { href: "/admin/forms", label: "Forms" },
       ],
     },
