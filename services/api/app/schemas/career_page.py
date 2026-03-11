@@ -166,6 +166,22 @@ class PublicJobSummary(BaseModel):
     ips_label: str | None = None
 
 
+class PublicJobDetail(BaseModel):
+    id: int
+    title: str
+    company: str | None = None
+    location: str | None
+    location_type: str | None
+    salary_min: int | None
+    salary_max: int | None
+    salary_currency: str | None
+    application_deadline: datetime | None = None
+    posted_at: datetime
+    description_html: str | None = None
+    description_text: str
+    url: str | None = None
+
+
 class PublicJobListResponse(BaseModel):
     jobs: list[PublicJobSummary]
     total: int

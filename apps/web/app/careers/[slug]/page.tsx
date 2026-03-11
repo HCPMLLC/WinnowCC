@@ -1,9 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import Link from "next/link";
-import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare, Building2, Calendar } from "lucide-react";
+import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare, Building2, Calendar, X, ExternalLink, Clock, ChevronRight } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -44,6 +43,12 @@ interface JobData {
   posted_at: string;
 }
 
+interface JobDetail extends JobData {
+  description_html: string | null;
+  description_text: string;
+  url: string | null;
+}
+
 export default function PublicCareerPage() {
   const params = useParams();
   const searchParams = useSearchParams();
@@ -58,6 +63,10 @@ export default function PublicCareerPage() {
   const [search, setSearch] = useState("");
   const [location, setLocation] = useState("");
   const [page, setPage] = useState(1);
+
+  // Job detail modal state
+  const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
+  const [jobLoading, setJobLoading] = useState(false);
 
   useEffect(() => {
     const previewParam = isPreview ? "?preview=true" : "";
@@ -79,6 +88,34 @@ export default function PublicCareerPage() {
       .then(res => res.ok ? res.json() : { jobs: [], total: 0 })
       .then(data => { setJobs(data.jobs); setTotalJobs(data.total); });
   }, [slug, pageData, page, search, location, isPreview]);
+
+  const openJobDetail = useCallback(async (jobId: number) => {
+    setJobLoading(true);
+    setSelectedJob(null);
+    try {
+      const previewParam = isPreview ? "?preview=true" : "";
+      const res = await fetch(`${API}/api/public/career-pages/${slug}/jobs/${jobId}${previewParam}`);
+      if (res.ok) {
+        const detail = await res.json();
+        setSelectedJob(detail);
+      }
+    } catch { /* ignore */ }
+    setJobLoading(false);
+  }, [slug, isPreview]);
+
+  const closeModal = useCallback(() => {
+    setSelectedJob(null);
+    setJobLoading(false);
+  }, []);
+
+  // Close modal on Escape
+  useEffect(() => {
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") closeModal();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [closeModal]);
 
   if (loading) {
     return (
@@ -207,12 +244,19 @@ export default function PublicCareerPage() {
             {jobs.map(job => {
               const salary = formatSalary(job.salary_min, job.salary_max, job.salary_currency);
               return (
-                <div key={job.id} className="bg-white rounded-xl border p-5 hover:shadow-md transition-shadow">
-                  <h3 className="text-lg font-semibold text-gray-900 mb-1">{job.title}</h3>
+                <button
+                  key={job.id}
+                  onClick={() => openJobDetail(job.id)}
+                  className="bg-white rounded-xl border p-5 hover:shadow-md transition-shadow text-left w-full group"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:underline">{job.title}</h3>
+                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-gray-500 mt-1 shrink-0 transition-colors" />
+                  </div>
                   {job.company && (
                     <p className="flex items-center gap-1 text-sm text-gray-600 mb-2"><Building2 className="w-3.5 h-3.5" />{job.company}</p>
                   )}
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mb-4">
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
                     {job.location && (
                       <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{job.location}</span>
                     )}
@@ -226,14 +270,7 @@ export default function PublicCareerPage() {
                       <span className="flex items-center gap-1"><Calendar className="w-3.5 h-3.5" />Deadline: {new Date(job.application_deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
                     )}
                   </div>
-                  <Link
-                    href={`/careers/${slug}/jobs/${job.id}/apply`}
-                    className="inline-block w-full text-center text-sm font-medium py-2.5 rounded-lg transition-colors"
-                    style={{ backgroundColor: branding.colors.accent, color: branding.colors.primary }}
-                  >
-                    Apply Now
-                  </Link>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -260,6 +297,115 @@ export default function PublicCareerPage() {
           </div>
         )}
       </div>
+
+      {/* Job Detail Modal */}
+      {(selectedJob || jobLoading) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" onClick={closeModal}>
+          {/* Backdrop */}
+          <div className="absolute inset-0 bg-black/50" />
+
+          {/* Modal */}
+          <div
+            className="relative bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col"
+            onClick={e => e.stopPropagation()}
+          >
+            {jobLoading ? (
+              <div className="flex items-center justify-center py-24">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: branding.colors.primary }} />
+              </div>
+            ) : selectedJob ? (
+              <>
+                {/* Modal Header */}
+                <div className="p-6 pb-4 border-b shrink-0">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="min-w-0">
+                      <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: branding.fonts?.heading || "Inter, sans-serif" }}>
+                        {selectedJob.title}
+                      </h2>
+                      {selectedJob.company && (
+                        <p className="flex items-center gap-1.5 text-base text-gray-600 mt-1">
+                          <Building2 className="w-4 h-4 shrink-0" />{selectedJob.company}
+                        </p>
+                      )}
+                    </div>
+                    <button onClick={closeModal} className="p-2 hover:bg-gray-100 rounded-lg transition-colors shrink-0" aria-label="Close">
+                      <X className="w-5 h-5 text-gray-500" />
+                    </button>
+                  </div>
+
+                  {/* Meta tags */}
+                  <div className="flex flex-wrap items-center gap-3 mt-4 text-sm text-gray-600">
+                    {selectedJob.location && (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full">
+                        <MapPin className="w-3.5 h-3.5" />{selectedJob.location}
+                      </span>
+                    )}
+                    {selectedJob.location_type && (
+                      <span className="capitalize px-3 py-1.5 bg-gray-100 rounded-full">
+                        {selectedJob.location_type}
+                      </span>
+                    )}
+                    {(() => {
+                      const sal = formatSalary(selectedJob.salary_min, selectedJob.salary_max, selectedJob.salary_currency);
+                      return sal && layout.show_salary_ranges ? (
+                        <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full">
+                          <DollarSign className="w-3.5 h-3.5" />{sal}
+                        </span>
+                      ) : null;
+                    })()}
+                    {selectedJob.application_deadline && (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full">
+                        <Calendar className="w-3.5 h-3.5" />Deadline: {new Date(selectedJob.application_deadline).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    )}
+                    {selectedJob.posted_at && (
+                      <span className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-100 rounded-full">
+                        <Clock className="w-3.5 h-3.5" />Posted: {new Date(selectedJob.posted_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal Body — Scrollable */}
+                <div className="flex-1 overflow-y-auto p-6">
+                  <div className="prose prose-sm max-w-none text-gray-700">
+                    {selectedJob.description_html ? (
+                      <div dangerouslySetInnerHTML={{ __html: selectedJob.description_html }} />
+                    ) : (
+                      <div className="whitespace-pre-wrap">{selectedJob.description_text}</div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Modal Footer — Apply Button */}
+                <div className="p-6 pt-4 border-t shrink-0 flex items-center gap-3">
+                  {selectedJob.url ? (
+                    <a
+                      href={selectedJob.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 flex items-center justify-center gap-2 text-center font-medium py-3 rounded-lg transition-colors text-white"
+                      style={{ backgroundColor: branding.colors.primary }}
+                    >
+                      Apply Now <ExternalLink className="w-4 h-4" />
+                    </a>
+                  ) : (
+                    <span className="flex-1 text-center font-medium py-3 rounded-lg text-white" style={{ backgroundColor: branding.colors.primary }}>
+                      Apply Now
+                    </span>
+                  )}
+                  <button
+                    onClick={closeModal}
+                    className="px-6 py-3 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                  >
+                    Close
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
 
       {/* Sieve Chat Bubble */}
       {sieve?.enabled && (

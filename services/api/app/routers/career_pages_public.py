@@ -11,6 +11,7 @@ from app.db.session import get_session
 from app.models.job import Job
 from app.schemas.career_page import (
     PublicCareerPageResponse,
+    PublicJobDetail,
     PublicJobListResponse,
     PublicJobSummary,
 )
@@ -126,6 +127,43 @@ def list_public_jobs(
         page=page,
         page_size=page_size,
         filters={"locations": [], "departments": []},
+    )
+
+
+@router.get("/{slug}/jobs/{job_id}", response_model=PublicJobDetail)
+def get_public_job_detail(
+    slug: str,
+    job_id: int,
+    db: Annotated[Session, Depends(get_session)],
+    preview: bool = Query(False),
+):
+    """Get full job details for a career page listing."""
+    career_page = get_career_page_by_slug(db, slug)
+    if not career_page:
+        raise HTTPException(status_code=404, detail="Career page not found")
+    if not career_page.published and not preview:
+        raise HTTPException(status_code=404, detail="Career page not found")
+
+    job = db.execute(
+        select(Job).where(Job.id == job_id, Job.is_active == True)  # noqa: E712
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    return PublicJobDetail(
+        id=job.id,
+        title=job.title,
+        company=job.company,
+        location=job.location,
+        location_type="remote" if job.remote_flag else "onsite",
+        salary_min=job.salary_min,
+        salary_max=job.salary_max,
+        salary_currency=job.currency,
+        application_deadline=job.application_deadline,
+        posted_at=job.posted_at or job.ingested_at,
+        description_html=job.description_html,
+        description_text=job.description_text,
+        url=job.url,
     )
 
 
