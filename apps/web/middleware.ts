@@ -61,8 +61,8 @@ export async function middleware(req: NextRequest) {
     return NextResponse.rewrite(url);
   }
 
-  // Custom domain (e.g., jobs.hcpm.llc) — rewrite all requests to the
-  // custom domain resolver page which looks up the slug via API
+  // Custom domain (e.g., jobs.hcpm.llc) — resolve domain to slug via API,
+  // then rewrite directly to /careers/{slug} (no client-side redirect)
   if (!isWinnowHost) {
     // Allow static assets and API calls through
     if (pathname.startsWith("/_next") || pathname.startsWith("/api")) {
@@ -70,11 +70,24 @@ export async function middleware(req: NextRequest) {
     }
     // Already resolved to a career page path — pass through
     if (pathname.startsWith("/careers/")) return NextResponse.next();
-    // Rewrite to custom domain resolver page
-    const url = req.nextUrl.clone();
-    url.pathname = "/careers/custom-domain";
-    url.searchParams.set("domain", host.replace(/:\d+$/, ""));
-    return NextResponse.rewrite(url);
+
+    const domain = host.replace(/:\d+$/, "");
+    const apiBase =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    try {
+      const res = await fetch(
+        `${apiBase}/api/public/career-pages/resolve-domain/${domain}`
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const url = req.nextUrl.clone();
+        url.pathname = `/careers/${data.slug}`;
+        return NextResponse.rewrite(url);
+      }
+    } catch {
+      // API unreachable — fall through to 404
+    }
+    return NextResponse.next();
   }
 
   // Also allow /careers/* paths on the main domain (for preview/fallback)
