@@ -98,6 +98,7 @@ export default function RecruiterJobsPage() {
     application_url: "",
     start_at: "",
     closes_at: "",
+    job_id_external: "",
     status: "active",
   });
 
@@ -283,6 +284,8 @@ export default function RecruiterJobsPage() {
       body.start_at = new Date(form.start_at).toISOString();
     if (form.closes_at)
       body.closes_at = new Date(form.closes_at).toISOString();
+    if (form.job_id_external)
+      body.job_id_external = form.job_id_external;
 
     try {
       const res = await fetch(`${API_BASE}/api/recruiter/jobs`, {
@@ -311,6 +314,7 @@ export default function RecruiterJobsPage() {
           application_url: "",
           start_at: "",
           closes_at: "",
+          job_id_external: "",
           status: "active",
         });
         fetchJobs();
@@ -898,7 +902,22 @@ export default function RecruiterJobsPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Application Deadline
+                  Solicitation Number (Job ID) <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={form.job_id_external}
+                  onChange={(e) =>
+                    setForm({ ...form, job_id_external: e.target.value })
+                  }
+                  placeholder="e.g. SOL-2026-0042"
+                  required
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">
+                  Application Deadline <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -906,6 +925,7 @@ export default function RecruiterJobsPage() {
                   onChange={(e) =>
                     setForm({ ...form, closes_at: e.target.value })
                   }
+                  required
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
                 />
               </div>

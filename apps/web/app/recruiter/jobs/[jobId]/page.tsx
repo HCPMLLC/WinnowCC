@@ -745,7 +745,7 @@ export default function RecruiterJobDetailPage() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Job ID / Solicitation #
+                  Solicitation Number (Job ID) <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
@@ -755,6 +755,7 @@ export default function RecruiterJobDetailPage() {
                   }
                   className={inputCls}
                   placeholder="e.g. DIR-CPO-TMP-445"
+                  required
                 />
               </div>
               <div>
@@ -1197,7 +1198,7 @@ export default function RecruiterJobDetailPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">
-                  Application Deadline
+                  Application Deadline <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="date"
@@ -1206,6 +1207,7 @@ export default function RecruiterJobDetailPage() {
                     setForm({ ...form, closes_at: e.target.value })
                   }
                   className={inputCls}
+                  required
                 />
               </div>
             </div>

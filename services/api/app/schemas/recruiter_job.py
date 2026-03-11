@@ -76,6 +76,12 @@ class RecruiterJobCreate(BaseModel):
 
 ALLOWED_PRIORITIES = ["low", "normal", "high", "urgent"]
 
+# Fields required before a recruiter job can be published (status='active')
+REQUIRED_FOR_ACTIVE = {
+    "job_id_external": "Solicitation Number (Job ID)",
+    "closes_at": "Application Deadline",
+}
+
 
 class RecruiterJobUpdate(BaseModel):
     """Schema for updating a recruiter job posting. All fields optional."""

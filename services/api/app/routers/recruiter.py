@@ -59,6 +59,7 @@ from app.schemas.recruiter_crm import (
     RecruiterTeamMemberResponse,
 )
 from app.schemas.recruiter_job import (
+    REQUIRED_FOR_ACTIVE,
     CandidateMatchedJobResult,
     CandidateMatchedJobsResponse,
     RecruiterJobCandidateResult,
@@ -73,6 +74,23 @@ from app.services.auth import get_recruiter_profile, require_recruiter
 router = APIRouter(prefix="/api/recruiter", tags=["recruiter"])
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_active_fields(job) -> None:
+    """Raise 422 if a job is missing fields required for publishing."""
+    missing = [
+        label
+        for field, label in REQUIRED_FOR_ACTIVE.items()
+        if not getattr(job, field, None)
+    ]
+    if missing:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                "Cannot publish job — missing required fields: "
+                + ", ".join(missing)
+            ),
+        )
 
 # Tier-based batch limits for document upload
 _RECRUITER_BATCH_LIMITS: dict[str, int] = {
@@ -1808,6 +1826,10 @@ def create_recruiter_job(
             )
 
     job = RecruiterJob(recruiter_profile_id=profile.id, **job_data.model_dump())
+
+    if job.status == "active":
+        _validate_active_fields(job)
+
     session.add(job)
     session.flush()
 
@@ -2261,10 +2283,22 @@ def bulk_update_recruiter_job_status(
     )
 
     updated = 0
+    skipped_ids: list[int] = []
     for job in jobs:
         old_status = job.status
         if old_status == new_status:
             continue
+
+        # Validate required fields before publishing
+        if new_status == "active":
+            missing = [
+                f
+                for f in REQUIRED_FOR_ACTIVE
+                if not getattr(job, f, None)
+            ]
+            if missing:
+                skipped_ids.append(job.id)
+                continue
 
         job.status = new_status
 
@@ -2288,7 +2322,14 @@ def bulk_update_recruiter_job_status(
         updated += 1
 
     session.commit()
-    return {"updated": updated, "requested": len(ids)}
+    result: dict = {"updated": updated, "requested": len(ids)}
+    if skipped_ids:
+        result["skipped_ids"] = skipped_ids
+        result["skipped_reason"] = (
+            "Missing required fields (Solicitation Number / "
+            "Application Deadline)"
+        )
+    return result
 
 
 @router.post("/jobs/bulk-refresh")
@@ -2385,6 +2426,10 @@ def update_recruiter_job(
 
     for field, value in update_data.items():
         setattr(job, field, value)
+
+    # Validate required fields if publishing
+    if job.status == "active":
+        _validate_active_fields(job)
 
     # Regenerate embedding when content fields change
     if content_changed:
