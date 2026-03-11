@@ -379,3 +379,89 @@ def admin_backfill_required_fields(
         "errors": errors,
         "remaining": max(0, len(missing) - len(batch)),
     }
+
+
+@router.post("/jobs/backfill-from-migration")
+def backfill_from_migration(
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Backfill job_id_external and closes_at from migration_entity_map.
+
+    Reads the raw CSV data stored during the Recruit CRM import and
+    updates recruiter_jobs that are missing these fields.
+    """
+    import logging
+    from datetime import datetime as _dt
+
+    from app.models.migration import MigrationEntityMap
+
+    log = logging.getLogger(__name__)
+
+    # Find all migration-mapped recruiter jobs
+    rows = session.execute(
+        select(MigrationEntityMap).where(
+            MigrationEntityMap.source_entity_type == "job",
+            MigrationEntityMap.winnow_entity_type == "recruiter_job",
+            MigrationEntityMap.winnow_entity_id.isnot(None),
+            MigrationEntityMap.raw_data.isnot(None),
+        )
+    ).scalars().all()
+
+    updated = 0
+    skipped = 0
+    no_data = 0
+
+    for em in rows:
+        raw = em.raw_data or {}
+        sol_num = (
+            raw.get("Solicitation Number")
+            or raw.get("Solicitation #")
+            or raw.get("Job ID")
+            or ""
+        ).strip() or None
+        close_str = (raw.get("Close Date") or "").strip()
+
+        close_date = None
+        if close_str:
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+                try:
+                    close_date = _dt.strptime(close_str, fmt)
+                    break
+                except ValueError:
+                    continue
+
+        if not sol_num and not close_date:
+            no_data += 1
+            continue
+
+        job = session.get(RecruiterJob, em.winnow_entity_id)
+        if not job:
+            skipped += 1
+            continue
+
+        changed = False
+        if sol_num and not job.job_id_external:
+            job.job_id_external = sol_num
+            changed = True
+        if close_date and not job.closes_at:
+            job.closes_at = close_date
+            changed = True
+
+        if changed:
+            updated += 1
+        else:
+            skipped += 1
+
+    session.commit()
+    log.info(
+        "Migration backfill: %d updated, %d skipped, %d no data",
+        updated, skipped, no_data,
+    )
+
+    return {
+        "migration_rows": len(rows),
+        "updated": updated,
+        "skipped": skipped,
+        "no_data_in_csv": no_data,
+    }

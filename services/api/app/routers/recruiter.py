@@ -2338,15 +2338,20 @@ def backfill_required_fields(
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> StreamingResponse:
-    """AI re-parse for this recruiter's jobs missing required fields.
+    """Backfill missing Solicitation Number and Application Deadline.
 
-    Processes synchronously (no worker dependency) in batches of up to
-    50, streaming SSE progress.  Extracts Solicitation Number and
-    Application Deadline from stored job text using Claude Haiku.
+    Two-pass approach:
+    1. Fast pass — pull from migration_entity_map raw CSV data (free)
+    2. AI pass — use Claude Haiku on remaining gaps (batched to 50)
+    Streams SSE progress for the frontend progress bar.
     """
+    from datetime import datetime as _dt
+
     from sqlalchemy import or_
 
-    missing = (
+    from app.models.migration import MigrationEntityMap
+
+    missing_ids = (
         session.execute(
             select(RecruiterJob.id).where(
                 RecruiterJob.recruiter_profile_id == profile.id,
@@ -2359,9 +2364,21 @@ def backfill_required_fields(
         .scalars()
         .all()
     )
+    total = len(missing_ids)
 
-    batch = missing[:50]
-    total = len(missing)
+    # --- Pass 1: migration entity map (fast, free) ---
+    migration_map: dict[int, dict] = {}
+    if missing_ids:
+        em_rows = session.execute(
+            select(MigrationEntityMap).where(
+                MigrationEntityMap.source_entity_type == "job",
+                MigrationEntityMap.winnow_entity_type == "recruiter_job",
+                MigrationEntityMap.winnow_entity_id.in_(missing_ids),
+                MigrationEntityMap.raw_data.isnot(None),
+            )
+        ).scalars().all()
+        for em in em_rows:
+            migration_map[em.winnow_entity_id] = em.raw_data or {}
 
     def _generate():
         import json as _json
@@ -2371,29 +2388,93 @@ def backfill_required_fields(
         )
 
         filled = 0
-        for i, jid in enumerate(batch):
+        processed = 0
+
+        # Pass 1: migration data
+        for jid in list(missing_ids):
+            raw = migration_map.get(jid)
+            if not raw:
+                continue
+            sol_num = (
+                raw.get("Solicitation Number")
+                or raw.get("Solicitation #")
+                or raw.get("Job ID")
+                or ""
+            ).strip() or None
+            close_str = (raw.get("Close Date") or "").strip()
+            close_date = None
+            if close_str:
+                for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%d/%m/%Y"):
+                    try:
+                        close_date = _dt.strptime(close_str, fmt)
+                        break
+                    except ValueError:
+                        continue
+            if not sol_num and not close_date:
+                continue
+
+            job = session.get(RecruiterJob, jid)
+            if not job:
+                continue
+            changed = False
+            if sol_num and not job.job_id_external:
+                job.job_id_external = sol_num
+                changed = True
+            if close_date and not job.closes_at:
+                job.closes_at = close_date
+                changed = True
+            if changed:
+                filled += 1
+                missing_ids.remove(jid)
+            processed += 1
+            pct = int(processed / total * 100) if total else 100
+            evt = {
+                "processed": processed,
+                "filled": filled,
+                "total_missing": total,
+                "percent": pct,
+                "phase": "migration",
+            }
+            yield f"data: {_json.dumps(evt)}\n\n"
+
+        session.commit()
+
+        # Pass 2: AI extraction for remaining (max 50)
+        ai_batch = [
+            jid for jid in missing_ids
+            if jid not in migration_map
+        ][:50]
+        for jid in ai_batch:
             try:
                 if backfill_recruiter_job_fields(jid):
                     filled += 1
             except Exception:
-                logger.debug("backfill failed for job %s", jid)
-            pct = int((i + 1) / len(batch) * 100)
-            msg = _json.dumps({
-                "processed": i + 1,
+                logger.debug(
+                    "backfill failed for job %s", jid
+                )
+            processed += 1
+            pct = (
+                int(processed / total * 100)
+                if total else 100
+            )
+            evt = {
+                "processed": processed,
                 "filled": filled,
                 "total_missing": total,
                 "percent": pct,
-            })
-            yield f"data: {msg}\n\n"
+                "phase": "ai",
+            }
+            yield f"data: {_json.dumps(evt)}\n\n"
 
-        msg = _json.dumps({
+        remaining = total - filled
+        done_evt = {
             "done": True,
-            "processed": len(batch),
+            "processed": processed,
             "filled": filled,
             "total_missing": total,
-            "remaining": total - len(batch),
-        })
-        yield f"data: {msg}\n\n"
+            "remaining": remaining,
+        }
+        yield f"data: {_json.dumps(done_evt)}\n\n"
 
     return StreamingResponse(
         _generate(),
