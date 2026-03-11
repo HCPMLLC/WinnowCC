@@ -79,7 +79,7 @@ export default function RecruiterJobsPage() {
   const [refreshBanner, setRefreshBanner] = useState("");
   const syncProgress = useProgress();
   const [backfillStatus, setBackfillStatus] = useState<"idle" | "running" | "done">("idle");
-  const [backfillResult, setBackfillResult] = useState<{ total_missing: number; enqueued: number; remaining: number } | null>(null);
+  const [backfillResult, setBackfillResult] = useState<{ total_missing: number; enqueued: number; remaining: number; processed: number; percent: number } | null>(null);
 
   // Form state
   const [form, setForm] = useState({
@@ -285,9 +285,9 @@ export default function RecruiterJobsPage() {
           if (!line.startsWith("data: ")) continue;
           try {
             const ev = JSON.parse(line.slice(6));
-            setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled ?? ev.processed ?? 0, remaining: ev.remaining ?? ev.total_missing });
+            setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled ?? 0, remaining: ev.remaining ?? ev.total_missing, processed: ev.processed ?? 0, percent: ev.percent ?? 0 });
             if (ev.done) {
-              setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled, remaining: ev.remaining });
+              setBackfillResult({ total_missing: ev.total_missing, enqueued: ev.filled, remaining: ev.remaining, processed: ev.processed, percent: 100 });
               setBackfillStatus("done");
             }
           } catch { /* ignore parse errors */ }
@@ -1125,10 +1125,20 @@ export default function RecruiterJobsPage() {
       )}
       {backfillStatus === "running" && (
         <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Analyzing job descriptions...
-          {backfillResult && (
-            <> Processed {backfillResult.enqueued} of {Math.min(50, backfillResult.total_missing)} (batch of 50). {backfillResult.total_missing} total missing.</>
-          )}
+          <div className="flex items-center gap-3">
+            <span className="font-semibold">{backfillResult?.percent ?? 0}%</span>
+            <div className="h-2 flex-1 overflow-hidden rounded-full bg-amber-200">
+              <div
+                className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                style={{ width: `${backfillResult?.percent ?? 0}%` }}
+              />
+            </div>
+          </div>
+          <p className="mt-1">
+            Analyzing job descriptions — {backfillResult?.processed ?? 0} of{" "}
+            {Math.min(50, backfillResult?.total_missing ?? 0)} processed,{" "}
+            {backfillResult?.enqueued ?? 0} fields extracted so far.
+          </p>
         </div>
       )}
       {backfillStatus === "done" && backfillResult && (
