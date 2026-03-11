@@ -179,6 +179,9 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "sieve_messages_per_day": 10,
         "submission_view": "basic",
         "duplicate_highlighting": False,
+        "career_pages": 0,
+        "custom_domain": False,
+        "custom_questions_per_job": 3,
     },
     "starter": {
         "active_jobs": 5,
@@ -192,6 +195,9 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "sieve_messages_per_day": 30,
         "submission_view": "standard",
         "duplicate_highlighting": True,
+        "career_pages": 1,
+        "custom_domain": False,
+        "custom_questions_per_job": 10,
     },
     "pro": {
         "active_jobs": 25,
@@ -205,6 +211,9 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "sieve_messages_per_day": 100,
         "submission_view": "full",
         "duplicate_highlighting": True,
+        "career_pages": 3,
+        "custom_domain": True,
+        "custom_questions_per_job": 999,
     },
     "enterprise": {
         "active_jobs": 999,
@@ -218,6 +227,9 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "sieve_messages_per_day": 999,
         "submission_view": "full",
         "duplicate_highlighting": True,
+        "career_pages": 999,
+        "custom_domain": True,
+        "custom_questions_per_job": 999,
     },
 }
 
@@ -246,6 +258,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "contract_vehicle_management": True,
         "client_hierarchy": True,
         "submission_analytics": True,
+        "career_pages": 1,
+        "custom_domain": False,
+        "per_client_branding": False,
+        "white_label_sieve": False,
     },
     "solo": {
         "seats": 1,
@@ -270,6 +286,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "contract_vehicle_management": False,
         "client_hierarchy": False,
         "submission_analytics": False,
+        "career_pages": 1,
+        "custom_domain": False,
+        "per_client_branding": False,
+        "white_label_sieve": False,
     },
     "team": {
         "seats": 10,
@@ -294,6 +314,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "contract_vehicle_management": True,
         "client_hierarchy": True,
         "submission_analytics": True,
+        "career_pages": 5,
+        "custom_domain": True,
+        "per_client_branding": True,
+        "white_label_sieve": False,
     },
     "agency": {
         "seats": 999,
@@ -318,6 +342,10 @@ RECRUITER_PLAN_LIMITS: dict[str, dict] = {
         "contract_vehicle_management": True,
         "client_hierarchy": True,
         "submission_analytics": True,
+        "career_pages": 999,
+        "custom_domain": True,
+        "per_client_branding": True,
+        "white_label_sieve": True,
     },
 }
 

@@ -13,6 +13,9 @@ from app.models.career_intelligence import (
     RecruiterCandidateBrief,
     TimeFillPrediction,
 )
+from app.models.career_page import CareerPage, CareerPageAnalytics
+from app.models.career_page_application import ApplicationStatus, CareerPageApplication
+from app.models.cross_job_recommendation import CrossJobRecommendation
 from app.models.daily_usage_counter import DailyUsageCounter
 from app.models.distribution import (
     BoardConnection,
@@ -35,6 +38,7 @@ from app.models.gap_recommendation import GapRecommendation
 from app.models.interview_prep import InterviewPrep
 from app.models.introduction_request import IntroductionRequest
 from app.models.job import Job
+from app.models.job_custom_question import CandidateQuestionResponse, JobCustomQuestion
 from app.models.job_form import JobForm
 from app.models.job_parsed_detail import JobParsedDetail
 from app.models.job_run import JobRun
@@ -71,10 +75,12 @@ from app.models.upload_batch import UploadBatch, UploadBatchFile
 from app.models.usage_counter import UsageCounter
 from app.models.user import User
 from app.models.weekly_digest_log import WeeklyDigestLog
+from app.models.widget_api_key import WidgetApiKey, WidgetApiKeyUsage
 
 __all__ = [
     "AdminTestEmail",
     "BoardConnection",
+    "CandidateQuestionResponse",
     "Candidate",
     "CandidateNotification",
     "CandidatePreferenceWeights",
@@ -82,7 +88,12 @@ __all__ = [
     "CandidateProfile",
     "CandidateSubmission",
     "CandidateTrust",
+    "ApplicationStatus",
+    "CareerPage",
+    "CareerPageAnalytics",
+    "CareerPageApplication",
     "CareerTrajectory",
+    "CrossJobRecommendation",
     "DistributionEvent",
     "EmailIngestLog",
     "EmployerCandidateView",
@@ -100,6 +111,7 @@ __all__ = [
     "InterviewPrep",
     "IntroductionRequest",
     "Job",
+    "JobCustomQuestion",
     "JobDistribution",
     "JobExperience",
     "JobForm",
@@ -141,4 +153,6 @@ __all__ = [
     "UsageCounter",
     "User",
     "WeeklyDigestLog",
+    "WidgetApiKey",
+    "WidgetApiKeyUsage",
 ]

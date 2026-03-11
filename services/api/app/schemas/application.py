@@ -1,0 +1,125 @@
+"""Pydantic schemas for career page applications."""
+
+from typing import Any
+from uuid import UUID
+
+from pydantic import BaseModel, EmailStr, Field
+
+# ============================================================
+# Application Session
+# ============================================================
+
+
+class ApplicationStartRequest(BaseModel):
+    """Start a new application."""
+
+    job_id: int
+    email: EmailStr | None = None
+    source_url: str | None = None
+    utm_params: dict[str, str] | None = None
+
+
+class ApplicationStartResponse(BaseModel):
+    """Response when starting application."""
+
+    application_id: UUID
+    session_token: str
+    job_title: str
+    company_name: str
+    sieve_welcome: str
+    show_resume_upload: bool = True
+    show_linkedin_import: bool = True
+
+
+class ApplicationStatusResponse(BaseModel):
+    """Current application status."""
+
+    application_id: UUID
+    status: str
+    completeness_score: int
+    missing_fields: list[dict[str, Any]]
+    can_submit: bool
+    ips_preview: int | None = None
+    cross_job_recommendations: list[dict[str, Any]] = []
+
+
+# ============================================================
+# Resume Upload
+# ============================================================
+
+
+class ResumeUploadResponse(BaseModel):
+    """Response after resume upload."""
+
+    success: bool
+    parsed_data: dict[str, Any] | None = None
+    completeness_score: int
+    missing_fields: list[dict[str, Any]]
+    sieve_response: str
+
+
+# ============================================================
+# Sieve Conversation
+# ============================================================
+
+
+class SieveChatRequest(BaseModel):
+    """Send message to Sieve during application."""
+
+    message: str = Field(..., min_length=1, max_length=5000)
+
+
+class SieveChatResponse(BaseModel):
+    """Sieve's response during application."""
+
+    message: str
+    completeness_score: int
+    fields_updated: list[str] = []
+    questions_answered: list[str] = []
+    can_submit: bool
+    suggest_submit: bool = False
+
+
+# ============================================================
+# Cross-Job Matching
+# ============================================================
+
+
+class CrossJobMatch(BaseModel):
+    """A recommended job based on candidate profile."""
+
+    job_id: int
+    title: str
+    location: str | None = None
+    ips_score: int
+    explanation: str
+    already_applied: bool = False
+
+
+class CrossJobPitchResponse(BaseModel):
+    """Cross-job recommendations for the candidate."""
+
+    matches: list[CrossJobMatch]
+    pitch_message: str
+
+
+# ============================================================
+# Application Submission
+# ============================================================
+
+
+class ApplicationSubmitRequest(BaseModel):
+    """Submit the completed application."""
+
+    apply_to_additional: list[int] = []  # Additional job IDs
+
+
+class ApplicationSubmitResponse(BaseModel):
+    """Response after submission."""
+
+    success: bool
+    application_id: UUID
+    ips_score: int | None = None
+    ips_breakdown: dict[str, Any] = {}
+    additional_applications: list[int] = []
+    message: str

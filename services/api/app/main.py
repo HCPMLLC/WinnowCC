@@ -58,6 +58,13 @@ from app.routers.candidate_insights import (
 from app.routers.career_intelligence import (  # noqa: E402
     router as career_intelligence_router,
 )
+from app.routers.career_pages import router as career_pages_router  # noqa: E402
+from app.routers.career_pages_apply import (
+    router as career_pages_apply_router,  # noqa: E402
+)
+from app.routers.career_pages_public import (
+    router as career_pages_public_router,  # noqa: E402
+)
 from app.routers.dashboard import router as dashboard_router  # noqa: E402
 from app.routers.distribution import router as distribution_router  # noqa: E402
 from app.routers.email_ingest import router as email_ingest_router  # noqa: E402
@@ -112,6 +119,7 @@ from app.routers.telnyx_webhook import router as telnyx_webhook_router  # noqa: 
 from app.routers.trust import router as trust_router  # noqa: E402
 from app.routers.upload_batches import router as upload_batches_router  # noqa: E402
 from app.routers.webhooks import router as webhooks_router  # noqa: E402
+from app.routers.widget_keys import router as widget_keys_router  # noqa: E402
 
 app = FastAPI(title="Winnow API", version="0.1.0")
 
@@ -280,6 +288,10 @@ app.include_router(interview_prep_router)
 app.include_router(migration_router)
 app.include_router(upload_batches_router)
 app.include_router(sms_otp_router)
+app.include_router(career_pages_router)
+app.include_router(career_pages_public_router)
+app.include_router(widget_keys_router)
+app.include_router(career_pages_apply_router)
 
 
 @app.on_event("startup")
