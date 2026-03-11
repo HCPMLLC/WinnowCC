@@ -190,7 +190,7 @@ export default function AdminCareerPagesPage() {
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-xs text-slate-600">
-                      careers.winnowcc.ai/{page.slug}
+                      winnowcc.ai/careers/{page.slug}
                     </div>
                     {page.custom_domain && (
                       <div className="mt-0.5 flex items-center gap-1 text-xs">

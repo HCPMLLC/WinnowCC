@@ -137,7 +137,7 @@
       btn.addEventListener("click", function () {
         var jobId = btn.dataset.jobId;
         window.open(
-          "https://careers.winnowcc.ai/" + slug + "/jobs/" + jobId + "/apply",
+          "https://winnowcc.ai/careers/" + slug + "/jobs/" + jobId + "/apply",
           "_blank"
         );
       });
