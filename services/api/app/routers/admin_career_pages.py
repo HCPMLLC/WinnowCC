@@ -159,3 +159,38 @@ def set_custom_domain(
         "custom_domain": page.custom_domain,
         "custom_domain_verified": page.custom_domain_verified,
     }
+
+
+class AdminUpdateCareerPageRequest(BaseModel):
+    config: dict | None = None
+    name: str | None = None
+    page_title: str | None = None
+    meta_description: str | None = None
+
+
+@router.patch("/by-slug/{slug}/config")
+def admin_update_career_page(
+    slug: str,
+    body: AdminUpdateCareerPageRequest,
+    session: Session = Depends(get_session),
+    x_admin_token: str | None = Header(None),
+):
+    """Update career page config. Requires ADMIN_TOKEN."""
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token or not x_admin_token or x_admin_token != admin_token:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    page = session.execute(
+        select(CareerPage).where(CareerPage.slug == slug)
+    ).scalar_one_or_none()
+    if not page:
+        raise HTTPException(status_code=404, detail="Career page not found")
+    if body.config is not None:
+        page.config = body.config
+    if body.name is not None:
+        page.name = body.name
+    if body.page_title is not None:
+        page.page_title = body.page_title
+    if body.meta_description is not None:
+        page.meta_description = body.meta_description
+    session.commit()
+    return {"id": str(page.id), "slug": page.slug, "updated": True}
