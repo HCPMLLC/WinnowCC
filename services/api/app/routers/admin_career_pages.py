@@ -1,8 +1,9 @@
 """Admin career pages management router."""
 
+import os
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -131,9 +132,12 @@ def set_custom_domain(
     page_id: UUID,
     body: SetCustomDomainRequest,
     session: Session = Depends(get_session),
-    admin: User = Depends(require_admin_user),
+    x_admin_token: str | None = Header(None),
 ):
-    """Set or clear a custom domain on a career page."""
+    """Set or clear a custom domain on a career page. Requires ADMIN_TOKEN."""
+    admin_token = os.getenv("ADMIN_TOKEN", "")
+    if not admin_token or not x_admin_token or x_admin_token != admin_token:
+        raise HTTPException(status_code=403, detail="Admin access required.")
     page = session.execute(
         select(CareerPage).where(CareerPage.id == page_id)
     ).scalar_one_or_none()
