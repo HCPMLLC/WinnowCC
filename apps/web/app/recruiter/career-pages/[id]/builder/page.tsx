@@ -128,7 +128,7 @@ export default function CareerPageBuilderPage() {
           </div>
         </div>
         <div className="flex items-center gap-3">
-          <a href={page.public_url} target="_blank" className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
+          <a href={`${page.public_url}?preview=true`} target="_blank" className="flex items-center gap-2 px-4 py-2 text-gray-700 hover:bg-gray-100 rounded-lg">
             <Eye className="w-4 h-4" /> Preview
           </a>
           <button onClick={savePage} disabled={saving || saved} className="flex items-center gap-2 px-4 py-2 border rounded-lg hover:bg-gray-50 disabled:opacity-50">

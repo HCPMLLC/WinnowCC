@@ -30,15 +30,23 @@ def get_public_career_page(
     slug: str,
     request: Request,
     db: Annotated[Session, Depends(get_session)],
+    preview: bool = Query(False),
 ):
     page = get_career_page_by_slug(db, slug)
 
-    if not page or not page.published:
+    if not page:
         raise HTTPException(
             status_code=404, detail="Career page not found"
         )
 
-    increment_page_view(db, page.id)
+    if not page.published and not preview:
+        raise HTTPException(
+            status_code=404, detail="Career page not found"
+        )
+
+    # Don't count preview visits in analytics
+    if not preview:
+        increment_page_view(db, page.id)
     return PublicCareerPageResponse.model_validate(page)
 
 
@@ -51,10 +59,16 @@ def list_public_jobs(
     page_size: int = Query(10, ge=1, le=50),
     location: str | None = None,
     search: str | None = None,
+    preview: bool = Query(False),
 ):
     career_page = get_career_page_by_slug(db, slug)
 
-    if not career_page or not career_page.published:
+    if not career_page:
+        raise HTTPException(
+            status_code=404, detail="Career page not found"
+        )
+
+    if not career_page.published and not preview:
         raise HTTPException(
             status_code=404, detail="Career page not found"
         )

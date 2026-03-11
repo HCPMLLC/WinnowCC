@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare, Building2, Calendar } from "lucide-react";
 
@@ -46,7 +46,9 @@ interface JobData {
 
 export default function PublicCareerPage() {
   const params = useParams();
+  const searchParams = useSearchParams();
   const slug = params.slug as string;
+  const isPreview = searchParams.get("preview") === "true";
 
   const [pageData, setPageData] = useState<CareerPageData | null>(null);
   const [jobs, setJobs] = useState<JobData[]>([]);
@@ -58,23 +60,25 @@ export default function PublicCareerPage() {
   const [page, setPage] = useState(1);
 
   useEffect(() => {
-    fetch(`${API}/api/public/career-pages/${slug}`)
+    const previewParam = isPreview ? "?preview=true" : "";
+    fetch(`${API}/api/public/career-pages/${slug}${previewParam}`)
       .then(res => { if (!res.ok) throw new Error(); return res.json(); })
       .then(setPageData)
       .catch(() => setError(true))
       .finally(() => setLoading(false));
-  }, [slug]);
+  }, [slug, isPreview]);
 
   useEffect(() => {
     if (!pageData) return;
-    const params = new URLSearchParams({ page: String(page), page_size: "12" });
-    if (search) params.set("search", search);
-    if (location) params.set("location", location);
+    const qp = new URLSearchParams({ page: String(page), page_size: "12" });
+    if (search) qp.set("search", search);
+    if (location) qp.set("location", location);
+    if (isPreview) qp.set("preview", "true");
 
-    fetch(`${API}/api/public/career-pages/${slug}/jobs?${params}`)
+    fetch(`${API}/api/public/career-pages/${slug}/jobs?${qp}`)
       .then(res => res.ok ? res.json() : { jobs: [], total: 0 })
       .then(data => { setJobs(data.jobs); setTotalJobs(data.total); });
-  }, [slug, pageData, page, search, location]);
+  }, [slug, pageData, page, search, location, isPreview]);
 
   if (loading) {
     return (
