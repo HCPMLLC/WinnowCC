@@ -127,20 +127,27 @@ class SetCustomDomainRequest(BaseModel):
     verified: bool = True
 
 
+@router.patch("/by-slug/{slug}/custom-domain")
 @router.patch("/{page_id}/custom-domain")
 def set_custom_domain(
-    page_id: UUID,
     body: SetCustomDomainRequest,
     session: Session = Depends(get_session),
     x_admin_token: str | None = Header(None),
+    page_id: UUID | None = None,
+    slug: str | None = None,
 ):
     """Set or clear a custom domain on a career page. Requires ADMIN_TOKEN."""
     admin_token = os.getenv("ADMIN_TOKEN", "")
     if not admin_token or not x_admin_token or x_admin_token != admin_token:
         raise HTTPException(status_code=403, detail="Admin access required.")
-    page = session.execute(
-        select(CareerPage).where(CareerPage.id == page_id)
-    ).scalar_one_or_none()
+    if slug:
+        page = session.execute(
+            select(CareerPage).where(CareerPage.slug == slug)
+        ).scalar_one_or_none()
+    else:
+        page = session.execute(
+            select(CareerPage).where(CareerPage.id == page_id)
+        ).scalar_one_or_none()
     if not page:
         raise HTTPException(status_code=404, detail="Career page not found")
     page.custom_domain = body.custom_domain
