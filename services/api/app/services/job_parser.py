@@ -1735,6 +1735,7 @@ def parse_job_from_file(
     # Add metadata
     parsed["source"] = source
     parsed["source_type"] = "file"
+    parsed["_raw_text"] = raw_text
     if employer_id:
         parsed["employer_id"] = employer_id
     if user_id:

@@ -318,11 +318,15 @@ def backfill_recruiter_job_fields(job_id: int) -> bool:
         if job.job_id_external and job.closes_at:
             return False
 
-        text = (
-            f"Title: {job.title or ''}\n"
-            f"Description: {(job.description or '')[:4000]}\n"
-            f"Requirements: {(job.requirements or '')[:2000]}"
-        ).strip()
+        # Prefer raw document text (has headers/footers with IDs)
+        if job.source_text and len(job.source_text.strip()) > 50:
+            text = job.source_text[:8000]
+        else:
+            text = (
+                f"Title: {job.title or ''}\n"
+                f"Description: {(job.description or '')[:4000]}\n"
+                f"Requirements: {(job.requirements or '')[:2000]}"
+            ).strip()
         if len(text) < 20:
             return False
 

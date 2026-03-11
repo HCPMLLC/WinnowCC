@@ -89,6 +89,9 @@ class RecruiterJob(Base):
     application_url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     application_email: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
+    # Raw document text from upload (for re-parsing)
+    source_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # Embedding for semantic matching
     embedding = mapped_column(_EmbeddingType, nullable=True)
 

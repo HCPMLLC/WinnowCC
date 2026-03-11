@@ -2012,6 +2012,7 @@ async def upload_job_documents(
                 application_url=parsed.get("application_url"),
                 start_at=start_at,
                 closes_at=closes_at,
+                source_text=parsed.get("_raw_text"),
                 status="draft",
             )
             session.add(job)
@@ -2613,6 +2614,10 @@ async def reparse_recruiter_job(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Could not extract job title from document.",
         )
+
+    # Store raw document text for future re-parsing
+    if parsed.get("_raw_text"):
+        job.source_text = parsed["_raw_text"]
 
     # Update job fields with parsed data (only overwrite non-empty values)
     from datetime import date as _date
