@@ -1234,11 +1234,9 @@ export default function RecruiterJobsPage() {
                     </div>
 
                     <div className="mt-3 flex flex-wrap gap-6 text-sm text-slate-500">
-                      {job.matched_candidates_count > 0 && (
-                        <span className="font-medium text-emerald-600">
-                          {job.matched_candidates_count} matched candidates
-                        </span>
-                      )}
+                      <span className={`font-medium ${job.matched_candidates_count > 0 ? "text-emerald-600" : "text-slate-400"}`}>
+                        {job.matched_candidates_count} {job.matched_candidates_count === 1 ? "match" : "matches"}
+                      </span>
                       <span>
                         Created{" "}
                         {new Date(job.created_at).toLocaleDateString()}
