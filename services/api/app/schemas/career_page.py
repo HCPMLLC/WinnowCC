@@ -32,6 +32,9 @@ class LayoutConfig(BaseModel):
     hero_style: str = Field(
         default="gradient", pattern=r"^(image|video|gradient|minimal)$"
     )
+    gradient_angle: int = Field(default=135, ge=0, le=360)
+    hero_image_url: str | None = None
+    hero_overlay_opacity: int = Field(default=40, ge=0, le=100)
     job_display: str = Field(default="grid", pattern=r"^(grid|list|compact)$")
     show_ips_preview: bool = Field(default=True)
     show_salary_ranges: bool = Field(default=True)
