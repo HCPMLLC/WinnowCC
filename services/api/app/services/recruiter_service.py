@@ -6,7 +6,7 @@ import logging
 from datetime import datetime
 
 import sqlalchemy as sa
-from sqlalchemy import func, or_, select
+from sqlalchemy import asc, desc, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.models.candidate_profile import CandidateProfile
@@ -310,11 +310,44 @@ def _pipeline_base_query(
     job_id: int | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
+    location: str | None = None,
+    title: str | None = None,
+    work_authorization: str | None = None,
+    remote_preference: str | None = None,
+    sort_by: str | None = None,
 ):
     """Build the shared WHERE clause for pipeline queries."""
+    from app.models.candidate import Candidate
+
+    # Determine if we need joins for filtering or sorting
+    needs_profile_join = bool(
+        location
+        or title
+        or work_authorization
+        or remote_preference
+        or sort_by in ("location", "title", "work_authorization", "remote_preference")
+    )
+    needs_candidate_join = bool(
+        work_authorization
+        or remote_preference
+        or sort_by in ("work_authorization", "remote_preference")
+    )
+
     stmt = select(RecruiterPipelineCandidate).where(
         RecruiterPipelineCandidate.recruiter_profile_id == profile.id
     )
+
+    if needs_profile_join:
+        stmt = stmt.outerjoin(
+            CandidateProfile,
+            RecruiterPipelineCandidate.candidate_profile_id == CandidateProfile.id,
+        )
+    if needs_candidate_join:
+        stmt = stmt.outerjoin(
+            Candidate,
+            CandidateProfile.user_id == Candidate.user_id,
+        )
+
     if stage:
         stmt = stmt.where(RecruiterPipelineCandidate.stage == stage)
     if job_id:
@@ -330,6 +363,27 @@ def _pipeline_base_query(
     if tags:
         for tag in tags:
             stmt = stmt.where(RecruiterPipelineCandidate.tags.contains([tag]))
+    if location:
+        pattern = f"%{location}%"
+        stmt = stmt.where(
+            or_(
+                RecruiterPipelineCandidate.location.ilike(pattern),
+                CandidateProfile.profile_json["location"].astext.ilike(pattern),
+                CandidateProfile.profile_json["basics"]["location"].astext.ilike(pattern),
+            )
+        )
+    if title:
+        pattern = f"%{title}%"
+        stmt = stmt.where(
+            or_(
+                RecruiterPipelineCandidate.current_title.ilike(pattern),
+                CandidateProfile.profile_json["experience"][0]["title"].astext.ilike(pattern),
+            )
+        )
+    if work_authorization:
+        stmt = stmt.where(Candidate.work_authorization.ilike(f"%{work_authorization}%"))
+    if remote_preference:
+        stmt = stmt.where(Candidate.remote_preference.ilike(f"%{remote_preference}%"))
     return stmt
 
 
@@ -340,11 +394,18 @@ def count_pipeline(
     job_id: int | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
+    location: str | None = None,
+    title: str | None = None,
+    work_authorization: str | None = None,
+    remote_preference: str | None = None,
 ) -> int:
     """Return the total count of pipeline candidates matching filters."""
     from sqlalchemy import func as sa_func
 
-    base = _pipeline_base_query(profile, stage, job_id, search, tags)
+    base = _pipeline_base_query(
+        profile, stage, job_id, search, tags,
+        location, title, work_authorization, remote_preference,
+    )
     count_stmt = select(sa_func.count()).select_from(base.subquery())
     return session.execute(count_stmt).scalar_one()
 
@@ -356,11 +417,56 @@ def list_pipeline(
     job_id: int | None = None,
     search: str | None = None,
     tags: list[str] | None = None,
+    location: str | None = None,
+    title: str | None = None,
+    work_authorization: str | None = None,
+    remote_preference: str | None = None,
+    sort_by: str | None = None,
+    sort_dir: str = "desc",
     limit: int = 50,
     offset: int = 0,
 ) -> list[RecruiterPipelineCandidate]:
-    stmt = _pipeline_base_query(profile, stage, job_id, search, tags)
-    stmt = stmt.order_by(RecruiterPipelineCandidate.created_at.desc())
+    from app.models.candidate import Candidate
+    from app.models.recruiter_job_candidate import RecruiterJobCandidate as RJC
+
+    stmt = _pipeline_base_query(
+        profile, stage, job_id, search, tags,
+        location, title, work_authorization, remote_preference,
+        sort_by=sort_by,
+    )
+
+    # Determine sort column
+    order_col: sa.ColumnElement = RecruiterPipelineCandidate.created_at
+    if sort_by == "location":
+        order_col = func.coalesce(
+            CandidateProfile.profile_json["location"].astext,
+            RecruiterPipelineCandidate.location,
+        )
+    elif sort_by == "title":
+        order_col = func.coalesce(
+            CandidateProfile.profile_json["experience"][0]["title"].astext,
+            RecruiterPipelineCandidate.current_title,
+        )
+    elif sort_by == "work_authorization":
+        order_col = Candidate.work_authorization
+    elif sort_by == "remote_preference":
+        order_col = Candidate.remote_preference
+    elif sort_by == "job_match_count":
+        order_col = (
+            select(func.count(RJC.id))
+            .where(
+                RJC.candidate_profile_id
+                == RecruiterPipelineCandidate.candidate_profile_id
+            )
+            .correlate(RecruiterPipelineCandidate)
+            .scalar_subquery()
+        )
+
+    if sort_dir == "asc":
+        stmt = stmt.order_by(asc(order_col).nulls_last())
+    else:
+        stmt = stmt.order_by(desc(order_col).nulls_last())
+
     stmt = stmt.offset(offset).limit(limit)
     return list(session.execute(stmt).scalars().all())
 

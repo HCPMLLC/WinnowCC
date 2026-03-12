@@ -483,6 +483,12 @@ def list_pipeline(
     job_id: int | None = Query(None),
     search: str | None = Query(None),
     tags: str | None = Query(None, description="Comma-separated tag filter"),
+    location_filter: str | None = Query(None, alias="location"),
+    title_filter: str | None = Query(None, alias="title"),
+    work_authorization: str | None = Query(None),
+    remote_preference: str | None = Query(None),
+    sort_by: str | None = Query(None),
+    sort_dir: str = Query("desc"),
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
@@ -495,12 +501,23 @@ def list_pipeline(
     from app.services.recruiter_service import resolve_candidate_name
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()] if tags else None
-    filter_args = dict(stage=stage, job_id=job_id, search=search, tags=tag_list)
+    filter_args = dict(
+        stage=stage,
+        job_id=job_id,
+        search=search,
+        tags=tag_list,
+        location=location_filter,
+        title=title_filter,
+        work_authorization=work_authorization,
+        remote_preference=remote_preference,
+    )
     total = svc_count(session, profile, **filter_args)
     pcs = svc_list(
         session,
         profile,
         **filter_args,
+        sort_by=sort_by,
+        sort_dir=sort_dir if sort_dir in ("asc", "desc") else "desc",
         limit=limit,
         offset=offset,
     )
@@ -512,10 +529,26 @@ def list_pipeline(
         cps = session.execute(
             select(
                 CandidateProfile.id,
+                CandidateProfile.user_id,
                 CandidateProfile.profile_json,
             ).where(CandidateProfile.id.in_(cp_ids))
         ).all()
-        for cp_id, cp_profile_json in cps:
+
+        # Batch-load Candidate records for work_authorization / remote_preference
+        from app.models.candidate import Candidate as CandidateModel
+
+        user_id_by_cp: dict[int, int | None] = {}
+        for cp_id, cp_user_id, _ in cps:
+            user_id_by_cp[cp_id] = cp_user_id
+        user_ids = [uid for uid in user_id_by_cp.values() if uid]
+        candidates_by_user: dict[int, CandidateModel] = {}
+        if user_ids:
+            cand_rows = session.execute(
+                select(CandidateModel).where(CandidateModel.user_id.in_(user_ids))
+            ).scalars().all()
+            candidates_by_user = {c.user_id: c for c in cand_rows}
+
+        for cp_id, _cp_user_id, cp_profile_json in cps:
             try:
                 pj = cp_profile_json or {}
                 if not isinstance(pj, dict):
@@ -582,6 +615,15 @@ def list_pipeline(
                         )
                         years_experience = max(1, diff.days // 365)
 
+                # Resolve work_authorization / remote_preference from Candidate
+                wa = None
+                rp = None
+                uid = user_id_by_cp.get(cp_id)
+                if uid and uid in candidates_by_user:
+                    cand = candidates_by_user[uid]
+                    wa = cand.work_authorization
+                    rp = cand.remote_preference
+
                 profiles_map[cp_id] = {
                     "headline": headline,
                     "location": (pj.get("location") or basics.get("location")),
@@ -591,6 +633,8 @@ def list_pipeline(
                     "skills": [s for s in skills if s][:10],
                     "linkedin_url": pj.get("linkedin_url"),
                     "is_platform_candidate": is_platform,
+                    "work_authorization": wa,
+                    "remote_preference": rp,
                 }
             except Exception:
                 logging.getLogger(__name__).warning(
@@ -629,6 +673,10 @@ def list_pipeline(
             resp.skills = info["skills"]
             resp.linkedin_url = info["linkedin_url"]
             resp.is_platform_candidate = info["is_platform_candidate"]
+            if info.get("work_authorization"):
+                resp.work_authorization = info["work_authorization"]
+            if info.get("remote_preference"):
+                resp.remote_preference = info["remote_preference"]
         if pc.candidate_profile_id:
             resp.job_match_count = match_counts.get(pc.candidate_profile_id, 0)
         results.append(resp)

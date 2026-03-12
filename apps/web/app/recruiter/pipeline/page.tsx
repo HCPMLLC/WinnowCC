@@ -32,6 +32,8 @@ interface PipelineCandidate {
   is_platform_candidate: boolean;
   job_match_count: number;
   years_experience: number | null;
+  work_authorization: string | null;
+  remote_preference: string | null;
   created_at: string;
 }
 
@@ -72,15 +74,26 @@ export default function RecruiterPipeline() {
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState("");
   const [stageFilter, setStageFilter] = useState("");
+  const [locationFilter, setLocationFilter] = useState("");
+  const [titleFilter, setTitleFilter] = useState("");
+  const [workAuthFilter, setWorkAuthFilter] = useState("");
+  const [remoteFilter, setRemoteFilter] = useState("");
+  const [sortBy, setSortBy] = useState("");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+  const [showFilters, setShowFilters] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [introTarget, setIntroTarget] = useState<{ id: number; name: string } | null>(null);
 
-  // Search
+  // Search & debounced filters
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [debouncedLocation, setDebouncedLocation] = useState("");
+  const [debouncedTitle, setDebouncedTitle] = useState("");
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const locationTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const titleTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Bulk selection
   const [selected, setSelected] = useState<Set<number>>(new Set());
@@ -112,6 +125,12 @@ export default function RecruiterPipeline() {
       const url = new URL(`${API_BASE}/api/recruiter/pipeline`);
       if (stageFilter) url.searchParams.set("stage", stageFilter);
       if (debouncedSearch.trim()) url.searchParams.set("search", debouncedSearch.trim());
+      if (debouncedLocation.trim()) url.searchParams.set("location", debouncedLocation.trim());
+      if (debouncedTitle.trim()) url.searchParams.set("title", debouncedTitle.trim());
+      if (workAuthFilter) url.searchParams.set("work_authorization", workAuthFilter);
+      if (remoteFilter) url.searchParams.set("remote_preference", remoteFilter);
+      if (sortBy) url.searchParams.set("sort_by", sortBy);
+      if (sortBy) url.searchParams.set("sort_dir", sortDir);
       url.searchParams.set("limit", String(PAGE_SIZE));
       url.searchParams.set("offset", String(page * PAGE_SIZE));
       const res = await fetch(url.toString(), { credentials: "include" });
@@ -126,12 +145,12 @@ export default function RecruiterPipeline() {
     } catch {
       setFetchError("Network error loading pipeline");
     }
-  }, [stageFilter, debouncedSearch, page]);
+  }, [stageFilter, debouncedSearch, debouncedLocation, debouncedTitle, workAuthFilter, remoteFilter, sortBy, sortDir, page]);
 
   useEffect(() => {
     setLoading(true);
     fetchPipeline().finally(() => setLoading(false));
-  }, [stageFilter, fetchPipeline]);
+  }, [fetchPipeline]);
 
   // Debounced search — update debouncedSearch after user stops typing
   function handleSearchChange(value: string) {
@@ -140,6 +159,24 @@ export default function RecruiterPipeline() {
     searchTimeout.current = setTimeout(() => {
       setDebouncedSearch(value);
       setSelected(new Set());
+      setPage(0);
+    }, 300);
+  }
+
+  function handleLocationChange(value: string) {
+    setLocationFilter(value);
+    if (locationTimeout.current) clearTimeout(locationTimeout.current);
+    locationTimeout.current = setTimeout(() => {
+      setDebouncedLocation(value);
+      setPage(0);
+    }, 300);
+  }
+
+  function handleTitleChange(value: string) {
+    setTitleFilter(value);
+    if (titleTimeout.current) clearTimeout(titleTimeout.current);
+    titleTimeout.current = setTimeout(() => {
+      setDebouncedTitle(value);
       setPage(0);
     }, 300);
   }
@@ -384,14 +421,121 @@ export default function RecruiterPipeline() {
         </div>
       )}
 
-      {/* Search bar */}
-      <input
-        type="text"
-        placeholder="Search by name or email..."
-        value={searchQuery}
-        onChange={(e) => handleSearchChange(e.target.value)}
-        className="w-full rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
-      />
+      {/* Search bar + filter toggle */}
+      <div className="flex gap-2">
+        <input
+          type="text"
+          placeholder="Search by name or email..."
+          value={searchQuery}
+          onChange={(e) => handleSearchChange(e.target.value)}
+          className="flex-1 rounded-lg border border-slate-300 px-4 py-2.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+        />
+        <button
+          onClick={() => setShowFilters(!showFilters)}
+          className={`flex items-center gap-1.5 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${showFilters ? "border-slate-900 bg-slate-900 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}`}
+        >
+          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" /></svg>
+          Filters{(debouncedLocation || debouncedTitle || workAuthFilter || remoteFilter || sortBy) ? " *" : ""}
+        </button>
+      </div>
+
+      {/* Filter & Sort panel */}
+      {showFilters && (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Location</label>
+              <input
+                type="text"
+                placeholder="e.g. New York"
+                value={locationFilter}
+                onChange={(e) => handleLocationChange(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Job Title</label>
+              <input
+                type="text"
+                placeholder="e.g. Software Engineer"
+                value={titleFilter}
+                onChange={(e) => handleTitleChange(e.target.value)}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Work Authorization</label>
+              <select
+                value={workAuthFilter}
+                onChange={(e) => { setWorkAuthFilter(e.target.value); setPage(0); }}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              >
+                <option value="">All</option>
+                <option value="US Citizen">US Citizen</option>
+                <option value="Green Card">Green Card</option>
+                <option value="H-1B">H-1B</option>
+                <option value="EAD">EAD</option>
+                <option value="OPT">OPT</option>
+                <option value="TN">TN Visa</option>
+                <option value="No Sponsorship">No Sponsorship Needed</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Remote Preference</label>
+              <select
+                value={remoteFilter}
+                onChange={(e) => { setRemoteFilter(e.target.value); setPage(0); }}
+                className="w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+              >
+                <option value="">All</option>
+                <option value="remote">Remote</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="onsite">On-site</option>
+                <option value="flexible">Flexible</option>
+              </select>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Sort By</label>
+              <div className="flex gap-1.5">
+                <select
+                  value={sortBy}
+                  onChange={(e) => { setSortBy(e.target.value); setPage(0); }}
+                  className="flex-1 rounded-md border border-slate-300 px-3 py-1.5 text-sm focus:border-slate-500 focus:outline-none focus:ring-1 focus:ring-slate-500"
+                >
+                  <option value="">Newest First</option>
+                  <option value="location">Location</option>
+                  <option value="title">Job Title</option>
+                  <option value="job_match_count">Jobs Matched</option>
+                  <option value="work_authorization">Work Auth</option>
+                  <option value="remote_preference">Remote Pref</option>
+                </select>
+                {sortBy && (
+                  <button
+                    onClick={() => setSortDir(sortDir === "asc" ? "desc" : "asc")}
+                    className="rounded-md border border-slate-300 px-2 py-1.5 text-sm text-slate-600 hover:bg-slate-50"
+                    title={sortDir === "asc" ? "Ascending" : "Descending"}
+                  >
+                    {sortDir === "asc" ? "\u2191" : "\u2193"}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          {(debouncedLocation || debouncedTitle || workAuthFilter || remoteFilter || sortBy) && (
+            <button
+              onClick={() => {
+                setLocationFilter(""); setDebouncedLocation("");
+                setTitleFilter(""); setDebouncedTitle("");
+                setWorkAuthFilter(""); setRemoteFilter("");
+                setSortBy(""); setSortDir("desc"); setPage(0);
+              }}
+              className="mt-3 text-xs text-slate-500 hover:text-slate-700 underline"
+            >
+              Clear all filters
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Stage filter pills */}
       <div className="flex flex-wrap gap-2">
@@ -516,6 +660,8 @@ export default function RecruiterPipeline() {
                     <span>{entry.years_experience} yr{entry.years_experience !== 1 ? "s" : ""} exp</span>
                   )}
                   {entry.current_company && <span>{entry.current_company}</span>}
+                  {entry.work_authorization && <span className="rounded bg-slate-100 px-1.5 py-0.5">{entry.work_authorization}</span>}
+                  {entry.remote_preference && <span className="rounded bg-slate-100 px-1.5 py-0.5">{entry.remote_preference}</span>}
                   {entry.source && <span>via {entry.source}</span>}
                 </div>
                 {entry.skills && entry.skills.length > 0 && (

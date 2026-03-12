@@ -287,6 +287,8 @@ class PipelineCandidateResponse(BaseModel):
     is_platform_candidate: bool = False
     job_match_count: int = 0
     years_experience: int | None = None
+    work_authorization: str | None = None
+    remote_preference: str | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
