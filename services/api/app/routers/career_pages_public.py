@@ -9,7 +9,9 @@ from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.employer import EmployerJob
 from app.models.job import Job
+from app.models.recruiter_job import RecruiterJob
 from app.schemas.career_page import (
     PublicCareerPageResponse,
     PublicJobDetail,
@@ -26,6 +28,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(
     prefix="/api/public/career-pages", tags=["career-pages-public"]
 )
+
+
+def _get_job_id_external(db: Session, job: Job) -> str | None:
+    """Resolve the external solicitation number from the linked employer/recruiter job."""
+    if job.employer_job_id:
+        ej = db.get(EmployerJob, job.employer_job_id)
+        if ej and ej.job_id_external:
+            return ej.job_id_external
+    if job.recruiter_job_id:
+        rj = db.get(RecruiterJob, job.recruiter_job_id)
+        if rj and rj.job_id_external:
+            return rj.job_id_external
+    return None
 
 
 @router.get("/{slug}", response_model=PublicCareerPageResponse)
@@ -124,6 +139,7 @@ def list_public_jobs(
                 id=job.id,
                 title=job.title,
                 company=job.company,
+                job_id_external=_get_job_id_external(db, job),
                 location=job.location,
                 location_type="remote" if job.remote_flag else "onsite",
                 salary_min=job.salary_min,
@@ -165,6 +181,7 @@ def get_public_job_detail(
         id=job.id,
         title=job.title,
         company=job.company,
+        job_id_external=_get_job_id_external(db, job),
         location=job.location,
         location_type="remote" if job.remote_flag else "onsite",
         salary_min=job.salary_min,

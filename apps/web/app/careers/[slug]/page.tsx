@@ -14,6 +14,8 @@ interface CareerPageData {
     branding: {
       colors: Record<string, string>;
       logo_url?: string;
+      logo_alt?: string;
+      website_url?: string;
       fonts?: { heading?: string; body?: string };
     };
     layout: {
@@ -34,6 +36,7 @@ interface JobData {
   id: number;
   title: string;
   company: string | null;
+  job_id_external: string | null;
   location: string | null;
   location_type: string | null;
   salary_min: number | null;
@@ -173,6 +176,28 @@ export default function PublicCareerPage() {
 
   return (
     <div className="min-h-screen" style={{ backgroundColor: branding.colors.background, fontFamily: branding.fonts?.body || "Inter, sans-serif" }}>
+      {/* Navigation Bar */}
+      {branding.website_url && (
+        <nav className="bg-white border-b">
+          <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <a href={branding.website_url} className="flex items-center gap-2 text-sm font-medium hover:opacity-80 transition-opacity" style={{ color: branding.colors.primary }}>
+              {branding.logo_url ? (
+                <img src={branding.logo_url} alt={branding.logo_alt || "Company logo"} className="h-8 object-contain" />
+              ) : (
+                <span style={{ fontFamily: branding.fonts?.heading || "Inter, sans-serif" }}>Home</span>
+              )}
+            </a>
+            <a
+              href={branding.website_url}
+              className="text-sm font-medium px-4 py-1.5 rounded-lg border hover:bg-gray-50 transition-colors"
+              style={{ color: branding.colors.primary, borderColor: branding.colors.primary }}
+            >
+              ← Back to Website
+            </a>
+          </div>
+        </nav>
+      )}
+
       {/* Hero */}
       {heroSection?.enabled !== false && (
         <div className="relative" style={getHeroStyle()}>
@@ -180,8 +205,13 @@ export default function PublicCareerPage() {
             <div className="absolute inset-0" style={{ backgroundColor: `rgba(0,0,0,${overlayOpacity / 100})` }} />
           )}
           <div className={`relative max-w-5xl mx-auto px-4 text-center ${isImageHero ? "py-24" : "py-16"}`}>
-            {branding.logo_url && (
-              <img src={branding.logo_url} alt="" className="h-14 mx-auto mb-6 object-contain" />
+            {branding.logo_url && !branding.website_url && (
+              <img src={branding.logo_url} alt={branding.logo_alt || ""} className="h-14 mx-auto mb-6 object-contain" />
+            )}
+            {branding.logo_url && branding.website_url && (
+              <a href={branding.website_url} className="inline-block mb-6 hover:opacity-80 transition-opacity">
+                <img src={branding.logo_url} alt={branding.logo_alt || ""} className="h-14 mx-auto object-contain" />
+              </a>
             )}
             <h1
               className={`text-4xl md:text-5xl font-bold mb-3 ${isMinimalHero ? "" : "text-white"}`}
@@ -250,13 +280,22 @@ export default function PublicCareerPage() {
                   className="bg-white rounded-xl border p-5 hover:shadow-md transition-shadow text-left w-full group"
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="text-lg font-semibold text-gray-900 mb-1 group-hover:underline">{job.title}</h3>
+                    <div className="min-w-0">
+                      <h3 className="text-lg font-semibold text-gray-900 group-hover:underline">
+                        {job.title}
+                        {job.job_id_external && (
+                          <span className="ml-2 text-sm font-normal text-gray-400">#{job.job_id_external}</span>
+                        )}
+                      </h3>
+                    </div>
                     <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-gray-500 mt-1 shrink-0 transition-colors" />
                   </div>
+
                   {job.company && (
-                    <p className="flex items-center gap-1 text-sm text-gray-600 mb-2"><Building2 className="w-3.5 h-3.5" />{job.company}</p>
+                    <p className="flex items-center gap-1 text-sm text-gray-600 mt-1"><Building2 className="w-3.5 h-3.5" />{job.company}</p>
                   )}
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
+
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500 mt-2">
                     {job.location && (
                       <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5" />{job.location}</span>
                     )}
@@ -321,6 +360,9 @@ export default function PublicCareerPage() {
                     <div className="min-w-0">
                       <h2 className="text-2xl font-bold text-gray-900" style={{ fontFamily: branding.fonts?.heading || "Inter, sans-serif" }}>
                         {selectedJob.title}
+                        {selectedJob.job_id_external && (
+                          <span className="ml-2 text-base font-normal text-gray-400">#{selectedJob.job_id_external}</span>
+                        )}
                       </h2>
                       {selectedJob.company && (
                         <p className="flex items-center gap-1.5 text-base text-gray-600 mt-1">
@@ -368,11 +410,15 @@ export default function PublicCareerPage() {
 
                 {/* Modal Body — Scrollable */}
                 <div className="flex-1 overflow-y-auto p-6">
-                  <div className="prose prose-sm max-w-none text-gray-700">
+                  <div className="prose prose-sm max-w-none text-gray-700 prose-headings:text-gray-900 prose-headings:mt-6 prose-headings:mb-2 prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
                     {selectedJob.description_html ? (
                       <div dangerouslySetInnerHTML={{ __html: selectedJob.description_html }} />
                     ) : (
-                      <div className="whitespace-pre-wrap">{selectedJob.description_text}</div>
+                      <div className="space-y-3">
+                        {selectedJob.description_text.split(/\n\s*\n/).map((para, i) => (
+                          <p key={i} className="leading-relaxed whitespace-pre-wrap">{para.trim()}</p>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </div>

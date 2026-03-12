@@ -8,7 +8,7 @@ import { ArrowLeft, Eye, Save, Globe, Loader2, Check, Palette, Layout, Layers, M
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
 interface CareerPageConfig {
-  branding: { colors: Record<string, string>; logo_url?: string; fonts: { heading: string; body: string } };
+  branding: { colors: Record<string, string>; logo_url?: string; website_url?: string; fonts: { heading: string; body: string } };
   layout: {
     hero_style: string; gradient_angle?: number; hero_image_url?: string; hero_overlay_opacity?: number;
     job_display: string; show_ips_preview: boolean; show_salary_ranges: boolean;
@@ -157,7 +157,7 @@ export default function CareerPageBuilderPage() {
               });
               if (!res.ok) throw new Error("Failed to import");
               const kit = await res.json();
-              const newBranding = { ...page.config.branding, colors: kit.colors, fonts: kit.fonts, ...(kit.logo_url ? { logo_url: kit.logo_url } : {}) };
+              const newBranding = { ...page.config.branding, colors: kit.colors, fonts: kit.fonts, ...(kit.logo_url ? { logo_url: kit.logo_url } : {}), website_url: url };
               const newLayout = { ...page.config.layout, ...(kit.hero_image_url ? { hero_image_url: kit.hero_image_url, hero_style: "image" } : {}) };
               updateConfig({ branding: newBranding, layout: newLayout });
             }} />}
@@ -314,6 +314,11 @@ function BrandingPanel({ config, onChange, onImportBranding }: { config: any; on
             <img src={config.logo_url} alt="Preview" className="h-10 object-contain" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           </div>
         )}
+      </div>
+      <div>
+        <h3 className="font-medium mb-2">Website URL</h3>
+        <p className="text-xs text-gray-500 mb-2">Your main website. Adds a navigation bar so visitors can return to your site from the career page.</p>
+        <input type="url" value={config.website_url || ""} onChange={e => onChange({ ...config, website_url: e.target.value })} placeholder="https://yourcompany.com" className="w-full px-3 py-2 border rounded-lg text-sm" />
       </div>
       <div>
         <h3 className="font-medium mb-2">Heading Font</h3>

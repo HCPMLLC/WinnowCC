@@ -26,6 +26,9 @@ class BrandingConfig(BaseModel):
     logo_alt: str | None = None
     favicon_url: str | None = None
     fonts: BrandingFonts = Field(default_factory=BrandingFonts)
+    website_url: str | None = Field(
+        None, description="Client's main website URL for navigation back from career page"
+    )
 
 
 class LayoutConfig(BaseModel):
@@ -155,6 +158,7 @@ class PublicJobSummary(BaseModel):
     id: int
     title: str
     company: str | None = None
+    job_id_external: str | None = None
     location: str | None
     location_type: str | None
     salary_min: int | None
@@ -170,6 +174,7 @@ class PublicJobDetail(BaseModel):
     id: int
     title: str
     company: str | None = None
+    job_id_external: str | None = None
     location: str | None
     location_type: str | None
     salary_min: int | None
