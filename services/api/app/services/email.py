@@ -1,5 +1,6 @@
 """Transactional email via Resend SDK and SMS via Telnyx."""
 
+import base64
 import logging
 import os
 import uuid
@@ -725,4 +726,48 @@ def send_weekly_digest_email(
             "html": html_body,
         },
         "weekly_digest",
+    )
+
+
+def send_submittal_package_email(
+    to_email: str,
+    to_name: str,
+    subject: str,
+    body_html: str,
+    pdf_bytes: bytes,
+    pdf_filename: str,
+) -> str | None:
+    """Send a submittal package PDF to a client contact.
+
+    Uses Resend's attachment support with base64-encoded PDF content.
+    Returns the Resend message ID on success, or None on failure.
+    """
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping submittal email to %s", to_email
+        )
+        return None
+
+    resend.api_key = RESEND_API_KEY
+
+    html = (
+        f"<p>Hi {to_name},</p>"
+        f"{body_html}"
+        "<p>Best regards,<br>Winnow</p>"
+    )
+
+    return _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": subject,
+            "html": html,
+            "attachments": [
+                {
+                    "filename": pdf_filename,
+                    "content": base64.b64encode(pdf_bytes).decode("ascii"),
+                }
+            ],
+        },
+        "submittal_package",
     )

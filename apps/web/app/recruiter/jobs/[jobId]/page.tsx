@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { parseApiError } from "../../../lib/api-error";
+import SubmittalModal from "./submittal-modal";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
@@ -137,6 +138,19 @@ export default function RecruiterJobDetailPage() {
   const [contactMode, setContactMode] = useState<"select" | "manual">("select");
   const [reparsing, setReparsing] = useState(false);
   const [reparseError, setReparseError] = useState("");
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<Set<number>>(new Set());
+  const [showSubmittalModal, setShowSubmittalModal] = useState(false);
+  const [submittalPackages, setSubmittalPackages] = useState<Array<{
+    id: number;
+    status: string;
+    candidate_count: number;
+    recipient_name: string;
+    recipient_email: string;
+    merged_pdf_url: string | null;
+    error_message: string | null;
+    sent_at: string | null;
+    created_at: string;
+  }>>([]);
 
   const [form, setForm] = useState({
     title: "",
@@ -209,11 +223,15 @@ export default function RecruiterJobDetailPage() {
       fetch(`${API_BASE}/api/recruiter/submissions?job_id=${jobId}`, {
         credentials: "include",
       }).then((r) => (r.ok ? r.json() : [])),
+      fetch(`${API_BASE}/api/recruiter/jobs/${jobId}/submittal-packages`, {
+        credentials: "include",
+      }).then((r) => (r.ok ? r.json() : [])),
     ])
-      .then(([jobData, candData, clientData, profileData, subsData]) => {
+      .then(([jobData, candData, clientData, profileData, subsData, pkgsData]) => {
         setJob(jobData);
         setClients(clientData || []);
         setSubmissions(subsData || []);
+        setSubmittalPackages(pkgsData || []);
         if (candData) {
           setCandidates(candData.candidates);
           setTotalCached(candData.total_cached);
@@ -531,6 +549,27 @@ export default function RecruiterJobDetailPage() {
       setSubmittingId(null);
     }
   }
+
+  function toggleCandidateSelection(id: number) {
+    setSelectedCandidateIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedCandidateIds(new Set());
+  }
+
+  const refreshPackages = useCallback(async () => {
+    const res = await fetch(
+      `${API_BASE}/api/recruiter/jobs/${jobId}/submittal-packages`,
+      { credentials: "include" }
+    );
+    if (res.ok) setSubmittalPackages(await res.json());
+  }, [jobId]);
 
   if (loading) {
     return (
@@ -1551,9 +1590,16 @@ export default function RecruiterJobDetailPage() {
             {candidates.map((c) => (
               <div
                 key={c.id}
-                className="flex items-center justify-between rounded-lg border border-slate-200 p-4 transition-colors hover:bg-slate-50"
+                className={`flex items-center justify-between rounded-lg border p-4 transition-colors hover:bg-slate-50 ${selectedCandidateIds.has(c.id) ? "border-blue-300 bg-blue-50/50" : "border-slate-200"}`}
               >
-                <div className="flex-1">
+                <div className="flex flex-1 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedCandidateIds.has(c.id)}
+                    onChange={() => toggleCandidateSelection(c.id)}
+                    className="mt-1 rounded border-slate-300"
+                  />
+                  <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <span className="font-medium text-slate-900">{c.name}</span>
                     {c.headline && (
@@ -1578,6 +1624,7 @@ export default function RecruiterJobDetailPage() {
                       <span>{c.years_experience} yrs exp</span>
                     )}
                   </div>
+                </div>
                 </div>
                 <div className="ml-4 flex items-center gap-3">
                   <div className="text-right">
@@ -1620,6 +1667,122 @@ export default function RecruiterJobDetailPage() {
           </>
         )}
       </div>
+
+      {/* Submittal Packages History */}
+      {submittalPackages.length > 0 && (
+        <div className="rounded-xl border border-slate-200 bg-white p-6 shadow-sm">
+          <h2 className="mb-4 text-lg font-semibold text-slate-900">
+            Submittal Packages
+          </h2>
+          <div className="space-y-3">
+            {submittalPackages.map((pkg) => (
+              <div
+                key={pkg.id}
+                className="flex items-center justify-between rounded-lg border border-slate-200 p-4"
+              >
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-900">
+                      {pkg.recipient_name}
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      ({pkg.recipient_email})
+                    </span>
+                  </div>
+                  <div className="mt-1 flex gap-3 text-xs text-slate-400">
+                    <span>{new Date(pkg.created_at).toLocaleDateString()}</span>
+                    <span>
+                      {pkg.candidate_count} candidate{pkg.candidate_count !== 1 ? "s" : ""}
+                    </span>
+                    {pkg.sent_at && (
+                      <span>
+                        Sent {new Date(pkg.sent_at).toLocaleDateString()}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ${
+                      pkg.status === "sent"
+                        ? "bg-emerald-100 text-emerald-800"
+                        : pkg.status === "ready"
+                          ? "bg-blue-100 text-blue-800"
+                          : pkg.status === "building"
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {pkg.status}
+                  </span>
+                  {pkg.merged_pdf_url && (
+                    <a
+                      href={pkg.merged_pdf_url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      Download
+                    </a>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Sticky Selection Bar */}
+      {selectedCandidateIds.size > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-slate-200 bg-white px-6 py-3 shadow-lg">
+          <div className="mx-auto flex max-w-5xl items-center justify-between">
+            <span className="text-sm font-medium text-slate-700">
+              {selectedCandidateIds.size} candidate{selectedCandidateIds.size !== 1 ? "s" : ""} selected
+            </span>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={clearSelection}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              >
+                Clear
+              </button>
+              <button
+                onClick={() => setShowSubmittalModal(true)}
+                className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+              >
+                Build Submittal Package
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submittal Modal */}
+      {showSubmittalModal && job && (
+        <SubmittalModal
+          jobId={parseInt(jobId)}
+          jobTitle={job.title}
+          clientId={job.client_id}
+          contactName={job.contact_name}
+          contactEmail={job.contact_email}
+          clients={clients}
+          selectedCandidates={candidates
+            .filter((c) => selectedCandidateIds.has(c.id))
+            .map((c) => ({
+              id: c.id,
+              name: c.name,
+              match_score: c.match_score,
+              type: "platform" as const,
+            }))}
+          onClose={() => {
+            setShowSubmittalModal(false);
+            refreshPackages();
+          }}
+          onPackageSent={() => {
+            refreshPackages();
+          }}
+        />
+      )}
     </div>
   );
 }

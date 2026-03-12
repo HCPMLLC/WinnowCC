@@ -3631,6 +3631,207 @@ def _resolve_submission_candidate_name(session: Session, submission) -> str:
 
 
 # ============================================================================
+# SUBMITTAL PACKAGES — build & send candidate packages to clients
+# ============================================================================
+
+
+@router.post("/jobs/{job_id}/submittal-package")
+def create_submittal_package(
+    job_id: int,
+    body: "SubmittalPackageCreate",
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Build a submittal package of selected candidates for a job.
+
+    Enqueues an async worker task that generates AI briefs, assembles
+    DOCX pages, and merges everything into a single PDF.
+    """
+    from app.schemas.submittal import SubmittalPackageCreate  # noqa: F811
+    from app.models.submittal_package import SubmittalPackage
+    from app.services.queue import get_queue
+
+    # Verify job ownership
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    if not body.candidate_ids and not body.pipeline_candidate_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="At least one candidate must be selected.",
+        )
+
+    # Default email template
+    subject = body.cover_email_subject or (
+        f"Candidate Submittal \u2014 {job.title}"
+    )
+    email_body = body.cover_email_body or (
+        f"<p>Please find attached our candidate submittal package for "
+        f"<strong>{job.title}</strong>.</p>"
+        f"<p>This package includes candidate briefs and supporting "
+        f"documentation for your review.</p>"
+        f"<p>Please don't hesitate to reach out with any questions.</p>"
+    )
+
+    pkg = SubmittalPackage(
+        recruiter_profile_id=profile.id,
+        recruiter_job_id=job_id,
+        client_id=body.client_id,
+        recipient_name=body.recipient_name,
+        recipient_email=body.recipient_email,
+        candidate_ids=body.candidate_ids,
+        pipeline_candidate_ids=body.pipeline_candidate_ids,
+        package_options=body.options.model_dump(),
+        cover_email_subject=subject,
+        cover_email_body=email_body,
+        status="building",
+    )
+    session.add(pkg)
+    session.commit()
+    session.refresh(pkg)
+
+    # Enqueue async build task
+    q = get_queue()
+    q.enqueue(
+        "app.services.submittal.build_submittal_package_task",
+        pkg.id,
+        job_timeout="10m",
+    )
+
+    return {
+        "package_id": pkg.id,
+        "status": "building",
+    }
+
+
+@router.get("/jobs/{job_id}/submittal-packages")
+def list_submittal_packages(
+    job_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """List all submittal packages for a recruiter job."""
+    from app.models.submittal_package import SubmittalPackage
+
+    # Verify job ownership
+    job = session.execute(
+        select(RecruiterJob).where(
+            RecruiterJob.id == job_id,
+            RecruiterJob.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    packages = (
+        session.execute(
+            select(SubmittalPackage)
+            .where(
+                SubmittalPackage.recruiter_profile_id == profile.id,
+                SubmittalPackage.recruiter_job_id == job_id,
+            )
+            .order_by(SubmittalPackage.created_at.desc())
+        )
+        .scalars()
+        .all()
+    )
+
+    return [
+        {
+            "id": p.id,
+            "status": p.status,
+            "candidate_count": len(p.candidate_ids or []) + len(p.pipeline_candidate_ids or []),
+            "recipient_name": p.recipient_name,
+            "recipient_email": p.recipient_email,
+            "merged_pdf_url": p.merged_pdf_url,
+            "error_message": p.error_message,
+            "sent_at": p.sent_at,
+            "created_at": p.created_at,
+        }
+        for p in packages
+    ]
+
+
+@router.get("/submittal-packages/{package_id}")
+def get_submittal_package(
+    package_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Get a submittal package by ID (for status polling)."""
+    from app.models.submittal_package import SubmittalPackage
+
+    pkg = session.execute(
+        select(SubmittalPackage).where(
+            SubmittalPackage.id == package_id,
+            SubmittalPackage.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if not pkg:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Package not found."
+        )
+
+    return {
+        "id": pkg.id,
+        "recruiter_job_id": pkg.recruiter_job_id,
+        "status": pkg.status,
+        "candidate_ids": pkg.candidate_ids,
+        "pipeline_candidate_ids": pkg.pipeline_candidate_ids,
+        "candidate_count": len(pkg.candidate_ids or []) + len(pkg.pipeline_candidate_ids or []),
+        "recipient_name": pkg.recipient_name,
+        "recipient_email": pkg.recipient_email,
+        "merged_pdf_url": pkg.merged_pdf_url,
+        "cover_email_subject": pkg.cover_email_subject,
+        "cover_email_body": pkg.cover_email_body,
+        "error_message": pkg.error_message,
+        "sent_at": pkg.sent_at,
+        "created_at": pkg.created_at,
+    }
+
+
+@router.post("/submittal-packages/{package_id}/send")
+def send_submittal_package(
+    package_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Send the submittal package PDF to the client via email."""
+    from app.models.submittal_package import SubmittalPackage
+
+    pkg = session.execute(
+        select(SubmittalPackage).where(
+            SubmittalPackage.id == package_id,
+            SubmittalPackage.recruiter_profile_id == profile.id,
+        )
+    ).scalar_one_or_none()
+    if not pkg:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Package not found."
+        )
+    if pkg.status not in ("ready", "sent"):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Package is not ready to send (status={pkg.status}).",
+        )
+
+    from app.services.submittal import send_submittal_email
+
+    result = send_submittal_email(session, package_id)
+    return result
+
+
+# ============================================================================
 # JOB MARKETPLACE — browse ingested jobs & match against recruiter candidates
 # ============================================================================
 

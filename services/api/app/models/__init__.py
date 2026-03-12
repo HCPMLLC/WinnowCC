@@ -68,6 +68,7 @@ from app.models.rejection_feedback import RejectionFeedback
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
 from app.models.stage_rule import StageRule
+from app.models.submittal_package import SubmittalPackage
 from app.models.support_ticket import SupportMessage, SupportTicket
 from app.models.tailored_resume import TailoredResume
 from app.models.talent_pipeline import TalentPipeline
@@ -142,6 +143,7 @@ __all__ = [
     "RecruiterTeamMember",
     "RejectionFeedback",
     "StageRule",
+    "SubmittalPackage",
     "SupportMessage",
     "SupportTicket",
     "ResumeDocument",
