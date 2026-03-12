@@ -2101,20 +2101,14 @@ def list_recruiter_jobs(
     if status_filter:
         allowed = (
             "draft", "active", "paused", "closed",
-            "expired", "no_deadline", "no_job_id",
+            "expired", "submitted", "no_deadline", "no_job_id",
         )
         if status_filter not in allowed:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Invalid status filter. Must be one of: {', '.join(allowed)}",
             )
-        if status_filter == "expired":
-            now = datetime.now(UTC)
-            stmt = stmt.where(
-                RecruiterJob.closes_at < now,
-                RecruiterJob.status.in_(("active", "paused")),
-            )
-        elif status_filter == "no_deadline":
+        if status_filter == "no_deadline":
             stmt = stmt.where(RecruiterJob.closes_at.is_(None))
         elif status_filter == "no_job_id":
             stmt = stmt.where(
@@ -2260,7 +2254,7 @@ def bulk_update_recruiter_job_status(
     session: Session = Depends(get_session),
 ) -> dict:
     """Batch-update status of recruiter job postings owned by this recruiter."""
-    allowed = ("draft", "active", "paused", "closed")
+    allowed = ("draft", "active", "paused", "closed", "expired", "submitted")
     if new_status not in allowed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

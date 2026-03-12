@@ -6,7 +6,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 ALLOWED_REMOTE_POLICIES = ["on-site", "hybrid", "remote"]
 ALLOWED_EMPLOYMENT_TYPES = ["full-time", "part-time", "contract", "internship"]
-ALLOWED_JOB_STATUSES = ["draft", "active", "paused", "closed"]
+ALLOWED_JOB_STATUSES = ["draft", "active", "paused", "closed", "expired", "submitted"]
 
 
 class RecruiterJobCreate(BaseModel):

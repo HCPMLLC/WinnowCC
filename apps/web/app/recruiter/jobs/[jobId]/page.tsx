@@ -104,6 +104,8 @@ const STATUS_COLORS: Record<string, string> = {
   active: "bg-emerald-100 text-emerald-800",
   paused: "bg-amber-100 text-amber-800",
   closed: "bg-red-100 text-red-800",
+  expired: "bg-orange-100 text-orange-800",
+  submitted: "bg-blue-100 text-blue-800",
 };
 
 const inputCls =
@@ -1115,6 +1117,8 @@ export default function RecruiterJobDetailPage() {
                   <option value="active">Active</option>
                   <option value="paused">Paused</option>
                   <option value="closed">Closed</option>
+                  <option value="expired">Expired</option>
+                  <option value="submitted">Submitted</option>
                 </select>
               </div>
             </div>

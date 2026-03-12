@@ -247,7 +247,8 @@ def scheduled_archive_expired_jobs() -> dict:
 
         logger.info("Archived %d expired employer jobs", count)
 
-        # Also close recruiter jobs whose closes_at has passed
+        # Expire recruiter jobs whose closes_at has passed (active only)
+        # "submitted" and other statuses are protected from auto-expiration
         from app.models.recruiter_job import RecruiterJob
 
         now = datetime.now(UTC)
@@ -256,7 +257,7 @@ def scheduled_archive_expired_jobs() -> dict:
             .filter(
                 and_(
                     RecruiterJob.closes_at < now,
-                    RecruiterJob.status.in_(["active", "paused"]),
+                    RecruiterJob.status == "active",
                 )
             )
             .all()
@@ -264,18 +265,18 @@ def scheduled_archive_expired_jobs() -> dict:
 
         recruiter_count = 0
         for rjob in expired_recruiter:
-            rjob.status = "closed"
+            rjob.status = "expired"
             recruiter_count += 1
 
         if recruiter_count:
             session.commit()
 
-        logger.info("Closed %d expired recruiter jobs", recruiter_count)
+        logger.info("Expired %d recruiter jobs past deadline", recruiter_count)
 
         return {
             "status": "completed",
             "archived_count": count,
-            "recruiter_closed_count": recruiter_count,
+            "recruiter_expired_count": recruiter_count,
             "error": None,
         }
 
