@@ -159,72 +159,65 @@ def deduplicate_recruiter_jobs(
     # Deduplicate the list itself (a job could appear in both passes)
     deleted_ids = sorted(set(deleted_ids))
 
+    actually_deleted: list[int] = []
+    errors: list[str] = []
+
     if not dry_run and deleted_ids:
         import logging
-        import traceback
 
         from sqlalchemy import text
 
         log = logging.getLogger(__name__)
         log.info("Dedup: deleting %d recruiter jobs: %s", len(deleted_ids), deleted_ids)
 
-        # Explicitly clear all FK references before deleting
+        # FK cleanup and delete tables — one job at a time
         cleanup_sqls = [
-            # SET NULL references
-            "UPDATE jobs SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-            "UPDATE recruiter_jobs SET upstream_recruiter_job_id = NULL WHERE upstream_recruiter_job_id = ANY(:ids)",
-            "UPDATE recruiter_pipeline_candidates SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-            "UPDATE recruiter_activities SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-            "UPDATE outreach_sequences SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-            "UPDATE introduction_requests SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-            # CASCADE references
-            "DELETE FROM recruiter_job_candidates WHERE recruiter_job_id = ANY(:ids)",
-            "DELETE FROM candidate_submissions WHERE recruiter_job_id = ANY(:ids)",
-            "DELETE FROM stage_rules WHERE recruiter_job_id = ANY(:ids)",
-            "DELETE FROM submittal_packages WHERE recruiter_job_id = ANY(:ids)",
+            "UPDATE jobs SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
+            "UPDATE recruiter_jobs SET upstream_recruiter_job_id = NULL WHERE upstream_recruiter_job_id = :jid",
+            "UPDATE recruiter_pipeline_candidates SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
+            "DELETE FROM recruiter_job_candidates WHERE recruiter_job_id = :jid",
+            "DELETE FROM candidate_submissions WHERE recruiter_job_id = :jid",
+            "DELETE FROM stage_rules WHERE recruiter_job_id = :jid",
+            "DELETE FROM submittal_packages WHERE recruiter_job_id = :jid",
         ]
-        errors: list[str] = []
-        for sql in cleanup_sqls:
+        # Optional tables that may not exist
+        optional_sqls = [
+            "UPDATE recruiter_activities SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
+            "UPDATE outreach_sequences SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
+            "UPDATE introduction_requests SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
+        ]
+
+        for jid in deleted_ids:
             try:
-                session.execute(text(sql), {"ids": deleted_ids})
+                for sql in cleanup_sqls:
+                    session.execute(text(sql), {"jid": jid})
+                for sql in optional_sqls:
+                    try:
+                        session.execute(text(sql), {"jid": jid})
+                    except Exception:
+                        pass  # table may not exist
+                session.execute(
+                    text("DELETE FROM recruiter_jobs WHERE id = :jid"),
+                    {"jid": jid},
+                )
+                session.commit()
+                actually_deleted.append(jid)
             except Exception as e:
-                errors.append(f"{sql.split()[0]} {sql.split()[1]}: {e}")
                 session.rollback()
+                errors.append(f"Job {jid}: {e}")
+                log.exception("Dedup: failed to delete job %d", jid)
 
-        if errors:
-            return {
-                "dry_run": False,
-                "duplicates_found": len(deleted_ids),
-                "deleted_ids": [],
-                "error": "FK cleanup failed",
-                "fk_errors": errors,
-            }
-
-        try:
-            session.execute(
-                text("DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"),
-                {"ids": deleted_ids},
-            )
-            session.commit()
-            log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
-        except Exception as e:
-            session.rollback()
-            tb = traceback.format_exc()
-            log.exception("Dedup final delete failed")
-            return {
-                "dry_run": False,
-                "duplicates_found": len(deleted_ids),
-                "deleted_ids": [],
-                "error": f"Delete failed: {e}",
-                "traceback": tb,
-            }
-
-    return {
+    result: dict = {
         "dry_run": dry_run,
         "duplicates_found": len(deleted_ids),
-        "deleted_ids": deleted_ids if not dry_run else [],
-        "would_delete_ids": deleted_ids if dry_run else [],
     }
+    if dry_run:
+        result["would_delete_ids"] = deleted_ids
+    else:
+        result["deleted_ids"] = actually_deleted
+        if errors:
+            result["errors"] = errors
+    return result
 
 
 @router.post("/jobs/backfill-required-fields")
