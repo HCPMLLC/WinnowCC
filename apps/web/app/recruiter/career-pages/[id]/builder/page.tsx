@@ -232,14 +232,6 @@ export default function CareerPageBuilderPage() {
               </div>
             </div>
 
-            {/* Sieve Chat Bubble Preview */}
-            {page.config.sieve.enabled && (
-              <div className="fixed bottom-6 right-6 pointer-events-none z-10">
-                <div className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center" style={{ backgroundColor: page.config.branding.colors.primary }}>
-                  <MessageSquare className="w-6 h-6 text-white" />
-                </div>
-              </div>
-            )}
           </div>
         </main>
       </div>
