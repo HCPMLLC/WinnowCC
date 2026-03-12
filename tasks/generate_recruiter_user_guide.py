@@ -426,45 +426,75 @@ def build_pdf():
         "follow-up."
     )
 
-    # --- Row 1: Sources ---
+    # Helper: draw a phase heading with a white background so it sits
+    # on top of any connector lines that pass through its area.
+    def phase_label(pdf, y, text):
+        pdf.set_font("Helvetica", "B", 8)
+        tw = pdf.get_string_width(text) + 6  # padding
+        lx = (210 - tw) / 2  # centred
+        # White knockout rectangle behind the text
+        pdf.set_fill_color(*WHITE)
+        pdf.rect(lx, y, tw, 5, style="F")
+        pdf.set_text_color(*ACCENT)
+        pdf.set_xy(lx, y)
+        pdf.cell(tw, 5, text, align="C")
+
+    # --- Compute all row Y positions up front ---
     y_start = pdf.get_y() + 5
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*ACCENT)
-    pdf.set_xy(10, y_start - 5)
-    pdf.cell(190, 5, "PHASE 1: SOURCE CANDIDATES", align="C",
-             new_x="LMARGIN", new_y="NEXT")
+    y_r2 = y_start + 28
+    y_r3 = y_r2 + 28
+    y_r4 = y_r3 + 26
 
+    # Row 1 box positions
     boxes_r1 = [
-        (15, y_start + 2, "Upload\nResumes"),
-        (55, y_start + 2, "Chrome Ext.\n(LinkedIn)"),
-        (95, y_start + 2, "CRM\nMigration"),
-        (135, y_start + 2, "Winnow\nIntroductions"),
+        (15, y_start + 4, "Upload\nResumes"),
+        (55, y_start + 4, "Chrome Ext.\n(LinkedIn)"),
+        (95, y_start + 4, "CRM\nMigration"),
+        (135, y_start + 4, "Winnow\nIntroductions"),
     ]
-    for (bx, by, bt) in boxes_r1:
-        pdf.flow_box(bt, bx, by, w=32, h=14)
+    # Row 2 box positions
+    boxes_r2 = [
+        (15, y_r2 + 4, "Candidate\nDatabase"),
+        (55, y_r2 + 4, "Job Order\nMatching"),
+        (95, y_r2 + 4, "IPS Score\n& Ranking"),
+        (135, y_r2 + 4, "AI Candidate\nBriefs"),
+    ]
+    # Row 3 (pipeline stages)
+    stages = [
+        (10, y_r3 + 4, "Sourced"),
+        (40, y_r3 + 4, "Screening"),
+        (70, y_r3 + 4, "Submitted"),
+        (100, y_r3 + 4, "Interview"),
+        (130, y_r3 + 4, "Offer"),
+        (160, y_r3 + 4, "Placed"),
+    ]
+    # Row 4 box positions
+    boxes_r4 = [
+        (10, y_r4 + 4, "Submittal\nBrief"),
+        (48, y_r4 + 4, "Build PDF\nPackage"),
+        (86, y_r4 + 4, "Send to\nClient"),
+        (124, y_r4 + 4, "Client\nFeedback"),
+        (162, y_r4 + 4, "Candidate\nFollow-up"),
+    ]
 
-    # Arrows down from row 1 to row 2 center
-    y_r2 = y_start + 26
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*ACCENT)
-    pdf.set_xy(10, y_r2 - 5)
-    pdf.cell(190, 5, "PHASE 2: MATCH & EVALUATE", align="C",
-             new_x="LMARGIN", new_y="NEXT")
+    # ---- LAYER 1: draw ALL connector lines first ----
 
+    # Vertical connectors: row 1 → row 2
     for (bx, by, _) in boxes_r1:
         cx = bx + 16
         pdf.set_draw_color(*ACCENT)
         pdf.set_line_width(0.4)
-        pdf.line(cx, by + 14, cx, y_r2 + 2)
+        pdf.line(cx, by + 14, cx, boxes_r2[0][1])
 
-    boxes_r2 = [
-        (15, y_r2 + 2, "Candidate\nDatabase"),
-        (55, y_r2 + 2, "Job Order\nMatching"),
-        (95, y_r2 + 2, "IPS Score\n& Ranking"),
-        (135, y_r2 + 2, "AI Candidate\nBriefs"),
-    ]
-    for (bx, by, bt) in boxes_r2:
-        pdf.flow_box(bt, bx, by, w=32, h=14)
+    # Vertical connector: row 2 → row 3 (centre)
+    pdf.set_draw_color(*ACCENT)
+    pdf.set_line_width(0.4)
+    pdf.line(100, boxes_r2[0][1] + 14, 100, stages[0][1])
+
+    # Vertical connector: row 3 "Submitted" → row 4
+    pdf.set_draw_color(*ACCENT)
+    pdf.set_line_width(0.4)
+    pdf.line(83, stages[0][1] + 12, 83, boxes_r4[0][1])
 
     # Horizontal arrows in row 2
     for i in range(len(boxes_r2) - 1):
@@ -480,31 +510,7 @@ def build_pdf():
             style="F",
         )
 
-    # --- Row 3: Pipeline ---
-    y_r3 = y_r2 + 26
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*ACCENT)
-    pdf.set_xy(10, y_r3 - 5)
-    pdf.cell(190, 5, "PHASE 3: PIPELINE & SELECTION", align="C",
-             new_x="LMARGIN", new_y="NEXT")
-
-    # Arrow from row 2 to row 3
-    pdf.set_draw_color(*ACCENT)
-    pdf.set_line_width(0.4)
-    pdf.line(100, y_r2 + 16, 100, y_r3 + 2)
-
-    stages = [
-        (10, y_r3 + 2, "Sourced"),
-        (40, y_r3 + 2, "Screening"),
-        (70, y_r3 + 2, "Submitted"),
-        (100, y_r3 + 2, "Interview"),
-        (130, y_r3 + 2, "Offer"),
-        (160, y_r3 + 2, "Placed"),
-    ]
-    for (bx, by, bt) in stages:
-        pdf.flow_box(bt, bx, by, w=26, h=12)
-
-    # Horizontal arrows between stages
+    # Horizontal arrows between pipeline stages
     for i in range(len(stages) - 1):
         x1 = stages[i][0] + 26
         x2 = stages[i + 1][0]
@@ -518,29 +524,7 @@ def build_pdf():
             style="F",
         )
 
-    # --- Row 4: Client Communication ---
-    y_r4 = y_r3 + 24
-    pdf.set_font("Helvetica", "B", 9)
-    pdf.set_text_color(*ACCENT)
-    pdf.set_xy(10, y_r4 - 5)
-    pdf.cell(190, 5, "PHASE 4: CLIENT PRESENTATION & FOLLOW-UP",
-             align="C", new_x="LMARGIN", new_y="NEXT")
-
-    # Arrow from "Submitted" down to row 4
-    pdf.set_draw_color(*ACCENT)
-    pdf.set_line_width(0.4)
-    pdf.line(83, y_r3 + 14, 83, y_r4 + 2)
-
-    boxes_r4 = [
-        (10, y_r4 + 2, "Submittal\nBrief"),
-        (48, y_r4 + 2, "Build PDF\nPackage"),
-        (86, y_r4 + 2, "Send to\nClient"),
-        (124, y_r4 + 2, "Client\nFeedback"),
-        (162, y_r4 + 2, "Candidate\nFollow-up"),
-    ]
-    for (bx, by, bt) in boxes_r4:
-        pdf.flow_box(bt, bx, by, w=32, h=14)
-
+    # Horizontal arrows in row 4
     for i in range(len(boxes_r4) - 1):
         x1 = boxes_r4[i][0] + 32
         x2 = boxes_r4[i + 1][0]
@@ -553,6 +537,22 @@ def build_pdf():
             [(x2, cy), (x2 - 2, cy - 1.2), (x2 - 2, cy + 1.2)],
             style="F",
         )
+
+    # ---- LAYER 2: phase headings with white background (on top) ----
+    phase_label(pdf, y_start - 3, "PHASE 1: SOURCE CANDIDATES")
+    phase_label(pdf, y_r2 - 3, "PHASE 2: MATCH & EVALUATE")
+    phase_label(pdf, y_r3 - 3, "PHASE 3: PIPELINE & SELECTION")
+    phase_label(pdf, y_r4 - 3, "PHASE 4: CLIENT PRESENTATION & FOLLOW-UP")
+
+    # ---- LAYER 3: draw ALL boxes on top of everything ----
+    for (bx, by, bt) in boxes_r1:
+        pdf.flow_box(bt, bx, by, w=32, h=14)
+    for (bx, by, bt) in boxes_r2:
+        pdf.flow_box(bt, bx, by, w=32, h=14)
+    for (bx, by, bt) in stages:
+        pdf.flow_box(bt, bx, by, w=26, h=12)
+    for (bx, by, bt) in boxes_r4:
+        pdf.flow_box(bt, bx, by, w=32, h=14)
 
     pdf.set_y(y_r4 + 22)
     pdf.ln(5)
