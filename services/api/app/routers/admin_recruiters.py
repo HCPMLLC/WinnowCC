@@ -160,32 +160,12 @@ def deduplicate_recruiter_jobs(
     deleted_ids = sorted(set(deleted_ids))
 
     if not dry_run and deleted_ids:
-        # Nullify references in jobs table (SET NULL FK)
-        from app.models.job import Job
-
-        session.execute(
-            Job.__table__.update()
-            .where(Job.recruiter_job_id.in_(deleted_ids))
-            .values(recruiter_job_id=None)
-        )
-        # Delete dependent rows with CASCADE FKs
-        from app.models.recruiter_job_candidate import RecruiterJobCandidate
-
-        session.execute(
-            RecruiterJobCandidate.__table__.delete().where(
-                RecruiterJobCandidate.recruiter_job_id.in_(deleted_ids)
-            )
-        )
-        session.execute(
-            RecruiterPipelineCandidate.__table__.delete().where(
-                RecruiterPipelineCandidate.job_id.in_(deleted_ids)
-            )
-        )
-        session.execute(
-            RecruiterJob.__table__.delete().where(
-                RecruiterJob.id.in_(deleted_ids)
-            )
-        )
+        # Delete duplicate recruiter jobs — DB-level ON DELETE CASCADE
+        # and ON DELETE SET NULL handle all FK references automatically.
+        for job_id in deleted_ids:
+            job = session.get(RecruiterJob, job_id)
+            if job:
+                session.delete(job)
         session.commit()
 
     return {
