@@ -1,4 +1,6 @@
+import logging
 import os
+import signal
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
@@ -8,6 +10,8 @@ from socketserver import ThreadingMixIn
 from dotenv import load_dotenv
 from redis import Redis
 from rq import SimpleWorker, Worker
+
+logger = logging.getLogger(__name__)
 
 # Load services/api/.env so DB_URL is available for jobs.
 ENV_PATH = Path(__file__).resolve().parents[1] / ".env"
@@ -72,6 +76,40 @@ if __name__ == "__main__":
         pass
 
     from app.services.queue import QUEUE_NAMES
+
+    def _mark_running_ingestions_failed(signum, frame):
+        """On SIGTERM, mark any in-progress ingestion runs as failed before exit."""
+        logger.info("SIGTERM received — marking in-progress ingestion runs as failed")
+        try:
+            from datetime import UTC, datetime
+
+            from sqlalchemy import update
+
+            from app.models.job_run import JobRun
+
+            sess = get_session_factory()()
+            result = sess.execute(
+                update(JobRun)
+                .where(
+                    JobRun.job_type == "scheduled_ingest",
+                    JobRun.status == "running",
+                )
+                .values(
+                    status="failed",
+                    error_message="Worker shutdown (SIGTERM) during ingestion",
+                    finished_at=datetime.now(UTC),
+                )
+            )
+            sess.commit()
+            sess.close()
+            if result.rowcount:
+                logger.info(f"Marked {result.rowcount} running ingestion(s) as failed")
+        except Exception:
+            logger.exception("Failed to mark ingestion runs on shutdown")
+        raise SystemExit(0)
+
+    if os.name != "nt":
+        signal.signal(signal.SIGTERM, _mark_running_ingestions_failed)
 
     worker_cls = SimpleWorker if os.name == "nt" else Worker
     worker = worker_cls(QUEUE_NAMES, connection=redis_conn)
