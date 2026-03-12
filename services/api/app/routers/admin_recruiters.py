@@ -161,6 +161,7 @@ def deduplicate_recruiter_jobs(
 
     if not dry_run and deleted_ids:
         import logging
+        import traceback
 
         from sqlalchemy import text
 
@@ -168,32 +169,55 @@ def deduplicate_recruiter_jobs(
         log.info("Dedup: deleting %d recruiter jobs: %s", len(deleted_ids), deleted_ids)
 
         # Explicitly clear all FK references before deleting
-        fk_nullify = [
+        cleanup_sqls = [
+            # SET NULL references
             "UPDATE jobs SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
             "UPDATE recruiter_jobs SET upstream_recruiter_job_id = NULL WHERE upstream_recruiter_job_id = ANY(:ids)",
             "UPDATE recruiter_pipeline_candidates SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
             "UPDATE recruiter_activities SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
             "UPDATE outreach_sequences SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
             "UPDATE introduction_requests SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
-        ]
-        fk_cascade = [
+            # CASCADE references
             "DELETE FROM recruiter_job_candidates WHERE recruiter_job_id = ANY(:ids)",
             "DELETE FROM candidate_submissions WHERE recruiter_job_id = ANY(:ids)",
             "DELETE FROM stage_rules WHERE recruiter_job_id = ANY(:ids)",
             "DELETE FROM submittal_packages WHERE recruiter_job_id = ANY(:ids)",
         ]
-        for sql in fk_nullify + fk_cascade:
+        errors: list[str] = []
+        for sql in cleanup_sqls:
             try:
                 session.execute(text(sql), {"ids": deleted_ids})
-            except Exception:
-                log.debug("Skipping FK cleanup (table may not exist): %s", sql)
+            except Exception as e:
+                errors.append(f"{sql.split()[0]} {sql.split()[1]}: {e}")
+                session.rollback()
 
-        session.execute(
-            text("DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"),
-            {"ids": deleted_ids},
-        )
-        session.commit()
-        log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
+        if errors:
+            return {
+                "dry_run": False,
+                "duplicates_found": len(deleted_ids),
+                "deleted_ids": [],
+                "error": "FK cleanup failed",
+                "fk_errors": errors,
+            }
+
+        try:
+            session.execute(
+                text("DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"),
+                {"ids": deleted_ids},
+            )
+            session.commit()
+            log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
+        except Exception as e:
+            session.rollback()
+            tb = traceback.format_exc()
+            log.exception("Dedup final delete failed")
+            return {
+                "dry_run": False,
+                "duplicates_found": len(deleted_ids),
+                "deleted_ids": [],
+                "error": f"Delete failed: {e}",
+                "traceback": tb,
+            }
 
     return {
         "dry_run": dry_run,
