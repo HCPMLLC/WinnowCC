@@ -84,6 +84,108 @@ def duplicate_report(
     }
 
 
+@router.post("/jobs/deduplicate")
+def deduplicate_recruiter_jobs(
+    dry_run: bool = Query(default=True),
+    session: Session = Depends(get_session),
+    admin: User = Depends(require_admin_user),
+) -> dict:
+    """Remove duplicate recruiter jobs, keeping the oldest in each group.
+
+    Duplicates are identified by matching solicitation number (job_id_external)
+    within the same recruiter profile, falling back to title + company name.
+
+    Pass dry_run=false to actually delete.
+    """
+    from sqlalchemy import literal_column
+
+    deleted_ids: list[int] = []
+
+    # --- Pass 1: duplicates by job_id_external (strongest signal) ---
+    ext_stmt = (
+        select(
+            RecruiterJob.recruiter_profile_id,
+            func.lower(RecruiterJob.job_id_external).label("ext_lc"),
+            func.min(RecruiterJob.id).label("keep_id"),
+            func.array_agg(RecruiterJob.id).label("all_ids"),
+        )
+        .where(RecruiterJob.job_id_external.isnot(None))
+        .group_by(
+            RecruiterJob.recruiter_profile_id,
+            func.lower(RecruiterJob.job_id_external),
+        )
+        .having(func.count(RecruiterJob.id) > 1)
+    )
+    for row in session.execute(ext_stmt).all():
+        dupes = [i for i in sorted(row.all_ids) if i != row.keep_id]
+        deleted_ids.extend(dupes)
+
+    # --- Pass 2: duplicates by title + company (no external ID) ---
+    title_stmt = (
+        select(
+            RecruiterJob.recruiter_profile_id,
+            func.lower(RecruiterJob.title).label("title_lc"),
+            func.lower(
+                func.coalesce(
+                    RecruiterJob.client_company_name,
+                    literal_column("''"),
+                )
+            ).label("company_lc"),
+            func.min(RecruiterJob.id).label("keep_id"),
+            func.array_agg(RecruiterJob.id).label("all_ids"),
+        )
+        .where(RecruiterJob.job_id_external.is_(None))
+        .group_by(
+            RecruiterJob.recruiter_profile_id,
+            func.lower(RecruiterJob.title),
+            "company_lc",
+        )
+        .having(func.count(RecruiterJob.id) > 1)
+    )
+    for row in session.execute(title_stmt).all():
+        dupes = [i for i in sorted(row.all_ids) if i != row.keep_id]
+        deleted_ids.extend(dupes)
+
+    # Deduplicate the list itself (a job could appear in both passes)
+    deleted_ids = sorted(set(deleted_ids))
+
+    if not dry_run and deleted_ids:
+        # Nullify references in jobs table (SET NULL FK)
+        from app.models.job import Job
+
+        session.execute(
+            Job.__table__.update()
+            .where(Job.recruiter_job_id.in_(deleted_ids))
+            .values(recruiter_job_id=None)
+        )
+        # Delete dependent rows with CASCADE FKs
+        from app.models.recruiter_job_candidate import RecruiterJobCandidate
+
+        session.execute(
+            RecruiterJobCandidate.__table__.delete().where(
+                RecruiterJobCandidate.recruiter_job_id.in_(deleted_ids)
+            )
+        )
+        session.execute(
+            RecruiterPipelineCandidate.__table__.delete().where(
+                RecruiterPipelineCandidate.job_id.in_(deleted_ids)
+            )
+        )
+        session.execute(
+            RecruiterJob.__table__.delete().where(
+                RecruiterJob.id.in_(deleted_ids)
+            )
+        )
+        session.commit()
+
+    return {
+        "dry_run": dry_run,
+        "duplicates_found": len(deleted_ids),
+        "deleted_ids": deleted_ids if not dry_run else [],
+        "would_delete_ids": deleted_ids if dry_run else [],
+    }
+
+
 @router.post("/jobs/backfill-required-fields")
 def admin_backfill_required_fields(
     batch_size: int = Query(default=50, ge=1, le=200),

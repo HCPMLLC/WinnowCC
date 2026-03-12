@@ -1839,6 +1839,45 @@ def update_sourced_candidate(
 # ============================================================================
 
 
+def _find_duplicate_recruiter_job(
+    session: Session,
+    profile_id: int,
+    title: str | None,
+    client_company_name: str | None = None,
+    job_id_external: str | None = None,
+) -> RecruiterJob | None:
+    """Return an existing recruiter job that matches by solicitation number or title+company."""
+    if not title:
+        return None
+
+    # Exact match on solicitation number (strongest signal)
+    if job_id_external:
+        existing = session.execute(
+            select(RecruiterJob).where(
+                RecruiterJob.recruiter_profile_id == profile_id,
+                func.lower(RecruiterJob.job_id_external)
+                == job_id_external.strip().lower(),
+            )
+        ).scalar_one_or_none()
+        if existing:
+            return existing
+
+    # Fallback: match on title + company
+    stmt = select(RecruiterJob).where(
+        RecruiterJob.recruiter_profile_id == profile_id,
+        func.lower(RecruiterJob.title) == title.strip().lower(),
+    )
+    if client_company_name:
+        stmt = stmt.where(
+            func.lower(RecruiterJob.client_company_name)
+            == client_company_name.strip().lower(),
+        )
+    else:
+        stmt = stmt.where(RecruiterJob.client_company_name.is_(None))
+
+    return session.execute(stmt).scalars().first()
+
+
 @router.post(
     "/jobs",
     response_model=RecruiterJobResponse,
@@ -1851,6 +1890,22 @@ def create_recruiter_job(
 ) -> RecruiterJobResponse:
     """Create a new recruiter job posting. Enforces tier job order limits."""
     from app.services.billing import get_recruiter_limit, get_recruiter_tier
+
+    # Dedup: reject if an identical job already exists
+    data = job_data.model_dump()
+    existing = _find_duplicate_recruiter_job(
+        session,
+        profile.id,
+        title=data.get("title"),
+        client_company_name=data.get("client_company_name"),
+        job_id_external=data.get("job_id_external"),
+    )
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A job with this title already exists (ID {existing.id}). "
+            "Edit the existing job instead of creating a duplicate.",
+        )
 
     tier = get_recruiter_tier(profile)
     job_limit = get_recruiter_limit(tier, "active_job_orders")
@@ -2022,6 +2077,24 @@ async def upload_job_documents(
                         filename=filename,
                         success=False,
                         error="Could not extract job title from document.",
+                    )
+                )
+                continue
+
+            # Dedup: skip if this job already exists
+            existing = _find_duplicate_recruiter_job(
+                session,
+                profile.id,
+                title=parsed.get("title"),
+                client_company_name=parsed.get("client_company_name"),
+                job_id_external=parsed.get("job_id_external"),
+            )
+            if existing:
+                results.append(
+                    BulkUploadFileResult(
+                        filename=filename,
+                        success=False,
+                        error=f"Duplicate — matches existing job \"{existing.title}\" (ID {existing.id}).",
                     )
                 )
                 continue
