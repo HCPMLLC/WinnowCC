@@ -1,6 +1,8 @@
 """Admin recruiter management router."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+import os
+
+from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -25,13 +27,21 @@ from app.services.cascade_delete import cascade_delete_user
 router = APIRouter(prefix="/api/admin/recruiters", tags=["admin-recruiters"])
 
 
+def _require_admin_token(x_admin_token: str | None = Header(None)):
+    """Verify admin access via ADMIN_TOKEN header (no cookie needed)."""
+    expected = os.getenv("ADMIN_TOKEN", "")
+    if not expected or not x_admin_token or x_admin_token != expected:
+        raise HTTPException(status_code=403, detail="Admin access required.")
+    return True
+
+
 # ── Static /jobs/* routes MUST come before /{recruiter_id}/* routes ──
 
 
 @router.get("/jobs/duplicate-report")
 def duplicate_report(
     session: Session = Depends(get_session),
-    admin: User = Depends(require_admin_user),
+    _admin: bool = Depends(_require_admin_token),
 ) -> dict:
     """Report duplicate recruiter jobs (same title + company)."""
     from sqlalchemy import literal_column
@@ -88,7 +98,7 @@ def duplicate_report(
 def deduplicate_recruiter_jobs(
     dry_run: bool = Query(default=True),
     session: Session = Depends(get_session),
-    admin: User = Depends(require_admin_user),
+    _admin: bool = Depends(_require_admin_token),
 ) -> dict:
     """Remove duplicate recruiter jobs, keeping the oldest in each group.
 
