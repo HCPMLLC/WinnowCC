@@ -204,22 +204,44 @@ def process_one_resume(
             if pc:
                 pc.candidate_profile_id = cp_id
     else:
-        new_cp = CandidateProfile(
-            user_id=None,
-            resume_document_id=resume_doc.id,
-            version=1,
-            profile_json=profile_json,
-            profile_visibility="private",
-            open_to_opportunities=False,
-            llm_parse_status="pending",
-        )
-        session.add(new_cp)
-        session.flush()
-        cp_id = new_cp.id
-        # Update pipeline candidate link
-        pc = session.get(RecruiterPipelineCandidate, pipeline_id)
-        if pc:
-            pc.candidate_profile_id = cp_id
+        # Dedup: check if a sourced profile with this email already exists
+        email_val = (
+            (profile_json.get("basics") or {}).get("email") or ""
+        ).strip().lower()
+        existing_by_email = None
+        if email_val:
+            existing_by_email = session.execute(text(
+                "SELECT id FROM candidate_profiles "
+                "WHERE user_id IS NULL "
+                "AND LOWER(profile_json->'basics'->>'email') = :email "
+                "LIMIT 1"
+            ), {"email": email_val}).scalar_one_or_none()
+
+        if existing_by_email:
+            existing_cp = session.get(CandidateProfile, existing_by_email)
+            existing_cp.resume_document_id = resume_doc.id
+            existing_cp.llm_parse_status = "pending"
+            cp_id = existing_cp.id
+            pc = session.get(RecruiterPipelineCandidate, pipeline_id)
+            if pc:
+                pc.candidate_profile_id = cp_id
+        else:
+            new_cp = CandidateProfile(
+                user_id=None,
+                resume_document_id=resume_doc.id,
+                version=1,
+                profile_json=profile_json,
+                profile_visibility="private",
+                open_to_opportunities=False,
+                llm_parse_status="pending",
+            )
+            session.add(new_cp)
+            session.flush()
+            cp_id = new_cp.id
+            # Update pipeline candidate link
+            pc = session.get(RecruiterPipelineCandidate, pipeline_id)
+            if pc:
+                pc.candidate_profile_id = cp_id
 
     # Update pipeline candidate tracking
     pc = session.get(RecruiterPipelineCandidate, pipeline_id)

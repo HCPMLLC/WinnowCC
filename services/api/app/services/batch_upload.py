@@ -518,20 +518,44 @@ def process_batch_resume_file(
             session.add(resume_doc)
             session.flush()
 
-            # Create CandidateProfile
+            # Create or reuse CandidateProfile (dedup by email)
             profile_json["source"] = "recruiter_resume_upload"
             profile_json["sourced_by_user_id"] = profile.user_id
-            new_cp = CandidateProfile(
-                user_id=None,
-                resume_document_id=resume_doc.id,
-                version=1,
-                profile_json=profile_json,
-                profile_visibility="private",
-                open_to_opportunities=False,
-                llm_parse_status="pending",
-            )
-            session.add(new_cp)
-            session.flush()
+
+            # Check if a sourced profile with this email already exists
+            reused_existing = False
+            if parsed_email:
+                from sqlalchemy import cast
+                from sqlalchemy.types import String
+
+                _email_lower = parsed_email.strip().lower()
+                existing_sourced = session.execute(
+                    select(CandidateProfile).where(
+                        CandidateProfile.user_id.is_(None),
+                        cast(
+                            CandidateProfile.profile_json["basics"]["email"],
+                            String,
+                        ).ilike(_email_lower),
+                    )
+                ).scalar_one_or_none()
+                if existing_sourced:
+                    existing_sourced.resume_document_id = resume_doc.id
+                    existing_sourced.llm_parse_status = "pending"
+                    new_cp = existing_sourced
+                    reused_existing = True
+
+            if not reused_existing:
+                new_cp = CandidateProfile(
+                    user_id=None,
+                    resume_document_id=resume_doc.id,
+                    version=1,
+                    profile_json=profile_json,
+                    profile_visibility="private",
+                    open_to_opportunities=False,
+                    llm_parse_status="pending",
+                )
+                session.add(new_cp)
+                session.flush()
 
             # 3-way email resolution
             result_status = "new"

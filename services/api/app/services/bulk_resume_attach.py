@@ -445,19 +445,46 @@ def process_bulk_attach_file(
                     pipeline_cand.candidate_profile_id = new_cp.id
                     cp_id = new_cp.id
             else:
-                new_cp = CandidateProfile(
-                    user_id=None,
-                    resume_document_id=resume_doc.id,
-                    version=1,
-                    profile_json=profile_json,
-                    profile_visibility="private",
-                    open_to_opportunities=False,
-                    llm_parse_status="pending",
-                )
-                session.add(new_cp)
-                session.flush()
-                pipeline_cand.candidate_profile_id = new_cp.id
-                cp_id = new_cp.id
+                # Dedup: check if a sourced profile with this email already
+                # exists before creating a new one.  This prevents duplicates
+                # when multiple pipeline candidates share the same email.
+                email = (
+                    (profile_json.get("basics") or {}).get("email") or ""
+                ).strip().lower()
+                existing_by_email = None
+                if email:
+                    from sqlalchemy import cast, select
+                    from sqlalchemy.types import String
+
+                    existing_by_email = session.execute(
+                        select(CandidateProfile).where(
+                            CandidateProfile.user_id.is_(None),
+                            cast(
+                                CandidateProfile.profile_json["basics"]["email"],
+                                String,
+                            ).ilike(email),
+                        )
+                    ).scalar_one_or_none()
+
+                if existing_by_email:
+                    existing_by_email.resume_document_id = resume_doc.id
+                    existing_by_email.llm_parse_status = "pending"
+                    pipeline_cand.candidate_profile_id = existing_by_email.id
+                    cp_id = existing_by_email.id
+                else:
+                    new_cp = CandidateProfile(
+                        user_id=None,
+                        resume_document_id=resume_doc.id,
+                        version=1,
+                        profile_json=profile_json,
+                        profile_visibility="private",
+                        open_to_opportunities=False,
+                        llm_parse_status="pending",
+                    )
+                    session.add(new_cp)
+                    session.flush()
+                    pipeline_cand.candidate_profile_id = new_cp.id
+                    cp_id = new_cp.id
 
             # Update pipeline candidate bulk attach tracking
             pipeline_cand.bulk_attach_batch_id = batch_id
