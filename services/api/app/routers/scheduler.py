@@ -207,6 +207,34 @@ def get_ingestion_progress(
     return IngestionProgressResponse(running=True, run_id=run.id)
 
 
+@router.post("/cleanup-stale")
+def cleanup_stale_runs(
+    session: Session = Depends(get_session),  # noqa: B008
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+):
+    """Mark runs stuck in 'running' for over 2 hours as failed."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    cutoff = datetime.utcnow() - timedelta(hours=2)
+    result = session.execute(
+        update(JobRun)
+        .where(
+            JobRun.job_type == "scheduled_ingest",
+            JobRun.status == "running",
+            JobRun.created_at < cutoff,
+        )
+        .values(
+            status="failed",
+            error_message="Manually marked as failed: stuck in running state",
+            finished_at=datetime.utcnow(),
+        )
+    )
+    session.commit()
+    return {"cleaned_up": result.rowcount}
+
+
 @router.get("/runs", response_model=list[SchedulerRunResponse])
 def get_scheduler_runs(
     limit: int = 20,

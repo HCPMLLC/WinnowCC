@@ -88,6 +88,7 @@ export default function SchedulerControlPage() {
   const [progress, setProgress] = useState<IngestionProgress | null>(null);
   const [jsearchUsage, setJsearchUsage] = useState<JSearchUsage | null>(null);
   const [purgeableCount, setPurgeableCount] = useState<number | null>(null);
+  const [cleaningUp, setCleaningUp] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -183,6 +184,27 @@ export default function SchedulerControlPage() {
       setTriggering(false);
     }
   };
+
+  const handleCleanup = async () => {
+    setActionMsg(null);
+    setCleaningUp(true);
+    try {
+      const res = await fetch(`${API}/api/admin/scheduler/cleanup-stale`, {
+        method: "POST",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Cleanup failed");
+      const result = await res.json();
+      setActionMsg(`Cleaned up ${result.cleaned_up} stale run(s)`);
+      void load();
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : "Cleanup failed");
+    } finally {
+      setCleaningUp(false);
+    }
+  };
+
+  const hasStaleRuns = runs.some((r) => r.status === "running");
 
   if (error) {
     return (
@@ -438,8 +460,8 @@ export default function SchedulerControlPage() {
         </div>
       </div>
 
-      {/* Trigger Button */}
-      <div>
+      {/* Action Buttons */}
+      <div className="flex gap-3">
         <button
           onClick={handleTrigger}
           disabled={triggering}
@@ -451,6 +473,19 @@ export default function SchedulerControlPage() {
         >
           {triggering ? "Triggering..." : "Run Ingestion Now"}
         </button>
+        {hasStaleRuns && (
+          <button
+            onClick={handleCleanup}
+            disabled={cleaningUp}
+            className={`rounded-lg px-5 py-2 text-sm font-semibold ${
+              cleaningUp
+                ? "cursor-not-allowed bg-slate-200 text-slate-400"
+                : "bg-amber-100 text-amber-800 hover:bg-amber-200"
+            }`}
+          >
+            {cleaningUp ? "Cleaning up..." : "Clean Up Stale Runs"}
+          </button>
+        )}
       </div>
 
       {/* Progress Bar */}

@@ -1,7 +1,9 @@
 """Scheduled job functions for RQ Scheduler."""
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
+
+from sqlalchemy import update
 
 from app.db.session import get_session_factory
 from app.models.employer import EmployerJob
@@ -13,6 +15,29 @@ from app.services.scheduler_config import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _cleanup_stale_runs(session) -> int:
+    """Mark runs stuck in 'running' for over 2 hours as failed."""
+    cutoff = datetime.now(UTC) - timedelta(hours=2)
+    result = session.execute(
+        update(JobRun)
+        .where(
+            JobRun.job_type == "scheduled_ingest",
+            JobRun.status == "running",
+            JobRun.created_at < cutoff,
+        )
+        .values(
+            status="failed",
+            error_message="Marked as failed: stuck in running state (worker likely crashed)",
+            finished_at=datetime.now(UTC),
+        )
+    )
+    count = result.rowcount
+    if count:
+        session.commit()
+        logger.info(f"Cleaned up {count} stale ingestion run(s)")
+    return count
 
 
 def scheduled_ingest_jobs() -> dict:
@@ -28,6 +53,9 @@ def scheduled_ingest_jobs() -> dict:
     run = None
 
     try:
+        # Clean up any stuck runs before starting
+        _cleanup_stale_runs(session)
+
         # Create job run record
         run = JobRun(
             job_type="scheduled_ingest",
