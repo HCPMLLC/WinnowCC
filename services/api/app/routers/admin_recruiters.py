@@ -171,29 +171,10 @@ def deduplicate_recruiter_jobs(
         log.info("Dedup: deleting %d recruiter jobs: %s", len(deleted_ids), deleted_ids)
 
         # FK cleanup and delete tables — one job at a time
-        # All FK cleanup — each wrapped in try/except since some tables
-        # may not exist in production yet (migrations not run)
-        cleanup_sqls = [
-            "UPDATE jobs SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
-            "UPDATE recruiter_jobs SET upstream_recruiter_job_id = NULL WHERE upstream_recruiter_job_id = :jid",
-            "UPDATE recruiter_pipeline_candidates SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
-            "DELETE FROM recruiter_job_candidates WHERE recruiter_job_id = :jid",
-            "DELETE FROM candidate_submissions WHERE recruiter_job_id = :jid",
-            "DELETE FROM stage_rules WHERE recruiter_job_id = :jid",
-            "DELETE FROM submittal_packages WHERE recruiter_job_id = :jid",
-            "UPDATE recruiter_activities SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
-            "UPDATE outreach_sequences SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
-            "UPDATE introduction_requests SET recruiter_job_id = NULL WHERE recruiter_job_id = :jid",
-        ]
-        optional_sqls: list[str] = []  # all moved above
-
+        # DB-level ON DELETE CASCADE / SET NULL handles all FK references.
+        # Just delete the recruiter_jobs rows directly.
         for jid in deleted_ids:
             try:
-                for sql in cleanup_sqls:
-                    try:
-                        session.execute(text(sql), {"jid": jid})
-                    except Exception:
-                        session.rollback()  # reset after table-not-found
                 session.execute(
                     text("DELETE FROM recruiter_jobs WHERE id = :jid"),
                     {"jid": jid},
