@@ -290,6 +290,96 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
         session.close()
 
 
+def populate_marketplace_job_candidates(job_id: int, recruiter_user_id: int) -> int:
+    """Compute and cache candidate matches for a marketplace (ingested) job.
+
+    Returns the number of cached matches inserted.
+    """
+    from sqlalchemy import delete as sa_delete
+
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
+    from app.services.matching import find_top_candidates_for_marketplace_job
+
+    session = get_session_factory()()
+    try:
+        job = session.get(Job, job_id)
+        if not job:
+            logger.warning(
+                "populate_marketplace_job_candidates: job %s not found", job_id
+            )
+            return 0
+
+        rp = session.execute(
+            select(RecruiterProfile).where(
+                RecruiterProfile.user_id == recruiter_user_id
+            )
+        ).scalar_one_or_none()
+        if not rp:
+            logger.warning(
+                "populate_marketplace_job_candidates: recruiter profile not found "
+                "for user %s",
+                recruiter_user_id,
+            )
+            return 0
+
+        # Backfill embedding if missing
+        if job.embedding is None:
+            try:
+                text = prepare_job_text(job)
+                job.embedding = generate_embedding(text)
+                session.commit()
+            except Exception:
+                logger.debug(
+                    "populate_marketplace_job_candidates: "
+                    "embedding backfill failed for job %s",
+                    job_id,
+                )
+
+        results = find_top_candidates_for_marketplace_job(
+            session, job, recruiter_user_id
+        )
+
+        # Delete old cached rows for this recruiter + job
+        session.execute(
+            sa_delete(RecruiterMarketplaceMatch).where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == rp.id,
+                RecruiterMarketplaceMatch.job_id == job_id,
+            )
+        )
+
+        inserted = 0
+        for r in results:
+            if r["match_score"] <= 25:
+                continue
+            session.add(
+                RecruiterMarketplaceMatch(
+                    recruiter_profile_id=rp.id,
+                    job_id=job_id,
+                    candidate_profile_id=r["id"],
+                    match_score=r["match_score"],
+                    matched_skills=r.get("matched_skills"),
+                )
+            )
+            inserted += 1
+
+        session.commit()
+        logger.info(
+            "populate_marketplace_job_candidates: job %s — %s cached",
+            job_id,
+            inserted,
+        )
+        return inserted
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "populate_marketplace_job_candidates: failed for job %s", job_id
+        )
+        return 0
+    finally:
+        session.close()
+
+
 def backfill_recruiter_job_fields(job_id: int) -> bool:
     """Re-parse a recruiter job's stored text to extract missing required fields.
 

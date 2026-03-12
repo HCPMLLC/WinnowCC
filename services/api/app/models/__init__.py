@@ -61,6 +61,7 @@ from app.models.recruiter_activity import RecruiterActivity
 from app.models.recruiter_client import RecruiterClient
 from app.models.recruiter_job import RecruiterJob
 from app.models.recruiter_job_candidate import RecruiterJobCandidate
+from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
 from app.models.recruiter_notification import RecruiterNotification
 from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.rejection_feedback import RejectionFeedback
@@ -134,6 +135,7 @@ __all__ = [
     "RecruiterClient",
     "RecruiterJob",
     "RecruiterJobCandidate",
+    "RecruiterMarketplaceMatch",
     "RecruiterNotification",
     "RecruiterPipelineCandidate",
     "RecruiterProfile",

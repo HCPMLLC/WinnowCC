@@ -434,47 +434,7 @@ def _score_posted_job(posted_job, profile_json: dict) -> MatchResult:
     proxy.posted_at = posted_job.posted_at or getattr(posted_job, "created_at", None)
     proxy.source = "recruiter"
 
-    # Enrich empty preferences from resume data so sourced candidates
-    # don't lose points for missing preference fields.
-    enriched = dict(profile_json) if profile_json else {}
-    prefs = enriched.get("preferences") or {}
-    prefs = dict(prefs)
-
-    if not prefs.get("target_titles"):
-        titles = []
-        for exp in enriched.get("experience", []):
-            t = (exp.get("title") or "").strip()
-            if t and t not in titles:
-                titles.append(t)
-        if titles:
-            prefs["target_titles"] = titles
-
-    if not prefs.get("locations"):
-        loc = enriched.get("location", "")
-        if loc:
-            prefs["locations"] = [loc]
-
-    enriched["preferences"] = prefs
-
-    # Expand multi-word skills into individual tokens so that
-    # "Contract Management" matches when both "contract" and
-    # "management" appear in the job description.
-    raw_skills = enriched.get("skills", [])
-    seen: set[str] = set()
-    expanded: list[str] = []
-    for s in raw_skills:
-        name = s if isinstance(s, str) else s.get("name", "")
-        if not name:
-            continue
-        low = name.lower()
-        if low not in seen:
-            seen.add(low)
-            expanded.append(name)
-        for tok in _tokenize(name):
-            if tok not in seen:
-                seen.add(tok)
-                expanded.append(tok)
-    enriched["skills"] = expanded
+    enriched = _enrich_sourced_profile(profile_json)
 
     # Build a lightweight Candidate stand-in for years scoring.
     candidate_proxy = None
@@ -1003,6 +963,174 @@ def find_top_candidates_for_recruiter_job(
         result = _score_posted_job(recruiter_job, pj)
         if result.match_score > 0:
             # Blend deterministic score with semantic similarity
+            profile_embedding = _get_embedding_list(cp.embedding)
+            semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
+            blended = compute_blended_match_score(result.match_score, semantic_sim)
+            scored.append(
+                {
+                    "id": cp.id,
+                    "match_score": blended,
+                    "matched_skills": result.reasons.get("matched_skills", []),
+                }
+            )
+
+    scored.sort(key=lambda x: x["match_score"], reverse=True)
+    return scored[:limit]
+
+
+def _enrich_sourced_profile(profile_json: dict) -> dict:
+    """Enrich a sourced candidate's profile for fair scoring.
+
+    Synthesises preferences from resume data (job titles -> target_titles,
+    profile location -> locations) and expands multi-word skills into
+    individual tokens.  Returns a new dict (does not mutate the original).
+    """
+    enriched = dict(profile_json) if profile_json else {}
+    prefs = dict(enriched.get("preferences") or {})
+
+    if not prefs.get("target_titles"):
+        titles = []
+        for exp in enriched.get("experience", []):
+            t = (exp.get("title") or "").strip()
+            if t and t not in titles:
+                titles.append(t)
+        if titles:
+            prefs["target_titles"] = titles
+
+    if not prefs.get("locations"):
+        loc = enriched.get("location", "")
+        if loc:
+            prefs["locations"] = [loc]
+
+    enriched["preferences"] = prefs
+
+    # Expand multi-word skills into individual tokens so that
+    # "Contract Management" matches when both "contract" and
+    # "management" appear in the job description.
+    raw_skills = enriched.get("skills", [])
+    seen: set[str] = set()
+    expanded: list[str] = []
+    for s in raw_skills:
+        name = s if isinstance(s, str) else s.get("name", "")
+        if not name:
+            continue
+        low = name.lower()
+        if low not in seen:
+            seen.add(low)
+            expanded.append(name)
+        for tok in _tokenize(name):
+            if tok not in seen:
+                seen.add(tok)
+                expanded.append(tok)
+    enriched["skills"] = expanded
+
+    return enriched
+
+
+def find_top_candidates_for_marketplace_job(
+    session: Session,
+    job: Job,
+    recruiter_user_id: int,
+    limit: int = 100,
+) -> list[dict]:
+    """Find top candidates for an ingested marketplace job.
+
+    Searches the same three pools as recruiter-job matching:
+      A) Platform candidates — opted-in, latest version per user.
+      B) Recruiter's own sourced candidates.
+      C) Pipeline candidates.
+
+    Uses ``_score_job`` directly (native Job support) instead of the
+    proxy used by ``_score_posted_job``.
+    """
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+
+    # Pool A: platform candidates
+    platform_profiles = _latest_platform_profiles(session)
+
+    # Pool B: recruiter-sourced candidates
+    sourced_profiles = (
+        session.execute(
+            select(CandidateProfile).where(
+                CandidateProfile.user_id.is_(None),
+                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
+                == str(recruiter_user_id),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    # Pool C: pipeline candidates for this recruiter (may overlap with A/B)
+    rp = session.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == recruiter_user_id)
+    ).scalar_one_or_none()
+    pipeline_profiles: list = []
+    if rp:
+        pipeline_cp_ids = (
+            session.execute(
+                select(RecruiterPipelineCandidate.candidate_profile_id).where(
+                    RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
+                    RecruiterPipelineCandidate.candidate_profile_id.is_not(None),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        if pipeline_cp_ids:
+            pipeline_profiles = (
+                session.execute(
+                    select(CandidateProfile).where(
+                        CandidateProfile.id.in_(pipeline_cp_ids)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+
+    # Deduplicate by profile id
+    seen_ids: set[int] = set()
+    all_profiles: list = []
+    for cp in platform_profiles + sourced_profiles + pipeline_profiles:
+        if cp.id not in seen_ids:
+            seen_ids.add(cp.id)
+            all_profiles.append(cp)
+
+    # Get job embedding for semantic blending
+    job_embedding = _get_embedding_list(getattr(job, "embedding", None))
+
+    # Load parsed job skills if available
+    parsed_detail = session.execute(
+        select(JobParsedDetail).where(JobParsedDetail.job_id == job.id)
+    ).scalar_one_or_none()
+    parsed_job_skills = (
+        parsed_detail.required_skills if parsed_detail else None
+    )
+
+    scored: list[dict] = []
+    for cp in all_profiles:
+        pj = cp.profile_json or {}
+        # Enrich sourced candidates so they score fairly
+        enriched = _enrich_sourced_profile(pj)
+
+        # Build a lightweight Candidate proxy for years scoring
+        candidate_proxy = None
+        yrs = enriched.get("years_experience")
+        if yrs is None:
+            experience = enriched.get("experience", [])
+            if experience:
+                yrs = len(experience) * 2
+        if yrs is not None:
+
+            class _CandProxy:
+                years_experience = None
+
+            candidate_proxy = _CandProxy()
+            candidate_proxy.years_experience = yrs
+
+        result = _score_job(job, enriched, candidate_proxy, parsed_job_skills)
+        if result.match_score > 0:
             profile_embedding = _get_embedding_list(cp.embedding)
             semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
             blended = compute_blended_match_score(result.match_score, semantic_sim)

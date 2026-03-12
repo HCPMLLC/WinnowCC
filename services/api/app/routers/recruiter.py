@@ -3634,3 +3634,319 @@ def _resolve_submission_candidate_name(session: Session, submission) -> str:
             if name:
                 return name
     return f"Candidate #{submission.candidate_profile_id}"
+
+
+# ============================================================================
+# JOB MARKETPLACE — browse ingested jobs & match against recruiter candidates
+# ============================================================================
+
+
+@router.get("/marketplace/jobs")
+def list_marketplace_jobs(
+    q: str | None = Query(None, description="Search title or company"),
+    location: str | None = Query(None),
+    remote_only: bool = Query(False),
+    source: str | None = Query(None),
+    salary_min: int | None = Query(None, ge=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    user: User = Depends(require_recruiter),
+    session: Session = Depends(get_session),
+):
+    """Browse ingested jobs from the marketplace."""
+    from app.models.job import Job
+    from app.schemas.recruiter_marketplace import (
+        MarketplaceJobItem,
+        MarketplaceJobListResponse,
+    )
+
+    stmt = select(Job).where(Job.is_active.is_(True))
+
+    if q:
+        pattern = f"%{q}%"
+        stmt = stmt.where(
+            or_(Job.title.ilike(pattern), Job.company.ilike(pattern))
+        )
+    if location:
+        stmt = stmt.where(Job.location.ilike(f"%{location}%"))
+    if remote_only:
+        stmt = stmt.where(Job.remote_flag.is_(True))
+    if source:
+        stmt = stmt.where(Job.source == source)
+    if salary_min is not None:
+        stmt = stmt.where(
+            or_(Job.salary_max >= salary_min, Job.salary_max.is_(None))
+        )
+
+    # Count total
+    count_stmt = select(func.count()).select_from(stmt.subquery())
+    total = session.execute(count_stmt).scalar() or 0
+
+    # Paginate
+    offset = (page - 1) * page_size
+    stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+    stmt = stmt.offset(offset).limit(page_size)
+    jobs = session.execute(stmt).scalars().all()
+
+    items = [
+        MarketplaceJobItem(
+            id=j.id,
+            title=j.title,
+            company=j.company,
+            location=j.location,
+            remote_flag=j.remote_flag,
+            salary_min=j.salary_min,
+            salary_max=j.salary_max,
+            currency=j.currency,
+            source=j.source,
+            posted_at=j.posted_at,
+            description_text=(j.description_text or "")[:300],
+        )
+        for j in jobs
+    ]
+
+    return MarketplaceJobListResponse(
+        jobs=items, total=total, page=page, page_size=page_size
+    )
+
+
+@router.get("/marketplace/jobs/{job_id}")
+def get_marketplace_job(
+    job_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Get detail for a single marketplace job."""
+    from app.models.job import Job
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
+    from app.schemas.recruiter_marketplace import MarketplaceJobDetail
+
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    # Check cached match count and freshness
+    cached_count = (
+        session.execute(
+            select(func.count(RecruiterMarketplaceMatch.id)).where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == profile.id,
+                RecruiterMarketplaceMatch.job_id == job_id,
+            )
+        ).scalar()
+        or 0
+    )
+    latest_computed = (
+        session.execute(
+            select(func.max(RecruiterMarketplaceMatch.computed_at)).where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == profile.id,
+                RecruiterMarketplaceMatch.job_id == job_id,
+            )
+        ).scalar()
+    )
+    cache_fresh = False
+    if latest_computed:
+        from datetime import timedelta
+
+        cache_fresh = (datetime.now(UTC) - latest_computed) < timedelta(hours=24)
+
+    return MarketplaceJobDetail(
+        id=job.id,
+        title=job.title,
+        company=job.company,
+        location=job.location,
+        remote_flag=job.remote_flag,
+        salary_min=job.salary_min,
+        salary_max=job.salary_max,
+        currency=job.currency,
+        source=job.source,
+        url=job.url,
+        description_text=job.description_text,
+        posted_at=job.posted_at,
+        cached_candidates_count=cached_count,
+        cache_fresh=cache_fresh,
+    )
+
+
+@router.get("/marketplace/jobs/{job_id}/candidates")
+def get_marketplace_job_candidates(
+    job_id: int,
+    limit: int = Query(20, ge=1, le=100),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Return cached candidate matches for a marketplace job."""
+    from app.models.job import Job
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
+    from app.schemas.recruiter_marketplace import MarketplaceJobCandidatesResponse
+
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    cached = (
+        session.execute(
+            select(RecruiterMarketplaceMatch)
+            .where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == profile.id,
+                RecruiterMarketplaceMatch.job_id == job_id,
+            )
+            .order_by(RecruiterMarketplaceMatch.match_score.desc())
+            .limit(limit)
+        )
+        .scalars()
+        .all()
+    )
+
+    total_cached = (
+        session.execute(
+            select(func.count(RecruiterMarketplaceMatch.id)).where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == profile.id,
+                RecruiterMarketplaceMatch.job_id == job_id,
+            )
+        ).scalar()
+        or 0
+    )
+
+    # Check pipeline membership
+    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+
+    cached_cp_ids = [c.candidate_profile_id for c in cached]
+    pipeline_ids: set[int] = set()
+    if cached_cp_ids:
+        rows = (
+            session.execute(
+                select(RecruiterPipelineCandidate.candidate_profile_id).where(
+                    RecruiterPipelineCandidate.recruiter_profile_id == profile.id,
+                    RecruiterPipelineCandidate.candidate_profile_id.in_(
+                        cached_cp_ids
+                    ),
+                )
+            )
+            .scalars()
+            .all()
+        )
+        pipeline_ids = set(rows)
+
+    candidates = []
+    for c in cached:
+        cp = session.get(CandidateProfile, c.candidate_profile_id)
+        if not cp:
+            continue
+        # Build a lightweight match-like object for _profile_to_candidate_result
+        from app.schemas.recruiter_job import RecruiterJobCandidateResult
+
+        pj = cp.profile_json or {}
+        basics = pj.get("basics") or {}
+        skills = pj.get("skills") or []
+        visibility = cp.profile_visibility or "public"
+
+        first = basics.get("first_name") or ""
+        last = basics.get("last_name") or ""
+        name = basics.get("name") or f"{first} {last}".strip()
+        if not name:
+            name = f"Candidate {cp.id}"
+        if visibility == "anonymous":
+            name = f"Candidate {cp.id}"
+
+        headline = None
+        experience = pj.get("experience") or []
+        if experience and isinstance(experience[0], dict):
+            title = experience[0].get("title") or ""
+            company = experience[0].get("company") or ""
+            if title:
+                headline = f"{title} at {company}" if company else title
+
+        candidates.append(
+            RecruiterJobCandidateResult(
+                id=cp.id,
+                name=name,
+                headline=headline,
+                location=basics.get("location"),
+                years_experience=basics.get("total_years_experience"),
+                top_skills=skills[:5] if isinstance(skills, list) else [],
+                matched_skills=c.matched_skills or [],
+                match_score=c.match_score,
+                profile_visibility=visibility,
+                in_pipeline=c.candidate_profile_id in pipeline_ids,
+            )
+        )
+
+    needs_refresh = total_cached == 0
+
+    return MarketplaceJobCandidatesResponse(
+        job_id=job.id,
+        job_title=job.title,
+        candidates=candidates,
+        total_cached=total_cached,
+        needs_refresh=needs_refresh,
+    )
+
+
+@router.post("/marketplace/jobs/{job_id}/refresh-candidates")
+def refresh_marketplace_job_candidates(
+    job_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+) -> StreamingResponse:
+    """Re-compute candidate matching for a marketplace job (SSE with progress)."""
+    from app.models.job import Job
+
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    the_job_id = job.id
+    the_user_id = profile.user_id
+
+    def _generate():
+        import json as _json
+
+        msg = _json.dumps(
+            {
+                "percent": 5,
+                "phase": "loading",
+                "message": "Starting candidate refresh...",
+            }
+        )
+        yield f"data: {msg}\n\n"
+
+        try:
+            from app.services.job_pipeline import populate_marketplace_job_candidates
+
+            msg = _json.dumps(
+                {
+                    "percent": 10,
+                    "phase": "scoring",
+                    "message": "Scoring candidates...",
+                }
+            )
+            yield f"data: {msg}\n\n"
+
+            count = populate_marketplace_job_candidates(the_job_id, the_user_id)
+
+            msg = _json.dumps(
+                {
+                    "percent": 100,
+                    "phase": "done",
+                    "message": f"Found {count} matching candidates",
+                }
+            )
+            yield f"data: {msg}\n\n"
+
+        except Exception as exc:
+            logger.exception(
+                "Marketplace refresh failed for job %s", the_job_id
+            )
+            msg = _json.dumps(
+                {"percent": 100, "phase": "error", "message": str(exc)}
+            )
+            yield f"data: {msg}\n\n"
+
+    return StreamingResponse(
+        _generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
