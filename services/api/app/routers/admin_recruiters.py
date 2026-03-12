@@ -167,23 +167,33 @@ def deduplicate_recruiter_jobs(
         log = logging.getLogger(__name__)
         log.info("Dedup: deleting %d recruiter jobs: %s", len(deleted_ids), deleted_ids)
 
-        try:
-            # Use raw SQL to delete — DB-level FK cascades handle references
-            session.execute(
-                text(
-                    "DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"
-                ),
-                {"ids": deleted_ids},
-            )
-            session.commit()
-            log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
-        except Exception as exc:
-            session.rollback()
-            log.exception("Dedup delete failed")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Delete failed: {exc}",
-            ) from exc
+        # Explicitly clear all FK references before deleting
+        fk_nullify = [
+            "UPDATE jobs SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
+            "UPDATE recruiter_jobs SET upstream_recruiter_job_id = NULL WHERE upstream_recruiter_job_id = ANY(:ids)",
+            "UPDATE recruiter_pipeline_candidates SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
+            "UPDATE recruiter_activities SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
+            "UPDATE outreach_sequences SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
+            "UPDATE introduction_requests SET recruiter_job_id = NULL WHERE recruiter_job_id = ANY(:ids)",
+        ]
+        fk_cascade = [
+            "DELETE FROM recruiter_job_candidates WHERE recruiter_job_id = ANY(:ids)",
+            "DELETE FROM candidate_submissions WHERE recruiter_job_id = ANY(:ids)",
+            "DELETE FROM stage_rules WHERE recruiter_job_id = ANY(:ids)",
+            "DELETE FROM submittal_packages WHERE recruiter_job_id = ANY(:ids)",
+        ]
+        for sql in fk_nullify + fk_cascade:
+            try:
+                session.execute(text(sql), {"ids": deleted_ids})
+            except Exception:
+                log.debug("Skipping FK cleanup (table may not exist): %s", sql)
+
+        session.execute(
+            text("DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"),
+            {"ids": deleted_ids},
+        )
+        session.commit()
+        log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
 
     return {
         "dry_run": dry_run,
