@@ -762,6 +762,224 @@ class JobicySource(JobSource):
         return jobs
 
 
+class JoinRiseSource(JobSource):
+    """JoinRise - free public jobs API. No authentication required."""
+
+    name = "joinrise"
+    base_url = "https://api.joinrise.io/api/v1/jobs/public"
+
+    def fetch_jobs(self, query: dict) -> list[JobPosting]:
+        params: dict = {
+            "page": 1,
+            "limit": 50,
+            "sort": "desc",
+            "sortedBy": "createdAt",
+        }
+        if query.get("search"):
+            params["search"] = query["search"]
+        if query.get("location"):
+            params["jobLoc"] = query["location"]
+
+        response = httpx.get(self.base_url, params=params, timeout=30)
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        result = data.get("result") or data
+        items = result.get("jobs") or result.get("data") or []
+        if isinstance(data, list):
+            items = data
+
+        jobs: list[JobPosting] = []
+        for item in items:
+            title = item.get("title") or ""
+            location = item.get("locationAddress") or ""
+            url = item.get("url") or ""
+            if not title or not url:
+                continue
+
+            job_type = (item.get("type") or "").lower()
+            remote_flag = "remote" in job_type or _is_remote_job(title, location)
+
+            # Parse salary from descriptionBreakdown if available
+            breakdown = item.get("descriptionBreakdown") or {}
+            salary_text = breakdown.get("salary") or ""
+            salary_min, salary_max, currency = _parse_salary_text(salary_text)
+
+            # Company name can be in owner.companyName or top-level
+            owner = item.get("owner") or {}
+            company = (
+                item.get("companyName")
+                or owner.get("companyName")
+                or "Unknown"
+            )
+
+            jobs.append(
+                JobPosting(
+                    source=self.name,
+                    source_job_id=str(item.get("_id") or item.get("id") or ""),
+                    url=url,
+                    title=title,
+                    company=company,
+                    location=location or "Unknown",
+                    remote_flag=remote_flag,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=item.get("description") or "",
+                    posted_at=_parse_dt(item.get("createdAt")),
+                    application_deadline=None,
+                    hiring_manager_name=None,
+                    hiring_manager_email=None,
+                    hiring_manager_phone=None,
+                )
+            )
+        return jobs
+
+
+class CareerJetSource(JobSource):
+    """CareerJet affiliate API — large global job aggregator.
+
+    Requires free affiliate ID from careerjet.com/partners.
+    """
+
+    name = "careerjet"
+    base_url = "https://public.api.careerjet.net/search"
+
+    def fetch_jobs(self, query: dict) -> list[JobPosting]:
+        affid = os.getenv("CAREERJET_AFFID")
+        if not affid:
+            return []
+
+        params: dict = {
+            "affid": affid,
+            "locale_code": "en_US",
+            "keywords": query.get("search") or "software engineer",
+            "location": query.get("location") or "United States",
+            "pagesize": 99,
+            "page": 1,
+            "sort": "date",
+            "user_ip": "1.2.3.4",
+            "user_agent": "Winnow/1.0",
+        }
+
+        response = httpx.get(self.base_url, params=params, timeout=30)
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        items = data.get("jobs", [])
+
+        jobs: list[JobPosting] = []
+        for item in items:
+            title = item.get("title") or ""
+            url = item.get("url") or ""
+            if not title or not url:
+                continue
+
+            location = ", ".join(
+                p
+                for p in [
+                    item.get("locations") or item.get("location") or "",
+                ]
+                if p
+            ) or "Unknown"
+
+            salary_text = item.get("salary") or ""
+            salary_min, salary_max, currency = _parse_salary_text(salary_text)
+
+            jobs.append(
+                JobPosting(
+                    source=self.name,
+                    source_job_id=str(
+                        item.get("id") or item.get("url") or ""
+                    ),
+                    url=url,
+                    title=title,
+                    company=item.get("company") or "Unknown",
+                    location=location,
+                    remote_flag=_is_remote_job(title, location),
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=item.get("description") or "",
+                    posted_at=_parse_dt(item.get("date")),
+                    application_deadline=None,
+                    hiring_manager_name=None,
+                    hiring_manager_email=None,
+                    hiring_manager_phone=None,
+                )
+            )
+        return jobs
+
+
+class FindWorkSource(JobSource):
+    """FindWork.dev - free API for tech/dev jobs.
+
+    Requires free API key from findwork.dev.
+    """
+
+    name = "findwork"
+    base_url = "https://findwork.dev/api/jobs/"
+
+    def fetch_jobs(self, query: dict) -> list[JobPosting]:
+        api_key = os.getenv("FINDWORK_API_KEY")
+        if not api_key:
+            return []
+
+        headers = {"Authorization": f"Token {api_key}"}
+        params: dict = {
+            "search": query.get("search") or "software",
+            "location": query.get("location") or "",
+        }
+
+        response = httpx.get(
+            self.base_url, headers=headers, params=params, timeout=30
+        )
+        if response.status_code != 200:
+            return []
+
+        data = response.json()
+        items = data.get("results", [])
+
+        jobs: list[JobPosting] = []
+        for item in items:
+            title = item.get("role") or ""
+            url = item.get("url") or ""
+            if not title or not url:
+                continue
+
+            location = item.get("location") or "Unknown"
+            remote_flag = bool(item.get("remote")) or _is_remote_job(
+                title, location
+            )
+
+            salary_text = item.get("salary") or ""
+            salary_min, salary_max, currency = _parse_salary_text(salary_text)
+
+            jobs.append(
+                JobPosting(
+                    source=self.name,
+                    source_job_id=str(item.get("id") or ""),
+                    url=url,
+                    title=title,
+                    company=item.get("company_name") or "Unknown",
+                    location=location,
+                    remote_flag=remote_flag,
+                    salary_min=salary_min,
+                    salary_max=salary_max,
+                    currency=currency,
+                    description_text=item.get("text") or "",
+                    posted_at=_parse_dt(item.get("date_posted")),
+                    application_deadline=None,
+                    hiring_manager_name=None,
+                    hiring_manager_email=None,
+                    hiring_manager_phone=None,
+                )
+            )
+        return jobs
+
+
 class HimalayasSource(JobSource):
     """Himalayas - remote jobs board. Fetches 3 pages (60 jobs max)."""
 
@@ -827,7 +1045,7 @@ def get_job_sources() -> list[JobSource]:
     configured = _split_list(
         os.getenv(
             "JOB_SOURCES",
-            "remotive,themuse,greenhouse,lever,remoteok,adzuna,jooble,usajobs,jobicy,himalayas,manual,jsearch",
+            "remotive,themuse,greenhouse,lever,remoteok,adzuna,jooble,usajobs,joinrise,careerjet,findwork,jobicy,himalayas,manual,jsearch",
         )
     )
     available = {
@@ -840,6 +1058,9 @@ def get_job_sources() -> list[JobSource]:
         JoobleSource.name: JoobleSource(),
         USAJobsSource.name: USAJobsSource(),
         JSearchSource.name: JSearchSource(),
+        JoinRiseSource.name: JoinRiseSource(),
+        CareerJetSource.name: CareerJetSource(),
+        FindWorkSource.name: FindWorkSource(),
         JobicySource.name: JobicySource(),
         HimalayasSource.name: HimalayasSource(),
         ManualListSource.name: ManualListSource(),

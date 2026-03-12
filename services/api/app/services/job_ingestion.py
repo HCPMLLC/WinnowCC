@@ -241,12 +241,12 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
                 source_dup += 1
                 continue
             job = Job(
-                source=posting.source,
-                source_job_id=posting.source_job_id,
-                url=posting.url,
-                title=posting.title,
-                company=posting.company,
-                location=posting.location,
+                source=posting.source[:100],
+                source_job_id=(posting.source_job_id or "")[:255],
+                url=(posting.url or "")[:1000],
+                title=(posting.title or "Untitled")[:255],
+                company=(posting.company or "Unknown")[:255],
+                location=(posting.location or "Unknown")[:255],
                 remote_flag=posting.remote_flag,
                 salary_min=posting.salary_min,
                 salary_max=posting.salary_max,
@@ -296,6 +296,7 @@ def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
     parsed_count = 0
     low_skill_jobs: list[int] = []
     for job in jobs:
+        job_id = job.id  # capture before potential rollback
         try:
             detail = parser.parse(session, job)
             parsed_count += 1
@@ -304,11 +305,14 @@ def _parse_new_jobs(session: Session, jobs: list[Job]) -> None:
                 detail.preferred_skills or []
             )
             if total_skills < 6:
-                low_skill_jobs.append(job.id)
+                low_skill_jobs.append(job_id)
             if parsed_count % 50 == 0:
                 session.commit()
         except Exception:
-            logger.debug("Failed to parse job %s during ingestion", job.id, exc_info=True)
+            session.rollback()
+            logger.debug(
+                "Failed to parse job %s during ingestion", job_id
+            )
     session.commit()
     logger.info("Parsed %d / %d new jobs during ingestion", parsed_count, len(jobs))
 

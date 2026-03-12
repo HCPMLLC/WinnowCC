@@ -418,9 +418,9 @@ class JobParserService:
         parsed.seniority_level = seniority
         parsed.employment_type = employment_type
         parsed.estimated_duration_months = duration
-        parsed.parsed_city = city
-        parsed.parsed_state = state
-        parsed.parsed_country = country
+        parsed.parsed_city = city[:100] if city else city
+        parsed.parsed_state = state[:50] if state else state
+        parsed.parsed_country = country[:50] if country else country
         parsed.work_mode = work_mode
         parsed.travel_percent = travel_pct
         parsed.relocation_offered = relocation
