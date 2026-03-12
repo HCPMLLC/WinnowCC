@@ -160,13 +160,30 @@ def deduplicate_recruiter_jobs(
     deleted_ids = sorted(set(deleted_ids))
 
     if not dry_run and deleted_ids:
-        # Delete duplicate recruiter jobs — DB-level ON DELETE CASCADE
-        # and ON DELETE SET NULL handle all FK references automatically.
-        for job_id in deleted_ids:
-            job = session.get(RecruiterJob, job_id)
-            if job:
-                session.delete(job)
-        session.commit()
+        import logging
+
+        from sqlalchemy import text
+
+        log = logging.getLogger(__name__)
+        log.info("Dedup: deleting %d recruiter jobs: %s", len(deleted_ids), deleted_ids)
+
+        try:
+            # Use raw SQL to delete — DB-level FK cascades handle references
+            session.execute(
+                text(
+                    "DELETE FROM recruiter_jobs WHERE id = ANY(:ids)"
+                ),
+                {"ids": deleted_ids},
+            )
+            session.commit()
+            log.info("Dedup: successfully deleted %d jobs", len(deleted_ids))
+        except Exception as exc:
+            session.rollback()
+            log.exception("Dedup delete failed")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Delete failed: {exc}",
+            ) from exc
 
     return {
         "dry_run": dry_run,
