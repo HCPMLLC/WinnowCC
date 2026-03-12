@@ -2135,6 +2135,34 @@ def list_recruiter_jobs(
     session: Session = Depends(get_session),
 ) -> list[RecruiterJobResponse]:
     """List all jobs posted by this recruiter."""
+    # Auto-expire active recruiter jobs whose deadline has passed
+    from sqlalchemy import update
+
+    from app.models.job import Job as JobModel
+
+    now = datetime.now(UTC)
+    stale = session.execute(
+        select(RecruiterJob.id).where(
+            RecruiterJob.recruiter_profile_id == profile.id,
+            RecruiterJob.status == "active",
+            RecruiterJob.closes_at < now,
+        )
+    ).scalars().all()
+
+    if stale:
+        session.execute(
+            update(RecruiterJob)
+            .where(RecruiterJob.id.in_(stale))
+            .values(status="expired")
+        )
+        # Deactivate linked Job records so they disappear from career pages
+        session.execute(
+            update(JobModel)
+            .where(JobModel.recruiter_job_id.in_(stale))
+            .values(is_active=False)
+        )
+        session.flush()
+
     match_count_sq = (
         select(func.count(RecruiterJobCandidate.id))
         .where(RecruiterJobCandidate.recruiter_job_id == RecruiterJob.id)

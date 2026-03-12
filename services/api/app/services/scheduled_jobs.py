@@ -264,9 +264,19 @@ def scheduled_archive_expired_jobs() -> dict:
         )
 
         recruiter_count = 0
+        expired_rjob_ids = []
         for rjob in expired_recruiter:
             rjob.status = "expired"
+            expired_rjob_ids.append(rjob.id)
             recruiter_count += 1
+
+        # Deactivate linked Job records so they disappear from career pages
+        if expired_rjob_ids:
+            from app.models.job import Job as JobModel
+
+            session.query(JobModel).filter(
+                JobModel.recruiter_job_id.in_(expired_rjob_ids)
+            ).update({"is_active": False}, synchronize_session="fetch")
 
         if recruiter_count:
             session.commit()

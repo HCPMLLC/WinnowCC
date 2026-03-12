@@ -1,10 +1,11 @@
 """Public API for career page widgets (no user auth required)."""
 
 import logging
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -75,11 +76,21 @@ def list_public_jobs(
             status_code=404, detail="Career page not found"
         )
 
-    # Build query — filter by active jobs linked to this tenant's employer jobs
-    filters = [Job.is_active == True]  # noqa: E712
+    # Build query — filter by active jobs linked to this tenant
+    now = datetime.now(UTC)
+    filters = [
+        Job.is_active == True,  # noqa: E712
+        # Exclude jobs whose application deadline has already passed
+        or_(
+            Job.application_deadline.is_(None),
+            Job.application_deadline >= now,
+        ),
+    ]
 
     if career_page.tenant_type == "employer":
         filters.append(Job.employer_job_id.isnot(None))
+    elif career_page.tenant_type == "recruiter":
+        filters.append(Job.recruiter_job_id.isnot(None))
 
     query = select(Job).where(and_(*filters))
 
