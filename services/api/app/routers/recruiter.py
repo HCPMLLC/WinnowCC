@@ -3684,7 +3684,7 @@ def list_marketplace_jobs(
 
     # Paginate
     offset = (page - 1) * page_size
-    stmt = stmt.order_by(Job.posted_at.desc().nullslast(), Job.id.desc())
+    stmt = stmt.order_by(Job.ingested_at.desc().nullslast(), Job.id.desc())
     stmt = stmt.offset(offset).limit(page_size)
     jobs = session.execute(stmt).scalars().all()
 
