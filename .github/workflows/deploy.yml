@@ -69,6 +69,35 @@ jobs:
             --min-instances=1 \
             --max-instances=5
 
+      - name: Ensure Cloud Scheduler for daily job ingestion
+        run: |
+          ADMIN_TOKEN_VALUE=$(gcloud secrets versions access latest --secret=admin-token)
+          if gcloud scheduler jobs describe winnow-daily-ingest --location=${{ env.REGION }} >/dev/null 2>&1; then
+            gcloud scheduler jobs update http winnow-daily-ingest \
+              --location=${{ env.REGION }} \
+              --schedule="0 6 * * *" \
+              --time-zone="UTC" \
+              --uri="https://api.winnowcc.ai/api/admin/scheduler/trigger-token" \
+              --http-method=POST \
+              --headers="X-Admin-Token=${ADMIN_TOKEN_VALUE},Content-Type=application/json" \
+              --attempt-deadline=600s \
+              --max-retry-attempts=3 \
+              --min-backoff=300s \
+              --max-backoff=1800s
+          else
+            gcloud scheduler jobs create http winnow-daily-ingest \
+              --location=${{ env.REGION }} \
+              --schedule="0 6 * * *" \
+              --time-zone="UTC" \
+              --uri="https://api.winnowcc.ai/api/admin/scheduler/trigger-token" \
+              --http-method=POST \
+              --headers="X-Admin-Token=${ADMIN_TOKEN_VALUE},Content-Type=application/json" \
+              --attempt-deadline=600s \
+              --max-retry-attempts=3 \
+              --min-backoff=300s \
+              --max-backoff=1800s
+          fi
+
       - name: Run migrations
         run: |
           if gcloud run jobs describe winnow-migrate --region=${{ env.REGION }} >/dev/null 2>&1; then
