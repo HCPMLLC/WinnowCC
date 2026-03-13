@@ -21,8 +21,7 @@ export default function SmsConsentPage() {
         </h2>
         <p className="mb-5 text-sm text-slate-600">
           Enter your phone number and agree to the terms below to receive text
-          message notifications from Winnow. You must have a Winnow account to
-          complete opt-in.
+          message notifications from Winnow.
         </p>
 
         {/* Visible opt-in form with phone number field and consent language */}
@@ -32,20 +31,19 @@ export default function SmsConsentPage() {
             <input
               type="tel"
               placeholder="(210) 555-1234"
-              disabled
-              className="max-w-xs rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400"
+              className="max-w-xs rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
             />
           </label>
 
           <label className="mb-5 flex items-start gap-3 text-sm">
-            <input type="checkbox" disabled className="mt-1" />
+            <input type="checkbox" className="mt-1" />
             <span className="text-slate-700">
-              I agree to receive automated text messages from Winnow about job
-              matches, application updates, and career alerts at the phone number
-              provided. Message frequency varies (up to 10 msgs/week). Standard
-              Msg &amp; data rates may apply. Reply STOP to opt out or HELP for
-              help. We will not share your mobile information with third parties
-              for promotional or marketing purposes. See our{" "}
+              By providing your phone number, you agree to receive SMS job match
+              alerts, application updates, and career notifications from Winnow
+              Career Concierge. Message frequency may vary. Standard Message and
+              Data Rates may apply. Reply STOP to opt out. Reply HELP for help.
+              We will not share mobile information with third parties for
+              promotional or marketing purposes. See our{" "}
               <Link href="/terms" className="font-semibold underline hover:text-slate-900">
                 Terms of Service
               </Link>{" "}
@@ -58,14 +56,14 @@ export default function SmsConsentPage() {
           </label>
 
           <Link
-            href="/login"
+            href="/login?redirect=/settings"
             className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Sign In to Enable SMS
+            Subscribe to SMS Alerts
           </Link>
           <p className="mt-2 text-xs text-slate-400">
-            You must be signed in to save your phone number and complete opt-in.
-            The same form appears in{" "}
+            You will be asked to create an account or sign in to complete your
+            opt-in. The same form is also available in{" "}
             <Link href="/settings" className="underline hover:text-slate-600">
               Account Settings → Phone &amp; SMS Notifications
             </Link>
@@ -84,24 +82,26 @@ export default function SmsConsentPage() {
         </p>
         <ol className="list-inside list-decimal space-y-3 text-sm text-slate-700">
           <li>
-            <strong>This page</strong> (winnowcc.ai/sms-consent) — the form above.
-            Clicking &quot;Sign In to Enable SMS&quot; takes the user to login, then
-            redirects back so they can submit.
+            <strong>This page</strong> (winnowcc.ai/sms-consent) — the opt-in
+            form is shown above. The user enters their phone number, checks the
+            consent checkbox with the full SMS disclosure language, and clicks
+            &quot;Subscribe to SMS Alerts.&quot; They are then prompted to create
+            an account or sign in to finalize opt-in.
           </li>
           <li>
             <strong>Account Settings</strong> (winnowcc.ai/settings) — under the
-            &quot;Phone &amp; SMS Notifications&quot; section. After signing in, the
-            user enters their phone number, checks the consent checkbox with the
-            full disclosure language shown above, and taps &quot;Save Changes.&quot;
+            &quot;Phone &amp; SMS Notifications&quot; section. The user enters
+            their phone number, checks the consent checkbox with the same full
+            disclosure language, and clicks &quot;Save Changes.&quot;
           </li>
         </ol>
         <p className="mt-4 text-sm text-slate-600">
           In both cases, the user must:
         </p>
         <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-600">
-          <li>Enter their mobile phone number</li>
+          <li>Enter their mobile phone number in the phone number field</li>
           <li>Check the consent checkbox with the full SMS opt-in disclosure</li>
-          <li>Click &quot;Save Changes&quot; to complete opt-in</li>
+          <li>Complete opt-in by saving their preferences</li>
         </ul>
         <p className="mt-4 text-sm text-slate-600">
           Upon opt-in, the user receives an automatic confirmation SMS:

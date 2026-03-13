@@ -119,6 +119,6 @@ def send_help_response(phone_number: str) -> bool:
     """10DLC-required HELP auto-response."""
     return send_sms(
         phone_number,
-        "Winnow Job Alerts: For help, email support@winnowcc.ai or visit "
-        "https://winnowcc.ai/sms-consent. Reply STOP to opt out.",
+        "Winnow Job Alerts: For help, please reach out to us at "
+        "support@winnowcc.ai. Reply STOP to opt out.",
     )
