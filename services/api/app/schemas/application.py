@@ -14,7 +14,7 @@ class ApplicationStartRequest(BaseModel):
     """Start a new application."""
 
     job_id: int
-    email: EmailStr | None = None
+    email: EmailStr
     source_url: str | None = None
     utm_params: dict[str, str] | None = None
 

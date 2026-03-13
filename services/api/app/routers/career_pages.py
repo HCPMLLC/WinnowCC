@@ -5,6 +5,7 @@ from typing import Annotated
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -33,20 +34,42 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/career-pages", tags=["career-pages"])
 
 
-def _get_tenant_info(user: User) -> tuple[int, str, str]:
-    """Extract tenant info from user. Returns (tenant_id, tenant_type, plan_tier)."""
+def _get_tenant_info(user: User, db: Session) -> tuple[int, str, str]:
+    """Extract tenant info from user. Returns (tenant_id, tenant_type, plan_tier).
+
+    Auto-creates a recruiter profile if the user has the recruiter role
+    but no profile row yet (mirrors get_recruiter_profile in auth.py).
+    """
     if user.employer_profile:
         return (
             user.employer_profile.id,
             "employer",
             user.employer_profile.subscription_tier or "free",
         )
-    elif user.recruiter_profile:
+
+    if user.recruiter_profile:
         return (
             user.recruiter_profile.id,
             "recruiter",
             user.recruiter_profile.subscription_tier or "trial",
         )
+
+    # Auto-create recruiter profile for users with recruiter role
+    if getattr(user, "role", None) == "recruiter":
+        from app.models.recruiter import RecruiterProfile
+
+        profile = db.execute(
+            select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+        ).scalar_one_or_none()
+        if profile is None:
+            domain = (user.email or "").split("@")[-1].split(".")[0].title() or "My Company"
+            profile = RecruiterProfile(user_id=user.id, company_name=domain)
+            profile.start_trial()
+            db.add(profile)
+            db.commit()
+            db.refresh(profile)
+        return (profile.id, "recruiter", profile.subscription_tier or "trial")
+
     raise HTTPException(
         status_code=status.HTTP_403_FORBIDDEN,
         detail="Career pages require employer or recruiter account",
@@ -58,7 +81,7 @@ def list_pages(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     pages = list_career_pages(db, tenant_id, tenant_type)
     return CareerPageListResponse(
         pages=[CareerPageResponse.model_validate(p) for p in pages],
@@ -74,7 +97,7 @@ def create_page(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, plan_tier = _get_tenant_info(user)
+    tenant_id, tenant_type, plan_tier = _get_tenant_info(user, db)
 
     try:
         page = create_career_page(db, tenant_id, tenant_type, plan_tier, data)
@@ -95,7 +118,7 @@ def get_page(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     try:
         page = get_career_page(db, page_id, tenant_id, tenant_type)
         return CareerPageResponse.model_validate(page)
@@ -112,7 +135,7 @@ def update_page(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     try:
         page = update_career_page(db, page_id, tenant_id, tenant_type, data)
         return CareerPageResponse.model_validate(page)
@@ -133,7 +156,7 @@ def publish_page(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     try:
         page = publish_career_page(
             db, page_id, tenant_id, tenant_type, data.publish
@@ -151,7 +174,7 @@ def delete_page(
     user: Annotated[User, Depends(get_current_user)],
     db: Annotated[Session, Depends(get_session)],
 ):
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     try:
         delete_career_page(db, page_id, tenant_id, tenant_type)
     except CareerPageNotFound:
@@ -170,7 +193,7 @@ def import_branding(
     """Scrape a website and return extracted branding (colors, logo, fonts, hero)."""
     from app.services.brand_scraper import scrape_brand
 
-    tenant_id, tenant_type, _ = _get_tenant_info(user)
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
     try:
         get_career_page(db, page_id, tenant_id, tenant_type)
     except CareerPageNotFound:

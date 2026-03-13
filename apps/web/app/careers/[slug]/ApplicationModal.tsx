@@ -137,6 +137,10 @@ export default function ApplicationModal({
   // -- Step handlers --
 
   async function handleStart() {
+    if (!email.trim()) {
+      setError("Email is required");
+      return;
+    }
     setLoading(true);
     setError("");
     try {
@@ -145,7 +149,7 @@ export default function ApplicationModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           job_id: jobId,
-          email: email || null,
+          email: email.trim(),
           source_url: window.location.href,
         }),
       });
@@ -306,18 +310,19 @@ export default function ApplicationModal({
           {step === "email" && (
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-600">
-                Start your application and our AI assistant will guide you through the process.
+                Enter your email and upload your resume to get started. Our AI assistant will guide you through the rest.
               </p>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email (optional)</label>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
                 <input
                   type="email"
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
+                  required
                   className="w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:outline-none"
                   style={{ ["--tw-ring-color" as any]: primary + "40", borderColor: email ? primary : undefined }}
-                  onKeyDown={e => { if (e.key === "Enter") handleStart(); }}
+                  onKeyDown={e => { if (e.key === "Enter" && email.trim()) handleStart(); }}
                 />
               </div>
               {error && <p className="text-sm text-red-600">{error}</p>}
@@ -370,13 +375,6 @@ export default function ApplicationModal({
                 </p>
                 <p className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, or TXT (max 10MB)</p>
               </div>
-
-              <button
-                onClick={() => setStep("chat")}
-                className="w-full text-sm text-center py-2 text-gray-500 hover:text-gray-700 transition-colors"
-              >
-                Skip — tell me about yourself instead
-              </button>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
             </div>
@@ -511,7 +509,7 @@ export default function ApplicationModal({
           {step === "email" && (
             <button
               onClick={handleStart}
-              disabled={loading}
+              disabled={loading || !email.trim()}
               className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-medium text-sm transition-opacity disabled:opacity-60"
               style={{ backgroundColor: primary }}
             >
