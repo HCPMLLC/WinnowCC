@@ -70,6 +70,7 @@ jobs:
             --max-instances=5
 
       - name: Ensure Cloud Scheduler for daily job ingestion
+        continue-on-error: true
         run: |
           ADMIN_TOKEN_VALUE=$(gcloud secrets versions access latest --secret=admin-token)
           if gcloud scheduler jobs describe winnow-daily-ingest --location=${{ env.REGION }} >/dev/null 2>&1; then
