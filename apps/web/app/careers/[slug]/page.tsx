@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useSearchParams } from "next/navigation";
-import { MapPin, DollarSign, Loader2, Briefcase, Search, MessageSquare, Building2, Calendar, X, ExternalLink, Clock, ChevronRight } from "lucide-react";
+import { MapPin, DollarSign, Loader2, Briefcase, Search, Building2, Calendar, X, ExternalLink, Clock, ChevronRight } from "lucide-react";
+import ApplicationModal, { loadSavedSession } from "./ApplicationModal";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
@@ -71,6 +72,27 @@ export default function PublicCareerPage() {
   // Job detail modal state
   const [selectedJob, setSelectedJob] = useState<JobDetail | null>(null);
   const [jobLoading, setJobLoading] = useState(false);
+
+  // Application modal state
+  const [applyingJob, setApplyingJob] = useState<{ id: number; title: string; company: string | null; location: string | null } | null>(null);
+
+  // Session persistence banner
+  const [savedSession, setSavedSession] = useState<{ sessionToken: string; jobId: number; jobTitle: string; slug: string } | null>(null);
+
+  useEffect(() => {
+    const session = loadSavedSession();
+    if (session && session.slug === slug) {
+      // Validate the session is still active
+      fetch(`${API}/api/public/apply/status/${session.sessionToken}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(data => {
+          if (data && data.status !== "completed" && data.status !== "abandoned") {
+            setSavedSession(session);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [slug]);
 
   useEffect(() => {
     const previewParam = isPreview ? "?preview=true" : "";
@@ -289,7 +311,17 @@ export default function PublicCareerPage() {
                         )}
                       </h3>
                     </div>
-                    <ChevronRight className="w-5 h-5 text-gray-300 group-hover:text-gray-500 mt-1 shrink-0 transition-colors" />
+                    <span
+                      className="text-xs font-medium px-3 py-1.5 rounded-lg text-white shrink-0 hover:opacity-90 transition-opacity"
+                      style={{ backgroundColor: branding.colors.primary }}
+                      role="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setApplyingJob({ id: job.id, title: job.title, company: job.company, location: job.location });
+                      }}
+                    >
+                      Apply
+                    </span>
                   </div>
 
                   {job.company && (
@@ -425,32 +457,45 @@ export default function PublicCareerPage() {
                 </div>
 
                 {/* Modal Footer — Apply Button */}
-                <div className="p-6 pt-4 border-t shrink-0 flex items-center gap-3">
-                  {selectedJob.url ? (
+                <div className="p-6 pt-4 border-t shrink-0 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => {
+                        setApplyingJob({ id: selectedJob.id, title: selectedJob.title, company: selectedJob.company, location: selectedJob.location });
+                        closeModal();
+                      }}
+                      className="flex-1 flex items-center justify-center gap-2 text-center font-medium py-3 rounded-lg transition-colors text-white"
+                      style={{ backgroundColor: branding.colors.primary }}
+                    >
+                      Apply Now
+                    </button>
+                    <button
+                      onClick={closeModal}
+                      className="px-6 py-3 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  {selectedJob.url && (
                     <a
                       href={selectedJob.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="flex-1 flex items-center justify-center gap-2 text-center font-medium py-3 rounded-lg transition-colors text-white"
-                      style={{ backgroundColor: branding.colors.primary }}
+                      className="block text-center text-sm hover:underline"
+                      style={{ color: branding.colors.primary }}
                     >
-                      Apply Now <ExternalLink className="w-4 h-4" />
+                      Apply on company site <ExternalLink className="w-3 h-3 inline" />
                     </a>
-                  ) : selectedJob.application_email ? (
+                  )}
+                  {selectedJob.application_email && (
                     <a
                       href={`mailto:${selectedJob.application_email}?subject=Application for ${encodeURIComponent(selectedJob.title)}${selectedJob.job_id_external ? ` (${selectedJob.job_id_external})` : ""}`}
-                      className="flex-1 flex items-center justify-center gap-2 text-center font-medium py-3 rounded-lg transition-colors text-white"
-                      style={{ backgroundColor: branding.colors.primary }}
+                      className="block text-center text-sm hover:underline"
+                      style={{ color: branding.colors.primary }}
                     >
-                      Apply via Email <ExternalLink className="w-4 h-4" />
+                      Apply via email <ExternalLink className="w-3 h-3 inline" />
                     </a>
-                  ) : null}
-                  <button
-                    onClick={closeModal}
-                    className="px-6 py-3 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-                  >
-                    Close
-                  </button>
+                  )}
                 </div>
               </>
             ) : null}
@@ -458,16 +503,49 @@ export default function PublicCareerPage() {
         </div>
       )}
 
-      {/* Sieve Chat Bubble */}
-      {sieve?.enabled && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <button className="w-14 h-14 rounded-full shadow-lg flex items-center justify-center hover:scale-105 transition-transform"
-            style={{ backgroundColor: branding.colors.primary }}
-            title={`Chat with ${sieve.name || "Sieve"}`}
-          >
-            <MessageSquare className="w-6 h-6 text-white" />
-          </button>
+      {/* Session Persistence Banner */}
+      {savedSession && !applyingJob && (
+        <div className="fixed bottom-0 left-0 right-0 z-50 bg-white border-t shadow-lg p-4">
+          <div className="max-w-5xl mx-auto flex items-center justify-between gap-4">
+            <p className="text-sm text-gray-700">
+              Continue your application for <strong>{savedSession.jobTitle}</strong>?
+            </p>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => {
+                  setApplyingJob({ id: savedSession.jobId, title: savedSession.jobTitle, company: null, location: null });
+                  setSavedSession(null);
+                }}
+                className="px-4 py-2 rounded-lg text-white text-sm font-medium"
+                style={{ backgroundColor: branding.colors.primary }}
+              >
+                Continue
+              </button>
+              <button
+                onClick={() => {
+                  setSavedSession(null);
+                  try { localStorage.removeItem("winnow_apply_session"); } catch {}
+                }}
+                className="px-4 py-2 rounded-lg border text-sm text-gray-600 hover:bg-gray-50"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
         </div>
+      )}
+
+      {/* Application Modal */}
+      {applyingJob && (
+        <ApplicationModal
+          slug={slug}
+          jobId={applyingJob.id}
+          jobTitle={applyingJob.title}
+          company={applyingJob.company}
+          location={applyingJob.location}
+          branding={branding}
+          onClose={() => setApplyingJob(null)}
+        />
       )}
 
       {/* Footer */}
