@@ -467,7 +467,7 @@ export default function PublicCareerPage() {
 
       {/* Footer */}
       <footer className="border-t py-6 text-center text-sm text-gray-400">
-        Powered by <a href="https://winnowcc.ai" className="text-gray-500 hover:underline">Winnow</a>
+        Powered by <a href="https://winnowcc.ai" className="text-gray-500 hover:underline">Winnow Career Concierge</a>
       </footer>
     </div>
   );
