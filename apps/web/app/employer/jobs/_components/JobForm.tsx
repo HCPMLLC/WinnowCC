@@ -18,6 +18,7 @@ export interface JobFormData {
   salary_max: string;
   salary_currency: string;
   equity_offered: boolean;
+  bill_rate: string;
   application_email: string;
   application_url: string;
   job_id_external: string;
@@ -42,6 +43,7 @@ const EMPTY_FORM: JobFormData = {
   salary_max: "",
   salary_currency: "USD",
   equity_offered: false,
+  bill_rate: "",
   application_email: "",
   application_url: "",
   job_id_external: "",
@@ -113,6 +115,9 @@ export default function JobForm({
         salary_max: formData.salary_max
           ? parseInt(formData.salary_max)
           : null,
+        bill_rate: formData.bill_rate
+          ? parseInt(formData.bill_rate)
+          : null,
         location: formData.location || null,
         remote_policy: formData.remote_policy || null,
         employment_type: formData.employment_type || null,
@@ -165,6 +170,30 @@ export default function JobForm({
     currency: "USD",
     maximumFractionDigits: 0,
   });
+
+  async function fetchSalaryEstimate() {
+    if (formData.salary_min || formData.salary_max) return;
+    if (!formData.title.trim()) return;
+    try {
+      const params = new URLSearchParams({ title: formData.title.trim() });
+      if (formData.location.trim()) {
+        params.set("location", formData.location.trim());
+      }
+      const res = await fetch(
+        `${API_BASE}/api/employer/jobs/salary-estimate?${params}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+      setFormData((prev) => ({
+        ...prev,
+        salary_min: String(data.salary_min),
+        salary_max: String(data.salary_max),
+      }));
+    } catch {
+      // silently ignore — salary estimate is best-effort
+    }
+  }
 
   function salaryDisplay(raw: string): string {
     const n = parseInt(raw.replace(/\D/g, ""), 10);
@@ -219,6 +248,7 @@ export default function JobForm({
               onChange={(e) =>
                 setFormData({ ...formData, title: e.target.value })
               }
+              onBlur={fetchSalaryEstimate}
               className={inputClass}
               placeholder="Senior Software Engineer"
             />
@@ -303,6 +333,7 @@ export default function JobForm({
               onChange={(e) =>
                 setFormData({ ...formData, location: e.target.value })
               }
+              onBlur={fetchSalaryEstimate}
               className={inputClass}
               placeholder="San Francisco, CA"
             />
@@ -458,6 +489,23 @@ export default function JobForm({
               placeholder="$150,000"
             />
           </div>
+        </div>
+
+        {/* Bill Rate */}
+        <div className="max-w-xs">
+          <label className="mb-1 block text-sm font-medium text-slate-700">
+            Bill Rate ($/hr)
+          </label>
+          <input
+            type="text"
+            inputMode="numeric"
+            value={salaryDisplay(formData.bill_rate)}
+            onChange={(e) =>
+              setFormData({ ...formData, bill_rate: salaryChange(e.target.value) })
+            }
+            className={inputClass}
+            placeholder="$85"
+          />
         </div>
 
         {/* Application Email + URL */}

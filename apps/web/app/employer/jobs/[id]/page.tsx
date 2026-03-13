@@ -58,6 +58,19 @@ interface TopCandidate {
   matched_skills: string[];
   match_score: number;
   profile_visibility: string;
+  work_authorization: string | null;
+  remote_preference: string | null;
+  current_title: string | null;
+}
+
+interface CandidateFilters {
+  location: string;
+  min_years_experience: string;
+  max_years_experience: string;
+  work_authorization: string;
+  remote_preference: string;
+  current_title: string;
+  min_match_score: string;
 }
 
 interface Distribution {
@@ -128,12 +141,46 @@ export default function JobDetailPage() {
   const [topCandidates, setTopCandidates] = useState<TopCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [totalEvaluated, setTotalEvaluated] = useState(0);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState<CandidateFilters>({
+    location: "",
+    min_years_experience: "",
+    max_years_experience: "",
+    work_authorization: "",
+    remote_preference: "",
+    current_title: "",
+    min_match_score: "",
+  });
+  const [briefingCandidate, setBriefingCandidate] = useState<number | null>(
+    null,
+  );
+  const [briefing, setBriefing] = useState<Record<string, unknown> | null>(
+    null,
+  );
+  const [briefingLoading, setBriefingLoading] = useState(false);
 
-  async function fetchTopCandidates(id: string) {
+  async function fetchTopCandidates(
+    id: string,
+    appliedFilters?: CandidateFilters,
+  ) {
     setCandidatesLoading(true);
     try {
+      const params = new URLSearchParams({ limit: "10" });
+      const f = appliedFilters || filters;
+      if (f.location) params.set("location", f.location);
+      if (f.min_years_experience)
+        params.set("min_years_experience", f.min_years_experience);
+      if (f.max_years_experience)
+        params.set("max_years_experience", f.max_years_experience);
+      if (f.work_authorization)
+        params.set("work_authorization", f.work_authorization);
+      if (f.remote_preference)
+        params.set("remote_preference", f.remote_preference);
+      if (f.current_title) params.set("current_title", f.current_title);
+      if (f.min_match_score)
+        params.set("min_match_score", f.min_match_score);
       const res = await fetch(
-        `${API_BASE}/api/employer/jobs/${id}/top-candidates?limit=5`,
+        `${API_BASE}/api/employer/jobs/${id}/top-candidates?${params}`,
         { credentials: "include" },
       );
       if (res.ok) {
@@ -145,6 +192,28 @@ export default function JobDetailPage() {
       console.error("Failed to fetch top candidates:", err);
     } finally {
       setCandidatesLoading(false);
+    }
+  }
+
+  async function fetchBriefing(candidateId: number) {
+    setBriefingCandidate(candidateId);
+    setBriefingLoading(true);
+    setBriefing(null);
+    try {
+      const res = await fetch(
+        `${API_BASE}/api/employer/jobs/${jobId}/candidates/${candidateId}/briefing`,
+        { credentials: "include" },
+      );
+      if (res.ok) {
+        setBriefing(await res.json());
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setBriefing({ error: err.detail || "Failed to generate briefing" });
+      }
+    } catch {
+      setBriefing({ error: "Network error" });
+    } finally {
+      setBriefingLoading(false);
     }
   }
 
@@ -660,13 +729,117 @@ export default function JobDetailPage() {
             <h2 className="text-lg font-semibold text-slate-900">
               Top Matched Candidates
             </h2>
-            <Link
-              href="/employer/candidates"
-              className="text-sm font-medium text-blue-600 hover:text-blue-700"
-            >
-              Search All Candidates &rarr;
-            </Link>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
+              >
+                {showFilters ? "Hide Filters" : "Filters"}
+              </button>
+              <Link
+                href="/employer/candidates"
+                className="text-sm font-medium text-blue-600 hover:text-blue-700"
+              >
+                Search All &rarr;
+              </Link>
+            </div>
           </div>
+
+          {showFilters && (
+            <div className="mb-4 grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 sm:grid-cols-4">
+              <input
+                placeholder="Location"
+                value={filters.location}
+                onChange={(e) =>
+                  setFilters({ ...filters, location: e.target.value })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              />
+              <input
+                placeholder="Min years exp"
+                type="number"
+                value={filters.min_years_experience}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    min_years_experience: e.target.value,
+                  })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              />
+              <input
+                placeholder="Work authorization"
+                value={filters.work_authorization}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    work_authorization: e.target.value,
+                  })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              />
+              <select
+                value={filters.remote_preference}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    remote_preference: e.target.value,
+                  })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              >
+                <option value="">Remote preference</option>
+                <option value="remote">Remote</option>
+                <option value="on-site">On-site</option>
+              </select>
+              <input
+                placeholder="Current title"
+                value={filters.current_title}
+                onChange={(e) =>
+                  setFilters({ ...filters, current_title: e.target.value })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              />
+              <input
+                placeholder="Min match %"
+                type="number"
+                value={filters.min_match_score}
+                onChange={(e) =>
+                  setFilters({
+                    ...filters,
+                    min_match_score: e.target.value,
+                  })
+                }
+                className="rounded-md border border-slate-300 px-2 py-1.5 text-xs"
+              />
+              <div className="flex items-end gap-2 sm:col-span-2">
+                <button
+                  onClick={() => fetchTopCandidates(jobId, filters)}
+                  className="rounded-md bg-blue-600 px-4 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                >
+                  Apply Filters
+                </button>
+                <button
+                  onClick={() => {
+                    const empty: CandidateFilters = {
+                      location: "",
+                      min_years_experience: "",
+                      max_years_experience: "",
+                      work_authorization: "",
+                      remote_preference: "",
+                      current_title: "",
+                      min_match_score: "",
+                    };
+                    setFilters(empty);
+                    fetchTopCandidates(jobId, empty);
+                  }}
+                  className="rounded-md border border-slate-300 px-4 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
 
           {candidatesLoading ? (
             <div className="space-y-3">
@@ -741,19 +914,125 @@ export default function JobDetailPage() {
                       </div>
                     )}
                   </div>
-                  <Link
-                    href={`/employer/candidates/${candidate.id}`}
-                    className="ml-4 shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-100"
-                  >
-                    View Profile
-                  </Link>
+                  <div className="ml-4 flex shrink-0 flex-col gap-1.5">
+                    <button
+                      onClick={() => fetchBriefing(candidate.id)}
+                      className="rounded-md bg-blue-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-blue-700"
+                    >
+                      Briefing
+                    </button>
+                    <Link
+                      href={`/employer/candidates/${candidate.id}`}
+                      className="rounded-md border border-slate-300 px-3 py-1.5 text-center text-xs font-medium text-slate-700 hover:bg-slate-100"
+                    >
+                      Profile
+                    </Link>
+                  </div>
                 </div>
               ))}
               {totalEvaluated > 0 && (
                 <p className="pt-1 text-xs text-slate-400">
-                  Showing top {topCandidates.length} of {totalEvaluated} evaluated candidate(s)
+                  Showing top {topCandidates.length} of {totalEvaluated}{" "}
+                  evaluated candidate(s)
                 </p>
               )}
+            </div>
+          )}
+
+          {/* Briefing Panel */}
+          {briefingCandidate && (
+            <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-900">
+                  Match Briefing
+                </h3>
+                <button
+                  onClick={() => {
+                    setBriefingCandidate(null);
+                    setBriefing(null);
+                  }}
+                  className="text-xs text-slate-500 hover:text-slate-700"
+                >
+                  Close
+                </button>
+              </div>
+              {briefingLoading ? (
+                <p className="mt-2 text-sm text-slate-500">
+                  Generating briefing...
+                </p>
+              ) : briefing?.error ? (
+                <p className="mt-2 text-sm text-red-600">
+                  {String(briefing.error)}
+                </p>
+              ) : briefing ? (
+                <div className="mt-3 space-y-3 text-sm">
+                  {briefing.headline && (
+                    <p className="font-medium text-slate-800">
+                      {String(briefing.headline)}
+                    </p>
+                  )}
+                  {briefing.elevator_pitch && (
+                    <p className="text-slate-600">
+                      {String(briefing.elevator_pitch)}
+                    </p>
+                  )}
+                  {briefing.fit_score != null && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-slate-500">
+                        Fit Score:
+                      </span>
+                      <span className="rounded-full bg-blue-100 px-2 py-0.5 text-xs font-semibold text-blue-800">
+                        {String(briefing.fit_score)}%
+                      </span>
+                    </div>
+                  )}
+                  {briefing.fit_rationale && (
+                    <div>
+                      <p className="text-xs font-medium text-slate-500">
+                        Fit Rationale
+                      </p>
+                      <p className="mt-1 text-slate-600">
+                        {String(briefing.fit_rationale)}
+                      </p>
+                    </div>
+                  )}
+                  {Array.isArray(briefing.strengths) &&
+                    briefing.strengths.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-emerald-700">
+                          Strengths
+                        </p>
+                        <ul className="mt-1 list-inside list-disc text-slate-600">
+                          {(briefing.strengths as string[]).map(
+                            (s: string, i: number) => (
+                              <li key={i}>{s}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  {Array.isArray(briefing.concerns) &&
+                    briefing.concerns.length > 0 && (
+                      <div>
+                        <p className="text-xs font-medium text-amber-700">
+                          Concerns
+                        </p>
+                        <ul className="mt-1 list-inside list-disc text-slate-600">
+                          {(briefing.concerns as string[]).map(
+                            (s: string, i: number) => (
+                              <li key={i}>{s}</li>
+                            ),
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                  {briefing.recommended_action && (
+                    <p className="rounded bg-blue-100 px-3 py-2 text-xs font-medium text-blue-800">
+                      Recommended: {String(briefing.recommended_action)}
+                    </p>
+                  )}
+                </div>
+              ) : null}
             </div>
           )}
         </div>

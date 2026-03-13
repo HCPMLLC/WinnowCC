@@ -80,6 +80,15 @@ from app.routers.employer_compliance import (  # noqa: E402
 from app.routers.employer_introductions import (  # noqa: E402
     router as employer_introductions_router,
 )
+from app.routers.employer_outreach import (  # noqa: E402
+    router as employer_outreach_router,
+)
+from app.routers.employer_outreach import (  # noqa: E402
+    unsubscribe_router as employer_unsubscribe_router,
+)
+from app.routers.employer_submittals import (  # noqa: E402
+    router as employer_submittals_router,
+)
 from app.routers.health import router as health_router  # noqa: E402
 from app.routers.hiring_workspace import router as hiring_workspace_router  # noqa: E402
 from app.routers.interview_prep import router as interview_prep_router  # noqa: E402
@@ -277,6 +286,9 @@ app.include_router(telnyx_webhook_router)
 app.include_router(employer_analytics_router)
 app.include_router(employer_compliance_router)
 app.include_router(employer_introductions_router)
+app.include_router(employer_outreach_router)
+app.include_router(employer_unsubscribe_router)
+app.include_router(employer_submittals_router)
 app.include_router(talent_pipeline_router)
 app.include_router(recruiter_router)
 app.include_router(bulk_attach_router)

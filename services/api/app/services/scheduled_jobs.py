@@ -412,6 +412,27 @@ def scheduled_process_outreach() -> dict:
         return {"status": "failed", "error": str(e)}
 
 
+def scheduled_process_employer_outreach() -> dict:
+    """Process due employer outreach sequence emails.
+
+    Runs every 15 minutes alongside recruiter outreach processing.
+    """
+    from app.services.employer_outreach import process_due_employer_outreach
+
+    try:
+        results = process_due_employer_outreach()
+        logger.info(
+            "Employer outreach processing: %d sent, %d errors, %d completed",
+            results.get("sent", 0),
+            results.get("errors", 0),
+            results.get("completed", 0),
+        )
+        return {"status": "completed", **results}
+    except Exception as e:
+        logger.exception("Employer outreach processing failed: %s", e)
+        return {"status": "failed", "error": str(e)}
+
+
 def scheduled_hard_delete_expired() -> dict:
     """Hard-delete files soft-deleted more than 30 days ago.
 

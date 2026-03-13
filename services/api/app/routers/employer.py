@@ -22,6 +22,7 @@ from app.models.user import User
 from app.schemas.employer import (
     BulkUploadFileResult,
     BulkUploadResponse,
+    CandidateBriefingResponse,
     CandidateSearchFilters,
     CandidateSearchResponse,
     CandidateSearchResult,
@@ -33,6 +34,8 @@ from app.schemas.employer import (
     EmployerProfileCreate,
     EmployerProfileResponse,
     EmployerProfileUpdate,
+    FormResponseDetail,
+    FormResponseSummary,
     JobDocumentUploadResponse,
     PaginatedCompanyJobsResponse,
     SaveCandidateRequest,
@@ -608,6 +611,14 @@ async def bulk_upload_job_documents(
                 )
                 continue
 
+            # Salary fallback from reference table if not parsed
+            if parsed.get("salary_min") is None and parsed.get("salary_max") is None:
+                from app.services.salary_reference import estimate_salary
+
+                est = estimate_salary(parsed.get("title", ""), seniority="mid")
+                if est:
+                    parsed["salary_min"], parsed["salary_max"] = est[0], est[1]
+
             job = EmployerJob(
                 employer_id=employer.id,
                 title=parsed.get("title"),
@@ -629,6 +640,7 @@ async def bulk_upload_job_documents(
                 salary_max=parsed.get("salary_max"),
                 salary_currency=parsed.get("salary_currency") or "USD",
                 equity_offered=parsed.get("equity_offered") or False,
+                bill_rate=parsed.get("bill_rate"),
                 application_email=parsed.get("application_email"),
                 application_url=parsed.get("application_url"),
                 parsed_from_document=True,
@@ -689,6 +701,50 @@ async def bulk_upload_job_documents(
         total_failed=total_failed,
         upgrade_recommendation=upgrade_recommendation,
     )
+
+
+@router.get("/jobs/salary-estimate")
+def salary_estimate(
+    title: str = Query(..., min_length=1),
+    location: str | None = Query(None),
+    employer: EmployerProfile = Depends(get_employer_profile),
+) -> dict:
+    """Estimate salary range for a job title using the built-in reference table."""
+    from app.services.salary_reference import estimate_salary
+
+    title_lower = title.lower()
+    seniority = "mid"
+    for keyword, level in [
+        ("principal", "principal"),
+        ("staff", "staff"),
+        ("lead", "senior"),
+        ("senior", "senior"),
+        ("sr.", "senior"),
+        ("sr ", "senior"),
+        ("junior", "junior"),
+        ("jr.", "junior"),
+        ("jr ", "junior"),
+        ("entry", "junior"),
+        ("intern", "junior"),
+    ]:
+        if keyword in title_lower:
+            seniority = level
+            break
+
+    result = estimate_salary(title, seniority=seniority, city=location)
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No salary estimate found for this title.",
+        )
+
+    sal_min, sal_max, currency, sal_type = result
+    return {
+        "salary_min": sal_min,
+        "salary_max": sal_max,
+        "currency": currency,
+        "salary_type": sal_type,
+    }
 
 
 @router.get("/jobs/{job_id}", response_model=EmployerJobResponse)
@@ -870,6 +926,14 @@ async def upload_job_document(
                 detail="Could not extract job title from document.",
             )
 
+        # Salary fallback from reference table if not parsed
+        if parsed.get("salary_min") is None and parsed.get("salary_max") is None:
+            from app.services.salary_reference import estimate_salary
+
+            est = estimate_salary(parsed.get("title", ""), seniority="mid")
+            if est:
+                parsed["salary_min"], parsed["salary_max"] = est[0], est[1]
+
         # Validate job_id_external uniqueness within this employer
         ext_id = parsed.get("job_id_external")
         if ext_id:
@@ -910,6 +974,7 @@ async def upload_job_document(
             salary_max=parsed.get("salary_max"),
             salary_currency=parsed.get("salary_currency") or "USD",
             equity_offered=parsed.get("equity_offered") or False,
+            bill_rate=parsed.get("bill_rate"),
             application_email=parsed.get("application_email"),
             application_url=parsed.get("application_url"),
             parsed_from_document=True,
@@ -989,6 +1054,14 @@ async def reparse_job_document(
                 detail="Could not extract job title from document.",
             )
 
+        # Salary fallback from reference table if not parsed
+        if parsed.get("salary_min") is None and parsed.get("salary_max") is None:
+            from app.services.salary_reference import estimate_salary
+
+            est = estimate_salary(parsed.get("title", ""), seniority="mid")
+            if est:
+                parsed["salary_min"], parsed["salary_max"] = est[0], est[1]
+
         # Update all parsed fields on existing job
         updatable = (
             "title",
@@ -1010,6 +1083,7 @@ async def reparse_job_document(
             "salary_max",
             "salary_currency",
             "equity_offered",
+            "bill_rate",
             "application_email",
             "application_url",
         )
@@ -1193,13 +1267,21 @@ def bulk_delete_jobs(
 def get_top_candidates_for_job(
     job_id: int,
     limit: int = Query(5, ge=1, le=20),
+    # Filter query params
+    location: str | None = Query(None),
+    min_years_experience: int | None = Query(None, ge=0),
+    max_years_experience: int | None = Query(None, ge=0),
+    work_authorization: str | None = Query(None),
+    remote_preference: str | None = Query(None),
+    current_title: str | None = Query(None),
+    min_match_score: float | None = Query(None, ge=0, le=100),
     employer: EmployerProfile = Depends(get_employer_profile),
     session: Session = Depends(get_session),
 ) -> TopCandidatesResponse:
     """Return the top-scoring candidates for an employer job.
 
     Reads from pre-computed cache when available, falls back to live
-    computation on cache miss (cold start).
+    computation on cache miss (cold start). Supports filter query params.
     """
     from app.models.employer_job_candidate import EmployerJobCandidate
     from app.services.matching import find_top_candidates_for_employer_job
@@ -1215,17 +1297,52 @@ def get_top_candidates_for_job(
             detail="Job not found.",
         )
 
-    # Try cached results first
-    cached = (
-        session.execute(
-            select(EmployerJobCandidate)
-            .where(EmployerJobCandidate.employer_job_id == job.id)
-            .order_by(EmployerJobCandidate.match_score.desc())
-            .limit(limit)
-        )
-        .scalars()
-        .all()
+    has_filters = any([
+        location, min_years_experience, max_years_experience,
+        work_authorization, remote_preference, current_title, min_match_score,
+    ])
+
+    # Build cached query with optional filters
+    cache_stmt = (
+        select(EmployerJobCandidate)
+        .where(EmployerJobCandidate.employer_job_id == job.id)
     )
+    if location:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.location.ilike(f"%{location}%")
+        )
+    if min_years_experience is not None:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.years_experience >= min_years_experience
+        )
+    if max_years_experience is not None:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.years_experience <= max_years_experience
+        )
+    if work_authorization:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.work_authorization.ilike(
+                f"%{work_authorization}%"
+            )
+        )
+    if remote_preference:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.remote_preference == remote_preference
+        )
+    if current_title:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.current_title.ilike(f"%{current_title}%")
+        )
+    if min_match_score is not None:
+        cache_stmt = cache_stmt.where(
+            EmployerJobCandidate.match_score >= min_match_score
+        )
+
+    cache_stmt = cache_stmt.order_by(
+        EmployerJobCandidate.match_score.desc()
+    ).limit(limit)
+
+    cached = session.execute(cache_stmt).scalars().all()
 
     if cached:
         candidates = []
@@ -1239,18 +1356,50 @@ def get_top_candidates_for_job(
                     **result.model_dump(exclude={"match_score"}),
                     matched_skills=c.matched_skills or [],
                     match_score=c.match_score,
+                    work_authorization=c.work_authorization,
+                    remote_preference=c.remote_preference,
+                    current_title=c.current_title,
                 )
             )
-        total_evaluated = (
-            session.execute(
-                select(func.count(EmployerJobCandidate.id)).where(
-                    EmployerJobCandidate.employer_job_id == job.id
-                )
-            ).scalar()
-            or 0
+
+        # Count total (with filters applied)
+        count_stmt = select(func.count(EmployerJobCandidate.id)).where(
+            EmployerJobCandidate.employer_job_id == job.id
         )
-    else:
-        # Fallback: live computation (cold start)
+        if location:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.location.ilike(f"%{location}%")
+            )
+        if min_years_experience is not None:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.years_experience >= min_years_experience
+            )
+        if max_years_experience is not None:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.years_experience <= max_years_experience
+            )
+        if work_authorization:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.work_authorization.ilike(
+                    f"%{work_authorization}%"
+                )
+            )
+        if remote_preference:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.remote_preference == remote_preference
+            )
+        if current_title:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.current_title.ilike(f"%{current_title}%")
+            )
+        if min_match_score is not None:
+            count_stmt = count_stmt.where(
+                EmployerJobCandidate.match_score >= min_match_score
+            )
+
+        total_evaluated = session.execute(count_stmt).scalar() or 0
+    elif not has_filters:
+        # Fallback: live computation (cold start), only when no filters
         results = find_top_candidates_for_employer_job(session, job, limit)
         candidates = [TopCandidateResult(**r) for r in results]
         total_evaluated = (
@@ -1268,6 +1417,10 @@ def get_top_candidates_for_job(
             ).scalar()
             or 0
         )
+    else:
+        # Filters applied but no cached data
+        candidates = []
+        total_evaluated = 0
 
     return TopCandidatesResponse(
         job_id=job.id,
@@ -1865,3 +2018,286 @@ def update_submission_status(
         if sub.employer_response_at
         else None,
     }
+
+
+# ============================================================================
+# CANDIDATE BRIEFINGS
+# ============================================================================
+
+
+@router.get(
+    "/jobs/{job_id}/candidates/{candidate_profile_id}/briefing",
+    response_model=CandidateBriefingResponse,
+)
+def get_candidate_briefing(
+    job_id: int,
+    candidate_profile_id: int,
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> CandidateBriefingResponse:
+    """Generate an AI briefing explaining why a candidate matches a job.
+
+    Tier-gated: starter+ (candidate_briefings_per_month).
+    """
+    from app.services.career_intelligence import generate_candidate_brief
+
+    # Check tier access
+    check_employer_monthly_limit(
+        employer, "briefings_used", "candidate_briefings_per_month", session
+    )
+
+    # Verify job ownership
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == job_id, EmployerJob.employer_id == employer.id
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    # Verify candidate exists
+    profile = session.get(CandidateProfile, candidate_profile_id)
+    if not profile:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Candidate not found.",
+        )
+
+    # Generate briefing
+    brief = generate_candidate_brief(
+        candidate_profile_id=candidate_profile_id,
+        employer_job_id=job_id,
+        brief_type="job_specific",
+        user_id=None,
+        db=session,
+    )
+
+    # Increment usage counter
+    increment_employer_counter(employer, "briefings_used", session)
+    session.commit()
+
+    return CandidateBriefingResponse(
+        candidate_profile_id=candidate_profile_id,
+        job_id=job_id,
+        elevator_pitch=brief.get("elevator_pitch"),
+        headline=brief.get("headline"),
+        strengths=brief.get("strengths", []),
+        concerns=brief.get("concerns", []),
+        fit_rationale=brief.get("fit_rationale"),
+        skills_alignment=brief.get("skills_alignment"),
+        fit_score=brief.get("fit_score"),
+        recommended_action=brief.get("recommended_action"),
+        full_text=brief.get("full_text") or brief.get("brief_text"),
+    )
+
+
+# ============================================================================
+# FORM RESPONSES
+# ============================================================================
+
+
+@router.get(
+    "/jobs/{job_id}/form-responses",
+    response_model=list[FormResponseSummary],
+)
+def list_form_responses(
+    job_id: int,
+    status_filter: str | None = Query(None),
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> list[FormResponseSummary]:
+    """List filled form responses for an employer job."""
+    from app.models.filled_form import FilledForm
+    from app.models.job_form import JobForm
+
+    # Verify job ownership — need to find FilledForms linked to JobForms
+    # that belong to this employer's job
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == job_id, EmployerJob.employer_id == employer.id
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    # Find job_form IDs for this employer job's linked platform jobs
+    # FilledForm.job_id references the platform jobs table.
+    # We find forms where the job_form belongs to a job linked to this employer.
+    stmt = (
+        select(FilledForm, JobForm)
+        .join(JobForm, FilledForm.job_form_id == JobForm.id)
+    )
+    if status_filter:
+        stmt = stmt.where(FilledForm.status == status_filter)
+    stmt = stmt.order_by(FilledForm.created_at.desc())
+
+    # We need to filter FilledForms to this employer's job forms
+    form_ids_stmt = select(JobForm.id).where(JobForm.job_id == job_id)
+    stmt = stmt.where(FilledForm.job_form_id.in_(form_ids_stmt))
+
+    results = []
+    for row in session.execute(stmt).all():
+        ff = row[0]
+        jf = row[1]
+
+        # Resolve candidate name
+        candidate_name = None
+        user = session.get(User, ff.user_id) if ff.user_id else None
+        if user:
+            # Try to get name from candidate profile
+            cp = session.execute(
+                select(CandidateProfile)
+                .where(CandidateProfile.user_id == user.id)
+                .order_by(CandidateProfile.version.desc())
+                .limit(1)
+            ).scalar_one_or_none()
+            if cp and cp.profile_json:
+                basics = cp.profile_json.get("basics", {})
+                candidate_name = basics.get("name")
+            if not candidate_name:
+                candidate_name = user.email
+
+        results.append(
+            FormResponseSummary(
+                id=ff.id,
+                job_form_id=ff.job_form_id,
+                user_id=ff.user_id,
+                candidate_name=candidate_name,
+                form_type=jf.form_type,
+                original_filename=jf.original_filename,
+                status=ff.status,
+                created_at=ff.created_at,
+            )
+        )
+    return results
+
+
+@router.get(
+    "/jobs/{job_id}/form-responses/{form_response_id}",
+    response_model=FormResponseDetail,
+)
+def get_form_response_detail(
+    job_id: int,
+    form_response_id: int,
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> FormResponseDetail:
+    """Get full detail for a single filled form response."""
+    from app.models.filled_form import FilledForm
+    from app.models.job_form import JobForm
+
+    # Verify job ownership
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == job_id, EmployerJob.employer_id == employer.id
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    ff = session.get(FilledForm, form_response_id)
+    if not ff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form response not found.",
+        )
+
+    # Verify this form belongs to the employer's job
+    jf = session.get(JobForm, ff.job_form_id)
+    if not jf or jf.job_id != job_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form response not found.",
+        )
+
+    # Resolve candidate name
+    candidate_name = None
+    user = session.get(User, ff.user_id) if ff.user_id else None
+    if user:
+        cp = session.execute(
+            select(CandidateProfile)
+            .where(CandidateProfile.user_id == user.id)
+            .order_by(CandidateProfile.version.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if cp and cp.profile_json:
+            basics = cp.profile_json.get("basics", {})
+            candidate_name = basics.get("name")
+        if not candidate_name:
+            candidate_name = user.email
+
+    return FormResponseDetail(
+        id=ff.id,
+        job_form_id=ff.job_form_id,
+        user_id=ff.user_id,
+        job_id=ff.job_id,
+        match_id=ff.match_id,
+        filled_data=ff.filled_data,
+        unfilled_fields=ff.unfilled_fields,
+        gaps_detected=ff.gaps_detected,
+        output_storage_url=ff.output_storage_url,
+        output_format=ff.output_format,
+        status=ff.status,
+        generated_at=ff.generated_at,
+        created_at=ff.created_at,
+        candidate_name=candidate_name,
+        form_type=jf.form_type if jf else None,
+        original_filename=jf.original_filename if jf else None,
+    )
+
+
+@router.put("/jobs/{job_id}/form-responses/{form_response_id}/status")
+def update_form_response_status(
+    job_id: int,
+    form_response_id: int,
+    body: dict,
+    employer: EmployerProfile = Depends(get_employer_profile),
+    session: Session = Depends(get_session),
+) -> dict:
+    """Mark a form response as reviewed/accepted/rejected."""
+    from app.models.filled_form import FilledForm
+    from app.models.job_form import JobForm
+
+    # Verify job ownership
+    job = session.execute(
+        select(EmployerJob).where(
+            EmployerJob.id == job_id, EmployerJob.employer_id == employer.id
+        )
+    ).scalar_one_or_none()
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
+        )
+
+    ff = session.get(FilledForm, form_response_id)
+    if not ff:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form response not found.",
+        )
+
+    jf = session.get(JobForm, ff.job_form_id)
+    if not jf or jf.job_id != job_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Form response not found.",
+        )
+
+    allowed_statuses = {"reviewed", "accepted", "rejected"}
+    new_status = body.get("status")
+    if new_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"status must be one of: {', '.join(sorted(allowed_statuses))}",
+        )
+
+    ff.status = new_status
+    session.commit()
+
+    return {"id": ff.id, "status": ff.status}

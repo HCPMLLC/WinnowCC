@@ -2,7 +2,15 @@
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Float, ForeignKey, Integer, UniqueConstraint, func
+from sqlalchemy import (
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    UniqueConstraint,
+    func,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +45,14 @@ class EmployerJobCandidate(Base):
     computed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    # Denormalized filter columns (populated from CandidateProfile.profile_json)
+    location: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    years_experience: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    work_authorization: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    remote_preference: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    current_title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    headline: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
     # Relationships
     job = relationship("EmployerJob")

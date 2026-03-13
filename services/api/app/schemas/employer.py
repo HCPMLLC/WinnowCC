@@ -257,6 +257,7 @@ class EmployerJobBase(BaseModel):
     salary_max: int | None = Field(None, ge=0)
     salary_currency: str = Field(default="USD", max_length=10)
     equity_offered: bool = Field(default=False)
+    bill_rate: int | None = Field(None, ge=0)
     application_url: str | None = Field(None, max_length=500)
     application_email: EmailStr | None = None
 
@@ -324,6 +325,7 @@ class EmployerJobUpdate(BaseModel):
     salary_max: int | None = Field(None, ge=0)
     salary_currency: str | None = Field(None, max_length=10)
     equity_offered: bool | None = None
+    bill_rate: int | None = Field(None, ge=0)
     application_url: str | None = Field(None, max_length=500)
     application_email: EmailStr | None = None
     status: str | None = None
@@ -400,6 +402,15 @@ class EmployerJobResponse(EmployerJobBase):
     updated_at: datetime | None = None
 
     model_config = {"from_attributes": True}
+
+
+class SalaryEstimateResponse(BaseModel):
+    """Response for salary estimate lookup."""
+
+    salary_min: int
+    salary_max: int
+    currency: str = "USD"
+    salary_type: str = "annual"
 
 
 class JobDocumentUploadResponse(BaseModel):
@@ -511,6 +522,18 @@ class CandidateSearchResponse(BaseModel):
     has_more: bool
 
 
+class TopCandidateFilters(BaseModel):
+    """Query filters for top candidates."""
+
+    location: str | None = None
+    min_years_experience: int | None = Field(None, ge=0)
+    max_years_experience: int | None = Field(None, ge=0)
+    work_authorization: str | None = None
+    remote_preference: str | None = None
+    current_title: str | None = None
+    min_match_score: float | None = Field(None, ge=0, le=100)
+
+
 class TopCandidateResult(BaseModel):
     """Single candidate in top-candidates ranking for an employer job."""
 
@@ -523,6 +546,9 @@ class TopCandidateResult(BaseModel):
     matched_skills: list[str] = Field(default_factory=list)
     match_score: float = Field(..., ge=0, le=100)
     profile_visibility: str
+    work_authorization: str | None = None
+    remote_preference: str | None = None
+    current_title: str | None = None
 
 
 class TopCandidatesResponse(BaseModel):
@@ -532,6 +558,201 @@ class TopCandidatesResponse(BaseModel):
     job_title: str
     candidates: list[TopCandidateResult]
     total_evaluated: int
+
+
+# ============================================================================
+# BRIEFING SCHEMAS
+# ============================================================================
+
+
+class CandidateBriefingResponse(BaseModel):
+    """Response for candidate match briefing."""
+
+    candidate_profile_id: int
+    job_id: int
+    elevator_pitch: str | None = None
+    headline: str | None = None
+    strengths: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    fit_rationale: str | None = None
+    skills_alignment: dict | None = None
+    fit_score: int | None = None
+    recommended_action: str | None = None
+    full_text: str | None = None
+
+
+# ============================================================================
+# FORM RESPONSE SCHEMAS
+# ============================================================================
+
+
+class FormResponseSummary(BaseModel):
+    """Summary of a filled form for list views."""
+
+    id: int
+    job_form_id: int
+    user_id: int
+    candidate_name: str | None = None
+    form_type: str | None = None
+    original_filename: str | None = None
+    status: str
+    created_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class FormResponseDetail(BaseModel):
+    """Full detail of a filled form."""
+
+    id: int
+    job_form_id: int
+    user_id: int
+    job_id: int
+    match_id: int | None = None
+    filled_data: dict | None = None
+    unfilled_fields: dict | None = None
+    gaps_detected: dict | None = None
+    output_storage_url: str | None = None
+    output_format: str
+    status: str
+    generated_at: datetime | None = None
+    created_at: datetime | None = None
+    candidate_name: str | None = None
+    form_type: str | None = None
+    original_filename: str | None = None
+
+    model_config = {"from_attributes": True}
+
+
+# ============================================================================
+# OUTREACH SCHEMAS
+# ============================================================================
+
+
+class OutreachStepSchema(BaseModel):
+    """Single step in an outreach sequence."""
+
+    delay_days: int = Field(0, ge=0)
+    subject: str = Field(..., min_length=1, max_length=500)
+    body: str = Field(..., min_length=1)
+    action: str = Field(
+        default="followup",
+        description="Step action: invite_to_apply, send_forms, followup",
+    )
+
+
+class EmployerOutreachSequenceCreate(BaseModel):
+    """Schema for creating an employer outreach sequence."""
+
+    employer_job_id: int | None = None
+    name: str = Field(..., min_length=1, max_length=255)
+    description: str | None = None
+    steps: list[OutreachStepSchema] = Field(..., min_length=1)
+
+
+class EmployerOutreachSequenceUpdate(BaseModel):
+    """Schema for updating an employer outreach sequence."""
+
+    name: str | None = Field(None, min_length=1, max_length=255)
+    description: str | None = None
+    employer_job_id: int | None = None
+    is_active: bool | None = None
+    steps: list[OutreachStepSchema] | None = None
+
+
+class EmployerOutreachSequenceResponse(BaseModel):
+    """Response for an outreach sequence."""
+
+    id: int
+    employer_profile_id: int
+    employer_job_id: int | None = None
+    name: str
+    description: str | None = None
+    is_active: bool
+    steps: list[dict] = Field(default_factory=list)
+    enrolled_count: int = 0
+    sent_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class EmployerOutreachEnrollRequest(BaseModel):
+    """Request to enroll candidates in a sequence."""
+
+    candidate_profile_ids: list[int] = Field(..., min_length=1)
+
+
+class EmployerOutreachUnenrollRequest(BaseModel):
+    """Request to unenroll candidates."""
+
+    enrollment_ids: list[int] = Field(..., min_length=1)
+
+
+class EmployerOutreachEnrollmentResponse(BaseModel):
+    """Response for an outreach enrollment."""
+
+    id: int
+    sequence_id: int
+    candidate_profile_id: int
+    employer_profile_id: int
+    current_step: int
+    status: str
+    next_send_at: datetime | None = None
+    last_sent_at: datetime | None = None
+    enrolled_at: datetime | None = None
+    completed_at: datetime | None = None
+    applied_at: datetime | None = None
+    candidate_name: str | None = None
+    candidate_email: str | None = None
+
+
+# ============================================================================
+# SUBMITTAL PACKAGE SCHEMAS
+# ============================================================================
+
+
+class EmployerSubmittalPackageCreate(BaseModel):
+    """Schema for creating a submittal package."""
+
+    recipient_name: str = Field(..., min_length=1, max_length=255)
+    recipient_email: EmailStr
+    recipient_company: str | None = Field(None, max_length=255)
+    candidate_profile_ids: list[int] = Field(..., min_length=1)
+    filled_form_ids: list[int] | None = None
+    package_options: dict | None = Field(
+        default_factory=lambda: {
+            "include_briefs": True,
+            "include_resumes": True,
+            "include_forms": True,
+        }
+    )
+    cover_email_subject: str | None = Field(None, max_length=500)
+    cover_email_body: str | None = None
+
+
+class EmployerSubmittalPackageResponse(BaseModel):
+    """Response for a submittal package."""
+
+    id: int
+    employer_profile_id: int
+    employer_job_id: int
+    recipient_name: str
+    recipient_email: str
+    recipient_company: str | None = None
+    candidate_profile_ids: list[int] | None = None
+    filled_form_ids: list[int] | None = None
+    package_options: dict | None = None
+    merged_pdf_url: str | None = None
+    cover_email_subject: str | None = None
+    cover_email_body: str | None = None
+    status: str
+    error_message: str | None = None
+    sent_at: datetime | None = None
+    candidate_count: int = 0
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+    model_config = {"from_attributes": True}
 
 
 # ============================================================================

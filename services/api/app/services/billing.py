@@ -182,6 +182,10 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "career_pages": 0,
         "custom_domain": False,
         "custom_questions_per_job": 3,
+        "candidate_briefings_per_month": 0,
+        "outreach_sequences": False,
+        "active_outreach_sequences": 0,
+        "outreach_enrollments_per_month": 0,
     },
     "starter": {
         "active_jobs": 5,
@@ -198,6 +202,10 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "career_pages": 1,
         "custom_domain": False,
         "custom_questions_per_job": 10,
+        "candidate_briefings_per_month": 20,
+        "outreach_sequences": False,
+        "active_outreach_sequences": 0,
+        "outreach_enrollments_per_month": 0,
     },
     "pro": {
         "active_jobs": 25,
@@ -214,6 +222,10 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "career_pages": 3,
         "custom_domain": True,
         "custom_questions_per_job": 999,
+        "candidate_briefings_per_month": 100,
+        "outreach_sequences": True,
+        "active_outreach_sequences": 5,
+        "outreach_enrollments_per_month": 50,
     },
     "enterprise": {
         "active_jobs": 999,
@@ -230,6 +242,10 @@ EMPLOYER_PLAN_LIMITS: dict[str, dict] = {
         "career_pages": 999,
         "custom_domain": True,
         "custom_questions_per_job": 999,
+        "candidate_briefings_per_month": 999,
+        "outreach_sequences": True,
+        "active_outreach_sequences": 999,
+        "outreach_enrollments_per_month": 999,
     },
 }
 
@@ -808,6 +824,8 @@ def _maybe_reset_employer_counters(profile, session: Session) -> None:
     if reset_at is None or reset_at.month != now.month or reset_at.year != now.year:
         profile.ai_parsing_used = 0
         profile.intro_requests_used = 0
+        profile.briefings_used = 0
+        profile.outreach_enrollments_used = 0
         profile.usage_reset_at = now
         session.flush()
 

@@ -32,6 +32,11 @@ from app.models.employer import (
 from app.models.employer_compliance_log import EmployerComplianceLog
 from app.models.employer_introduction import EmployerIntroductionRequest
 from app.models.employer_job_candidate import EmployerJobCandidate
+from app.models.employer_outreach import (
+    EmployerOutreachEnrollment,
+    EmployerOutreachSequence,
+)
+from app.models.employer_submittal_package import EmployerSubmittalPackage
 from app.models.employer_team import EmployerTeamMember, InterviewFeedback
 from app.models.filled_form import FilledForm
 from app.models.gap_recommendation import GapRecommendation
@@ -103,6 +108,9 @@ __all__ = [
     "EmployerIntroductionRequest",
     "EmployerJob",
     "EmployerJobCandidate",
+    "EmployerOutreachEnrollment",
+    "EmployerOutreachSequence",
+    "EmployerSubmittalPackage",
     "EmployerProfile",
     "EmployerSavedCandidate",
     "EmployerTeamMember",

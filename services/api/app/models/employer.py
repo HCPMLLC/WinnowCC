@@ -68,6 +68,8 @@ class EmployerProfile(Base):
     # Usage counters (monthly rollover)
     ai_parsing_used: Mapped[int] = mapped_column(Integer, server_default="0")
     intro_requests_used: Mapped[int] = mapped_column(Integer, server_default="0")
+    briefings_used: Mapped[int] = mapped_column(Integer, server_default="0")
+    outreach_enrollments_used: Mapped[int] = mapped_column(Integer, server_default="0")
     usage_reset_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -152,6 +154,7 @@ class EmployerJob(Base):
         String(10), server_default="USD"
     )
     equity_offered: Mapped[bool | None] = mapped_column(Boolean, server_default="false")
+    bill_rate: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     # Status & application
     status: Mapped[str] = mapped_column(

@@ -1110,6 +1110,8 @@ if mentioned, null otherwise",
   "salary_currency": "USD or other currency code, null if no salary",
   "salary_type": "annual|hourly|monthly, null if no salary",
   "equity_offered": true or false,
+  "bill_rate": null or integer — hourly bill rate / billing rate \
+/ client rate in whole dollars. Only if explicitly stated,
   "benefits_mentioned": ["list", "of", "benefits"] or [],
 
   "required_skills": [
@@ -1371,6 +1373,14 @@ def _post_process(parsed: dict[str, Any]) -> dict[str, Any]:
         if isinstance(sal_min, (int, float)) and isinstance(sal_max, (int, float)):
             if sal_min > sal_max:
                 parsed["salary_min"], parsed["salary_max"] = sal_max, sal_min
+
+    # Ensure bill_rate is an integer if present (not converted like salary)
+    br = parsed.get("bill_rate")
+    if br is not None:
+        try:
+            parsed["bill_rate"] = int(br)
+        except (TypeError, ValueError):
+            parsed["bill_rate"] = None
 
     # Calculate confidence score per PROMPT77 formula
     description = parsed.get("description") or ""
