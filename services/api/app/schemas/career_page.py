@@ -185,6 +185,7 @@ class PublicJobDetail(BaseModel):
     description_html: str | None = None
     description_text: str
     url: str | None = None
+    application_email: str | None = None
 
 
 class PublicJobListResponse(BaseModel):

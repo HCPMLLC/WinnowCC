@@ -50,6 +50,7 @@ interface JobDetail extends JobData {
   description_html: string | null;
   description_text: string;
   url: string | null;
+  application_email: string | null;
 }
 
 export default function PublicCareerPage() {
@@ -435,11 +436,15 @@ export default function PublicCareerPage() {
                     >
                       Apply Now <ExternalLink className="w-4 h-4" />
                     </a>
-                  ) : (
-                    <span className="flex-1 text-center font-medium py-3 rounded-lg text-white" style={{ backgroundColor: branding.colors.primary }}>
-                      Apply Now
-                    </span>
-                  )}
+                  ) : selectedJob.application_email ? (
+                    <a
+                      href={`mailto:${selectedJob.application_email}?subject=Application for ${encodeURIComponent(selectedJob.title)}${selectedJob.job_id_external ? ` (${selectedJob.job_id_external})` : ""}`}
+                      className="flex-1 flex items-center justify-center gap-2 text-center font-medium py-3 rounded-lg transition-colors text-white"
+                      style={{ backgroundColor: branding.colors.primary }}
+                    >
+                      Apply via Email <ExternalLink className="w-4 h-4" />
+                    </a>
+                  ) : null}
                   <button
                     onClick={closeModal}
                     className="px-6 py-3 border rounded-lg text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"

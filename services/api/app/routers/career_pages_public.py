@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -102,7 +102,14 @@ def list_public_jobs(
         query = (
             select(Job, EmployerJob.closes_at)
             .join(EmployerJob, Job.employer_job_id == EmployerJob.id)
-            .where(EmployerJob.employer_id == career_page.tenant_id)
+            .where(
+                EmployerJob.employer_id == career_page.tenant_id,
+                # Exclude jobs whose deadline has passed
+                or_(
+                    EmployerJob.closes_at.is_(None),
+                    EmployerJob.closes_at >= now,
+                ),
+            )
         )
     elif career_page.tenant_type == "recruiter":
         # Join to RecruiterJob to filter by this recruiter's tenant_id
@@ -112,12 +119,16 @@ def list_public_jobs(
             .where(
                 RecruiterJob.recruiter_profile_id == career_page.tenant_id,
                 RecruiterJob.status == "active",
+                # Exclude jobs whose deadline has passed
+                or_(
+                    RecruiterJob.closes_at.is_(None),
+                    RecruiterJob.closes_at >= now,
+                ),
             )
         )
     else:
         query = select(Job, Job.application_deadline.label("closes_at"))
 
-    # Exclude jobs whose deadline has already passed (check both sources)
     query = query.where(and_(*filters))
 
     if location:
@@ -188,17 +199,27 @@ def get_public_job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
-    # Resolve deadline from source table if not on proxy row
+    # Resolve deadline and application details from source table
     deadline = job.application_deadline
-    if not deadline:
-        if job.recruiter_job_id:
-            rj = db.get(RecruiterJob, job.recruiter_job_id)
-            if rj:
+    apply_url = job.url or None
+    apply_email = None
+
+    if job.recruiter_job_id:
+        rj = db.get(RecruiterJob, job.recruiter_job_id)
+        if rj:
+            if not deadline:
                 deadline = rj.closes_at
-        elif job.employer_job_id:
-            ej = db.get(EmployerJob, job.employer_job_id)
-            if ej:
+            if not apply_url:
+                apply_url = rj.application_url or None
+            apply_email = rj.application_email
+    elif job.employer_job_id:
+        ej = db.get(EmployerJob, job.employer_job_id)
+        if ej:
+            if not deadline:
                 deadline = ej.closes_at
+            if not apply_url:
+                apply_url = ej.application_url or None
+            apply_email = ej.application_email
 
     return PublicJobDetail(
         id=job.id,
@@ -214,7 +235,8 @@ def get_public_job_detail(
         posted_at=job.posted_at or job.ingested_at,
         description_html=job.description_html,
         description_text=job.description_text,
-        url=job.url,
+        url=apply_url,
+        application_email=apply_email,
     )
 
 
