@@ -894,8 +894,8 @@ def find_top_candidates_for_recruiter_job(
 
     Searches three pools:
       A) Platform candidates — opted-in, latest version per user.
-      B) Recruiter's own sourced candidates (user_id IS NULL,
-         profile_json.sourced_by_user_id == recruiter_user_id).
+      B) Recruiter's own sourced candidates
+         (profile_json.sourced_by_user_id == recruiter_user_id).
       C) Pipeline candidates — candidates already in this recruiter's
          pipeline who have a candidate_profile_id.
     """
@@ -905,12 +905,15 @@ def find_top_candidates_for_recruiter_job(
     # Pool A: platform candidates
     platform_profiles = _latest_platform_profiles(session)
 
-    # Pool B: recruiter-sourced candidates
+    # Pool B: recruiter-sourced candidates (includes placeholder-user
+    # profiles created by the LinkedIn extension)
     sourced_profiles = (
         session.execute(
             select(CandidateProfile).where(
-                CandidateProfile.user_id.is_(None),
-                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
+                cast(
+                    CandidateProfile.profile_json["sourced_by_user_id"],
+                    String,
+                )
                 == str(recruiter_user_id),
             )
         )
@@ -1049,12 +1052,15 @@ def find_top_candidates_for_marketplace_job(
     # Pool A: platform candidates
     platform_profiles = _latest_platform_profiles(session)
 
-    # Pool B: recruiter-sourced candidates
+    # Pool B: recruiter-sourced candidates (includes placeholder-user
+    # profiles created by the LinkedIn extension)
     sourced_profiles = (
         session.execute(
             select(CandidateProfile).where(
-                CandidateProfile.user_id.is_(None),
-                cast(CandidateProfile.profile_json["sourced_by_user_id"], String)
+                cast(
+                    CandidateProfile.profile_json["sourced_by_user_id"],
+                    String,
+                )
                 == str(recruiter_user_id),
             )
         )
