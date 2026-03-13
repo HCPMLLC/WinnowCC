@@ -72,6 +72,7 @@ from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
 from app.models.rejection_feedback import RejectionFeedback
 from app.models.resume_document import ResumeDocument
 from app.models.sieve_conversation import SieveConversation
+from app.models.sieve_suggestion import SieveSuggestion
 from app.models.stage_rule import StageRule
 from app.models.submittal_package import SubmittalPackage
 from app.models.support_ticket import SupportMessage, SupportTicket
@@ -156,6 +157,7 @@ __all__ = [
     "SupportTicket",
     "ResumeDocument",
     "SieveConversation",
+    "SieveSuggestion",
     "TailoredResume",
     "TalentPipeline",
     "TimeFillPrediction",

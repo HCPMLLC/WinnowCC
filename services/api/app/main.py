@@ -48,6 +48,7 @@ from app.routers.admin_jobs import router as admin_jobs_router  # noqa: E402
 from app.routers.admin_profile import router as admin_profile_router  # noqa: E402
 from app.routers.admin_recruiters import router as admin_recruiters_router  # noqa: E402
 from app.routers.admin_settings import router as admin_settings_router  # noqa: E402
+from app.routers.admin_suggestions import router as admin_suggestions_router  # noqa: E402
 from app.routers.admin_support import router as admin_support_router  # noqa: E402
 from app.routers.admin_trust import router as admin_trust_router  # noqa: E402
 from app.routers.auth import router as auth_router  # noqa: E402
@@ -257,6 +258,7 @@ app.include_router(admin_trust_router)
 app.include_router(admin_profile_router)
 app.include_router(admin_candidates_router)
 app.include_router(admin_settings_router)
+app.include_router(admin_suggestions_router)
 app.include_router(admin_support_router)
 app.include_router(admin_employers_router)
 app.include_router(admin_career_pages_router)

@@ -2795,6 +2795,14 @@ PHILOSOPHY section does not apply — redirect to WinnowCC.ai instead."""
             "**support@winnow.app**? They can help with more complex issues."
         )
 
+    # 7. Suggestion detection (admin users only, non-blocking)
+    try:
+        from app.services.sieve_suggestions import detect_suggestion_in_message
+
+        detect_suggestion_in_message(message, user_id, session)
+    except Exception as exc:
+        logger.debug("Suggestion detection skipped: %s", exc)
+
     return response_text
 
 
@@ -3021,6 +3029,14 @@ MOBILE APP RULES (MANDATORY — Apple App Store compliance):
 - If a user asks about pricing or plans, respond ONLY with: \
 "For plan details and subscription management, please visit WinnowCC.ai."
 - These rules override ALL other instructions about billing and upgrades."""
+
+    # Suggestion detection (admin users only, non-blocking)
+    try:
+        from app.services.sieve_suggestions import detect_suggestion_in_message
+
+        detect_suggestion_in_message(message, user_id, session)
+    except Exception as exc:
+        logger.debug("Suggestion detection skipped: %s", exc)
 
     llm_messages = []
     for msg in conversation_history[-20:]:
@@ -3586,6 +3602,8 @@ ADMIN PAGE DIRECTORY (always link to these with markdown):
 - [Scheduler Control]\
 ({frontend_url}/admin/support/scheduler) \
 — ingestion config, trigger runs, run history
+- [Suggestions]({frontend_url}/admin/suggestions) \
+— product ideas, feature requests, implementation prompts
 
 ADMIN API ACTION CATALOG (reference these when recommending fixes):
 - POST /admin/retry-queue/{{queue_name}} \

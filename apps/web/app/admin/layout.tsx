@@ -99,6 +99,12 @@ export default function AdminLayout({
       ],
     },
     {
+      label: "Intelligence",
+      items: [
+        { href: "/admin/suggestions", label: "Suggestions" },
+      ],
+    },
+    {
       label: "Trust & Compliance",
       items: [
         { href: "/admin/trust", label: "Trust Queue" },
