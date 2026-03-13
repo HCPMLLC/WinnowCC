@@ -543,6 +543,7 @@ def sync_employer_job_to_jobs(job_id: int) -> None:
         proxy.content_hash = content_hash
         proxy.url = ej.application_url or ""
         proxy.posted_at = ej.posted_at or ej.created_at
+        proxy.application_deadline = ej.closes_at
         proxy.is_active = True
 
         # Generate embedding
@@ -609,12 +610,41 @@ def populate_job_candidates(job_id: int) -> None:
         for r in results:
             if r["match_score"] <= 50:
                 continue
+
+            # Extract denormalized filter fields from profile_json
+            from app.models.candidate_profile import CandidateProfile
+
+            profile = session.get(CandidateProfile, r["id"])
+            pj = profile.profile_json if profile else {}
+            basics = (pj or {}).get("basics", {})
+            experience = (pj or {}).get("experience", [])
+            preferences = (pj or {}).get("preferences", {})
+
+            current_title = None
+            headline = None
+            if experience and isinstance(experience[0], dict):
+                title = experience[0].get("title") or ""
+                company = experience[0].get("company") or ""
+                current_title = title or None
+                if title:
+                    headline = f"{title} at {company}" if company else title
+
+            remote_pref = None
+            if isinstance(preferences.get("remote_ok"), bool):
+                remote_pref = "remote" if preferences["remote_ok"] else "on-site"
+
             session.add(
                 EmployerJobCandidate(
                     employer_job_id=job_id,
                     candidate_profile_id=r["id"],
                     match_score=r["match_score"],
                     matched_skills=r.get("matched_skills"),
+                    location=basics.get("location"),
+                    years_experience=basics.get("total_years_experience"),
+                    work_authorization=basics.get("work_authorization"),
+                    remote_preference=remote_pref,
+                    current_title=current_title,
+                    headline=headline,
                 )
             )
             inserted += 1
@@ -683,6 +713,7 @@ def sync_recruiter_job_to_jobs(job_id: int) -> None:
         proxy.content_hash = content_hash
         proxy.url = rj.application_url or ""
         proxy.posted_at = rj.posted_at or rj.created_at
+        proxy.application_deadline = rj.closes_at
         proxy.is_active = True
 
         # Generate embedding
