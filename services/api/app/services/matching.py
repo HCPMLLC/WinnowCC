@@ -989,6 +989,7 @@ def _enrich_sourced_profile(profile_json: dict) -> dict:
     individual tokens.  Returns a new dict (does not mutate the original).
     """
     enriched = dict(profile_json) if profile_json else {}
+    basics = enriched.get("basics") or {}
     prefs = dict(enriched.get("preferences") or {})
 
     if not prefs.get("target_titles"):
@@ -997,15 +998,29 @@ def _enrich_sourced_profile(profile_json: dict) -> dict:
             t = (exp.get("title") or "").strip()
             if t and t not in titles:
                 titles.append(t)
+        # Also use headline as a target title signal
+        headline = basics.get("headline") or enriched.get("headline", "")
+        if headline and headline not in titles:
+            titles.append(headline)
         if titles:
             prefs["target_titles"] = titles
 
     if not prefs.get("locations"):
-        loc = enriched.get("location", "")
+        # Check both top-level and basics.location (LinkedIn sourcing)
+        loc = (
+            enriched.get("location", "")
+            or basics.get("location", "")
+        )
         if loc:
             prefs["locations"] = [loc]
 
     enriched["preferences"] = prefs
+
+    # Promote years_experience from basics if not at top level
+    if not enriched.get("years_experience"):
+        yrs = basics.get("total_years_experience")
+        if yrs is not None:
+            enriched["years_experience"] = yrs
 
     # Expand multi-word skills into individual tokens so that
     # "Contract Management" matches when both "contract" and
