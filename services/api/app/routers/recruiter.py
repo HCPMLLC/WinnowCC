@@ -2705,6 +2705,7 @@ def update_recruiter_job(
         "salary_min",
         "salary_max",
         "location",
+        "closes_at",
     }
     content_changed = bool(update_data.keys() & content_fields)
 
@@ -2756,9 +2757,10 @@ def update_recruiter_job(
         from app.services.queue import get_queue
 
         q = get_queue()
+        effective_status = new_status or old_status
         if new_status == "active" and old_status != "active":
             _enqueue_recruiter_job_sync(job.id)
-        elif new_status == "active" and content_changed:
+        elif effective_status == "active" and content_changed:
             q.enqueue(sync_recruiter_job_to_jobs, job.id)
         elif old_status == "active" and new_status and new_status != "active":
             q.enqueue(deactivate_recruiter_job_proxy, job.id)
