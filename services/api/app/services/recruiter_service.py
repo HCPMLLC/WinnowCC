@@ -292,11 +292,18 @@ def add_to_pipeline(
         recruiter_job_id=pc.recruiter_job_id,
         subject=f"Added {name} to pipeline",
     )
-    # Auto-evaluate stage rules
+    # Auto-evaluate stage rules (use savepoint so a missing table
+    # or other DB error doesn't abort the outer transaction)
     try:
         from app.services.stage_rules import evaluate_rules
 
-        evaluate_rules(session, pc)
+        nested = session.begin_nested()
+        try:
+            evaluate_rules(session, pc)
+            nested.commit()
+        except Exception:
+            nested.rollback()
+            logger.warning("Stage rule evaluation failed for pc %s", pc.id)
     except Exception:
         logger.warning("Stage rule evaluation failed for pc %s", pc.id)
     session.commit()

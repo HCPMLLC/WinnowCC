@@ -174,6 +174,57 @@ async function apiFetch(config, path, options = {}) {
   return resp.json();
 }
 
+// --- Load jobs for "Tag to Job" dropdown ---
+async function loadJobs(config) {
+  try {
+    const me = await apiFetch(config, "/api/auth/me");
+    const role = me.role || "candidate";
+
+    let jobs = [];
+    if (role === "recruiter" || role === "both") {
+      jobs = await apiFetch(config, "/api/recruiter/jobs?status=active");
+    } else if (role === "employer") {
+      jobs = await apiFetch(config, "/api/employer/jobs?status=active");
+    }
+
+    const sel = $("job-select");
+    // Clear existing options except the placeholder
+    while (sel.options.length > 1) sel.remove(1);
+
+    for (const job of jobs) {
+      const opt = document.createElement("option");
+      opt.value = job.id;
+      let label = job.title || `Job #${job.id}`;
+      if (job.client_company_name) label += ` — ${job.client_company_name}`;
+      opt.textContent = label;
+      sel.appendChild(opt);
+    }
+  } catch {
+    // Silently fail — dropdown stays with placeholder only
+  }
+}
+
+// --- Check if candidate already exists ---
+async function checkCandidateExists(config, linkedinUrl) {
+  const statusEl = $("candidate-status");
+  try {
+    const result = await apiFetch(
+      config,
+      `/api/career-intelligence/source/linkedin/check?linkedin_url=${encodeURIComponent(linkedinUrl)}`
+    );
+    statusEl.classList.remove("hidden");
+    if (result.exists) {
+      statusEl.className = "candidate-status status-existing";
+      statusEl.textContent = `Existing candidate: ${result.name || "Unknown"} — will enrich profile`;
+    } else {
+      statusEl.className = "candidate-status status-new";
+      statusEl.textContent = "New candidate";
+    }
+  } catch {
+    statusEl.classList.add("hidden");
+  }
+}
+
 // --- Init ---
 async function init() {
   const config = await getConfig();
@@ -198,6 +249,9 @@ async function init() {
       init();
     }
   };
+
+  // Pre-load jobs for the dropdown (non-blocking)
+  loadJobs(config);
 
   const tab = await getCurrentTab();
   if (!isLinkedInProfile(tab?.url)) {
@@ -292,7 +346,7 @@ $("btn-signin").addEventListener("click", async () => {
     }
 
     const data = await resp.json();
-    await saveConfig(apiUrl, data.session_token, data.email || "");
+    await saveConfig(apiUrl, data.token, data.email || "");
     init();
   } catch (err) {
     // User closing the popup is not an error
@@ -451,6 +505,12 @@ $("btn-extract").addEventListener("click", async () => {
 
     $("profile-preview").classList.remove("hidden");
     $("save-section").classList.remove("hidden");
+
+    // Check if candidate already exists
+    if (extractedData.linkedin_url) {
+      const config = await getConfig();
+      checkCandidateExists(config, extractedData.linkedin_url);
+    }
 
     // Show debug info if present
     if (extractedData._debug) {

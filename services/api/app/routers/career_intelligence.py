@@ -237,6 +237,36 @@ def _estimate_years_experience(experience: list[dict]) -> int | None:
     return round(total_months / 12) if total_months > 0 else None
 
 
+@router.get("/source/linkedin/check")
+def check_linkedin_candidate(
+    linkedin_url: str = Query(..., min_length=10),
+    user: User = Depends(_require_sourcing_role),
+    db: Session = Depends(get_session),
+):
+    """Check if a candidate with this LinkedIn URL already exists."""
+    url = linkedin_url.rstrip("/")
+    existing = (
+        db.execute(
+            select(CandidateProfile).where(
+                CandidateProfile.profile_json["linkedin_url"].astext.in_(
+                    [url, url + "/"]
+                )
+            )
+        )
+        .scalars()
+        .first()
+    )
+    if existing:
+        pj = existing.profile_json or {}
+        name = pj.get("basics", {}).get("name") or pj.get("name")
+        return {
+            "exists": True,
+            "candidate_profile_id": existing.id,
+            "name": name,
+        }
+    return {"exists": False, "candidate_profile_id": None, "name": None}
+
+
 @router.post("/source/linkedin")
 def source_from_linkedin(
     payload: LinkedInProfilePayload,
@@ -251,10 +281,11 @@ def source_from_linkedin(
         return _source_from_linkedin_impl(payload, user, db)
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         logger.exception("LinkedIn source failed for %s", payload.linkedin_url)
         raise HTTPException(
-            status_code=500, detail="Failed to save LinkedIn profile."
+            status_code=500,
+            detail=f"Failed to save LinkedIn profile: {exc}",
         ) from None
 
 
