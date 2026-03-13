@@ -66,7 +66,7 @@ export default function AdminSuggestionsPage() {
     const loadSuggestions = async () => {
       try {
         const params = activeTab && activeTab !== "all" ? `?status=${activeTab}` : "";
-        const res = await fetch(`${apiBase}/api/admin/suggestions/${params}`, {
+        const res = await fetch(`${apiBase}/api/admin/suggestions${params}`, {
           credentials: "include",
         });
         if (res.status === 401) { router.push("/login"); return; }
@@ -85,7 +85,7 @@ export default function AdminSuggestionsPage() {
     if (!formTitle.trim() || !formDesc.trim()) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${apiBase}/api/admin/suggestions/`, {
+      const res = await fetch(`${apiBase}/api/admin/suggestions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
