@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
@@ -91,23 +91,34 @@ def list_public_jobs(
             status_code=404, detail="Career page not found"
         )
 
-    # Build query — filter by active jobs linked to this tenant
+    # Build query — filter by active jobs belonging to this tenant
     now = datetime.now(UTC)
     filters = [
         Job.is_active == True,  # noqa: E712
-        # Exclude jobs whose application deadline has already passed
-        or_(
-            Job.application_deadline.is_(None),
-            Job.application_deadline >= now,
-        ),
     ]
 
     if career_page.tenant_type == "employer":
-        filters.append(Job.employer_job_id.isnot(None))
+        # Join to EmployerJob to filter by this employer's tenant_id
+        query = (
+            select(Job, EmployerJob.closes_at)
+            .join(EmployerJob, Job.employer_job_id == EmployerJob.id)
+            .where(EmployerJob.employer_id == career_page.tenant_id)
+        )
     elif career_page.tenant_type == "recruiter":
-        filters.append(Job.recruiter_job_id.isnot(None))
+        # Join to RecruiterJob to filter by this recruiter's tenant_id
+        query = (
+            select(Job, RecruiterJob.closes_at)
+            .join(RecruiterJob, Job.recruiter_job_id == RecruiterJob.id)
+            .where(
+                RecruiterJob.recruiter_profile_id == career_page.tenant_id,
+                RecruiterJob.status == "active",
+            )
+        )
+    else:
+        query = select(Job, Job.application_deadline.label("closes_at"))
 
-    query = select(Job).where(and_(*filters))
+    # Exclude jobs whose deadline has already passed (check both sources)
+    query = query.where(and_(*filters))
 
     if location:
         query = query.where(Job.location.ilike(f"%{location}%"))
@@ -131,7 +142,7 @@ def list_public_jobs(
     )
 
     result = db.execute(query)
-    jobs = list(result.scalars().all())
+    rows = list(result.all())
 
     return PublicJobListResponse(
         jobs=[
@@ -145,10 +156,10 @@ def list_public_jobs(
                 salary_min=job.salary_min,
                 salary_max=job.salary_max,
                 salary_currency=job.currency,
-                application_deadline=job.application_deadline,
+                application_deadline=job.application_deadline or closes_at,
                 posted_at=job.posted_at or job.ingested_at,
             )
-            for job in jobs
+            for job, closes_at in rows
         ],
         total=total,
         page=page,
@@ -177,6 +188,18 @@ def get_public_job_detail(
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
 
+    # Resolve deadline from source table if not on proxy row
+    deadline = job.application_deadline
+    if not deadline:
+        if job.recruiter_job_id:
+            rj = db.get(RecruiterJob, job.recruiter_job_id)
+            if rj:
+                deadline = rj.closes_at
+        elif job.employer_job_id:
+            ej = db.get(EmployerJob, job.employer_job_id)
+            if ej:
+                deadline = ej.closes_at
+
     return PublicJobDetail(
         id=job.id,
         title=job.title,
@@ -187,7 +210,7 @@ def get_public_job_detail(
         salary_min=job.salary_min,
         salary_max=job.salary_max,
         salary_currency=job.currency,
-        application_deadline=job.application_deadline,
+        application_deadline=deadline,
         posted_at=job.posted_at or job.ingested_at,
         description_html=job.description_html,
         description_text=job.description_text,
