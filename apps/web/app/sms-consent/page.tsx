@@ -12,67 +12,160 @@ export default function SmsConsentPage() {
       <h1 className="mb-2 text-3xl font-bold text-slate-900">
         SMS Messaging Terms &amp; Consent
       </h1>
-      <p className="mb-8 text-sm text-slate-500">Last updated: March 2, 2026</p>
+      <p className="mb-8 text-sm text-slate-500">Last updated: March 12, 2026</p>
 
-      {/* How to Opt In — clear CTA path for Telnyx 10DLC compliance */}
+      {/* ─── Opt-In Form ─── */}
       <section className="mb-10 rounded-2xl border border-blue-200 bg-blue-50 p-6">
         <h2 className="mb-1 text-lg font-semibold text-slate-900">
-          How to Opt In to Winnow SMS Notifications
+          Opt In to Winnow SMS Notifications
         </h2>
-        <p className="mb-4 text-sm text-slate-600">
-          Follow these steps to receive text messages from Winnow:
+        <p className="mb-5 text-sm text-slate-600">
+          Enter your phone number and agree to the terms below to receive text
+          message notifications from Winnow. You must have a Winnow account to
+          complete opt-in.
         </p>
 
-        <ol className="mb-5 list-inside list-decimal space-y-2 text-sm text-slate-700">
-          <li>
-            <Link href="/login" className="font-semibold underline hover:text-slate-900">
-              Create a free Winnow account or sign in
-            </Link>
-          </li>
-          <li>
-            Go to your{" "}
-            <Link href="/settings" className="font-semibold underline hover:text-slate-900">
-              Account Settings
-            </Link>{" "}
-            page
-          </li>
-          <li>
-            Scroll to <strong>&quot;Phone &amp; SMS Notifications&quot;</strong>
-          </li>
-          <li>Enter your mobile phone number</li>
-          <li>
-            Check the consent box and tap <strong>&quot;Save Changes&quot;</strong>
-          </li>
-        </ol>
+        {/* Visible opt-in form with phone number field and consent language */}
+        <div className="rounded-xl border border-slate-200 bg-white p-5">
+          <label className="mb-4 flex flex-col gap-1.5 text-sm font-medium text-slate-700">
+            Phone Number
+            <input
+              type="tel"
+              placeholder="(210) 555-1234"
+              disabled
+              className="max-w-xs rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 text-sm text-slate-400"
+            />
+          </label>
 
-        <div className="rounded-lg border border-blue-300 bg-white p-4 text-sm text-slate-700">
-          <p className="mb-2 font-semibold text-slate-900">
-            At the point of opt-in you will see and agree to the following:
-          </p>
-          <p className="italic text-slate-600">
-            &quot;I agree to receive automated text messages from Winnow about job
-            matches, application updates, and career alerts at the phone number
-            provided. Message frequency varies. Standard Msg &amp; data rates may
-            apply. Reply STOP to opt out or HELP for help. We will not share your
-            mobile information with third parties for promotional or marketing
-            purposes. See our{" "}
-            <span className="font-semibold underline">Terms of Service</span> and{" "}
-            <span className="font-semibold underline">Privacy Policy</span>. Consent
-            is not required to use Winnow.&quot;
-          </p>
-        </div>
+          <label className="mb-5 flex items-start gap-3 text-sm">
+            <input type="checkbox" disabled className="mt-1" />
+            <span className="text-slate-700">
+              I agree to receive automated text messages from Winnow about job
+              matches, application updates, and career alerts at the phone number
+              provided. Message frequency varies (up to 10 msgs/week). Standard
+              Msg &amp; data rates may apply. Reply STOP to opt out or HELP for
+              help. We will not share your mobile information with third parties
+              for promotional or marketing purposes. See our{" "}
+              <Link href="/terms" className="font-semibold underline hover:text-slate-900">
+                Terms of Service
+              </Link>{" "}
+              and{" "}
+              <Link href="/privacy" className="font-semibold underline hover:text-slate-900">
+                Privacy Policy
+              </Link>
+              . Consent is not required to use Winnow.
+            </span>
+          </label>
 
-        <div className="mt-4 flex">
           <Link
             href="/login"
             className="inline-flex items-center gap-2 rounded-lg bg-slate-900 px-5 py-2.5 text-sm font-medium text-white hover:bg-slate-800"
           >
-            Sign In to Opt In
+            Sign In to Enable SMS
           </Link>
+          <p className="mt-2 text-xs text-slate-400">
+            You must be signed in to save your phone number and complete opt-in.
+            The same form appears in{" "}
+            <Link href="/settings" className="underline hover:text-slate-600">
+              Account Settings → Phone &amp; SMS Notifications
+            </Link>
+            .
+          </p>
         </div>
       </section>
 
-      {/* Quick-reference disclosure box for reviewer */}
+      {/* ─── Opt-In Workflow ─── */}
+      <section className="mb-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
+          Opt-In Workflow
+        </h2>
+        <p className="mb-4 text-sm text-slate-600">
+          The same opt-in form shown above is displayed in two locations:
+        </p>
+        <ol className="list-inside list-decimal space-y-3 text-sm text-slate-700">
+          <li>
+            <strong>This page</strong> (winnowcc.ai/sms-consent) — the form above.
+            Clicking &quot;Sign In to Enable SMS&quot; takes the user to login, then
+            redirects back so they can submit.
+          </li>
+          <li>
+            <strong>Account Settings</strong> (winnowcc.ai/settings) — under the
+            &quot;Phone &amp; SMS Notifications&quot; section. After signing in, the
+            user enters their phone number, checks the consent checkbox with the
+            full disclosure language shown above, and taps &quot;Save Changes.&quot;
+          </li>
+        </ol>
+        <p className="mt-4 text-sm text-slate-600">
+          In both cases, the user must:
+        </p>
+        <ul className="mt-2 list-inside list-disc space-y-1 text-sm text-slate-600">
+          <li>Enter their mobile phone number</li>
+          <li>Check the consent checkbox with the full SMS opt-in disclosure</li>
+          <li>Click &quot;Save Changes&quot; to complete opt-in</li>
+        </ul>
+        <p className="mt-4 text-sm text-slate-600">
+          Upon opt-in, the user receives an automatic confirmation SMS:
+        </p>
+        <div className="mt-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm italic text-slate-700">
+          &quot;Winnow: Thanks for subscribing to job match alerts and application
+          updates! Reply HELP for help. Message frequency may vary. Msg&amp;data
+          rates may apply. Consent is not a condition of purchase. Reply STOP to
+          opt out.&quot;
+        </div>
+      </section>
+
+      {/* ─── Sample Messages ─── */}
+      <section className="mb-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+        <h2 className="mb-3 text-lg font-semibold text-slate-900">
+          Sample Messages
+        </h2>
+        <p className="mb-4 text-sm text-slate-600">
+          Below are example messages for each use case in this campaign:
+        </p>
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Job Match Alert
+            </p>
+            <p className="text-sm text-slate-700">
+              &quot;Winnow: New match! &apos;Senior Product Designer&apos; at Acme Corp
+              scores 92% for your profile. View details in your dashboard:
+              https://winnowcc.ai/matches. Reply STOP to opt out.&quot;
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Application Status Update
+            </p>
+            <p className="text-sm text-slate-700">
+              &quot;Winnow: Your application for &apos;Frontend Engineer&apos; at Globex
+              Inc. has been viewed by the hiring team. Check your dashboard for
+              details: https://winnowcc.ai/matches. Reply STOP to opt out.&quot;
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Career Alert
+            </p>
+            <p className="text-sm text-slate-700">
+              &quot;Winnow: 5 new jobs matching your skills were posted this week.
+              See your latest matches: https://winnowcc.ai/matches. Reply STOP
+              to opt out.&quot;
+            </p>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+            <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Account Verification (OTP)
+            </p>
+            <p className="text-sm text-slate-700">
+              &quot;Your Winnow verification code is: 482913. It expires in 10
+              minutes. Do not share this code with anyone.&quot;
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ─── Program Summary Table ─── */}
       <section className="mb-10 rounded-2xl border border-slate-300 bg-slate-50 p-6">
         <h2 className="mb-3 text-lg font-semibold text-slate-900">
           SMS Program Summary
@@ -81,7 +174,7 @@ export default function SmsConsentPage() {
           <tbody className="divide-y divide-slate-200">
             <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Brand</td><td className="py-2">Winnow Career Concierge</td></tr>
             <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Program</td><td className="py-2">Winnow Job Alerts &amp; Application Updates</td></tr>
-            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Opt-in</td><td className="py-2"><Link href="/login" className="font-semibold underline hover:text-slate-900">Sign in</Link> &rarr; <Link href="/settings" className="font-semibold underline hover:text-slate-900">Settings</Link> &rarr; Phone &amp; SMS Notifications &rarr; check consent box &rarr; Save</td></tr>
+            <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Opt-in</td><td className="py-2">Enter phone number + check consent box on this page or in <Link href="/settings" className="font-semibold underline hover:text-slate-900">Account Settings</Link></td></tr>
             <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Opt-out</td><td className="py-2">Reply <strong>STOP</strong> to any message, or disable in <Link href="/settings" className="font-semibold underline hover:text-slate-900">Account Settings</Link></td></tr>
             <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Help</td><td className="py-2">Reply <strong>HELP</strong> to any message, or email <a href="mailto:support@winnowcc.ai" className="font-semibold underline hover:text-slate-900">support@winnowcc.ai</a></td></tr>
             <tr><td className="py-2 pr-4 font-semibold text-slate-900 align-top whitespace-nowrap">Frequency</td><td className="py-2">Message frequency varies; up to 10 messages per week</td></tr>
@@ -92,6 +185,7 @@ export default function SmsConsentPage() {
         </table>
       </section>
 
+      {/* ─── Detailed Disclosures ─── */}
       <div className="space-y-8 text-sm leading-relaxed text-slate-700">
         <section>
           <h2 className="mb-2 text-lg font-semibold text-slate-900">Program Name</h2>
