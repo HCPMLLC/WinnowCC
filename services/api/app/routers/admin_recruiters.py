@@ -716,4 +716,26 @@ def get_job_match_count(
         )
     ).scalar() or 0
 
-    return {"job_id": job_id, "candidates_matched": count}
+    # Check if specific candidate is in results
+    from app.models.recruiter_job_candidate import (
+        RecruiterJobCandidate as RJC2,
+    )
+
+    all_matches = session.execute(
+        select(RJC2.candidate_profile_id, RJC2.match_score)
+        .where(RJC2.recruiter_job_id == job_id)
+        .order_by(RJC2.match_score.desc())
+    ).all()
+    top5 = [
+        {"id": r[0], "score": r[1]} for r in all_matches[:5]
+    ]
+    bottom5 = [
+        {"id": r[0], "score": r[1]} for r in all_matches[-5:]
+    ]
+
+    return {
+        "job_id": job_id,
+        "candidates_matched": count,
+        "top5": top5,
+        "bottom5": bottom5,
+    }
