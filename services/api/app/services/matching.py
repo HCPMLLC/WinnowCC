@@ -961,11 +961,23 @@ def find_top_candidates_for_recruiter_job(
     job_embedding = _get_embedding_list(
         getattr(recruiter_job, "embedding", None)
     )
-    scored: list[dict] = []
+    pool_a_scored: list[dict] = []
+    bc_scored: list[dict] = []
     seen_ids: set[int] = set()
 
     # Collect Pool B + C IDs (lightweight, no profile_json loaded)
     bc_ids = _collect_pool_ids(session, recruiter_user_id)
+
+    # Pool B + C first: recruiter's own sourced & pipeline candidates.
+    # These are always included regardless of limit.
+    if bc_ids:
+        bc_query = select(CandidateProfile).where(
+            CandidateProfile.id.in_(bc_ids)
+        )
+        _score_profiles_streaming(
+            session, bc_query, recruiter_job,
+            job_embedding, seen_ids, bc_scored,
+        )
 
     # Pool A: platform candidates (streamed)
     latest_sub = (
@@ -993,21 +1005,15 @@ def find_top_candidates_for_recruiter_job(
     )
     _score_profiles_streaming(
         session, pool_a_query, recruiter_job,
-        job_embedding, seen_ids, scored,
+        job_embedding, seen_ids, pool_a_scored,
     )
 
-    # Pool B + C: sourced & pipeline candidates (streamed)
-    if bc_ids:
-        bc_query = select(CandidateProfile).where(
-            CandidateProfile.id.in_(bc_ids)
-        )
-        _score_profiles_streaming(
-            session, bc_query, recruiter_job,
-            job_embedding, seen_ids, scored,
-        )
-
-    scored.sort(key=lambda x: x["match_score"], reverse=True)
-    return scored[:limit]
+    # Always include all B+C candidates, then fill remaining slots
+    # with top Pool A candidates up to the limit.
+    bc_scored.sort(key=lambda x: x["match_score"], reverse=True)
+    pool_a_scored.sort(key=lambda x: x["match_score"], reverse=True)
+    remaining = max(0, limit - len(bc_scored))
+    return bc_scored + pool_a_scored[:remaining]
 
 
 def _enrich_sourced_profile(profile_json: dict) -> dict:
