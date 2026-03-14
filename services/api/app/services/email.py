@@ -729,6 +729,42 @@ def send_weekly_digest_email(
     )
 
 
+def send_ingestion_failed_email(error: str, run_id: int | None = None) -> None:
+    """Alert admin when a scheduled job ingestion fails."""
+    to_email = os.getenv("ADMIN_ALERT_EMAIL", "").strip()
+    if not to_email or not RESEND_API_KEY:
+        logger.warning(
+            "Skipping ingestion failure alert (ADMIN_ALERT_EMAIL=%s, key=%s)",
+            bool(to_email),
+            bool(RESEND_API_KEY),
+        )
+        return
+
+    admin_url = f"{FRONTEND_URL}/admin/scheduler"
+    run_line = f" (run #{run_id})" if run_id else ""
+    resend.api_key = RESEND_API_KEY
+    _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": f"Winnow: Job ingestion failed{run_line}",
+            "text": (
+                f"Scheduled job ingestion failed{run_line}.\n\n"
+                f"Error:\n{error[:2000]}\n\n"
+                f"View run history: {admin_url}"
+            ),
+            "html": (
+                f"<p>Scheduled job ingestion failed{run_line}.</p>"
+                "<p><strong>Error:</strong></p>"
+                f"<pre style='background:#fef2f2;padding:12px;"
+                f"border-radius:6px;overflow-x:auto'>{error[:2000]}</pre>"
+                f'<p><a href="{admin_url}">View run history</a></p>'
+            ),
+        },
+        "ingestion_failed",
+    )
+
+
 def send_submittal_package_email(
     to_email: str,
     to_name: str,

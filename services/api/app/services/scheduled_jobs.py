@@ -105,7 +105,7 @@ def scheduled_ingest_jobs() -> dict:
                 session.rollback()
                 run.status = "failed"
                 run.finished_at = datetime.now(UTC)
-                run.error_message = str(e)[:1000]  # Truncate long errors
+                run.error_message = str(e)[:1000]
                 session.commit()
             except Exception as commit_err:
                 logger.exception(
@@ -113,6 +113,14 @@ def scheduled_ingest_jobs() -> dict:
                 )
             finally:
                 clear_progress(run.id)
+
+        # Send failure alert email
+        try:
+            from app.services.email import send_ingestion_failed_email
+
+            send_ingestion_failed_email(str(e), run_id=run.id if run else None)
+        except Exception:
+            logger.debug("Failed to send ingestion failure alert", exc_info=True)
 
         return {
             "run_id": run.id if run else None,
