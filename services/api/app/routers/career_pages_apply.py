@@ -25,6 +25,8 @@ from app.models.career_page_application import (
 )
 from app.models.job import Job
 from app.schemas.application import (
+    ApplicationFormData,
+    ApplicationFormResponse,
     ApplicationStartRequest,
     ApplicationStartResponse,
     ApplicationStatusResponse,
@@ -33,16 +35,16 @@ from app.schemas.application import (
     CrossJobMatch,
     CrossJobPitchResponse,
     ResumeUploadResponse,
-    SieveChatRequest,
-    SieveChatResponse,
 )
 from app.services.career_page_service import (
     get_career_page_by_slug,
 )
 from app.services.sieve_application import (
+    check_existing_applicant,
+    extract_prefilled_form,
     generate_cross_job_pitch,
     generate_welcome_message,
-    process_chat_message,
+    process_form_submission,
     process_resume_upload,
     start_application,
     submit_application,
@@ -208,22 +210,46 @@ def upload_resume(
         db, application, parsed_data, resume_url
     )
 
+    # Check for existing applicant
+    from app.models.career_page import CareerPage
+
+    cp_result = db.execute(
+        select(CareerPage).where(CareerPage.id == application.career_page_id)
+    )
+    career_page = cp_result.scalar_one()
+
+    existing_applicant = False
+    prefilled_form = extract_prefilled_form(parsed_data)
+
+    if application.email:
+        is_existing, existing_data = check_existing_applicant(
+            db, application.email, career_page
+        )
+        if is_existing and existing_data:
+            existing_applicant = True
+            # Merge existing data into prefilled form (existing data takes priority)
+            for key, val in existing_data.items():
+                if val:
+                    prefilled_form[key] = val
+
     return ResumeUploadResponse(
         success=True,
         parsed_data=parsed_data,
         completeness_score=completeness,
         missing_fields=missing,
         sieve_response=sieve_response,
+        existing_applicant=existing_applicant,
+        prefilled_form=prefilled_form,
     )
 
 
-@router.post("/chat/{session_token}", response_model=SieveChatResponse)
-def chat_with_sieve(
+@router.post("/form/{session_token}", response_model=ApplicationFormResponse)
+def submit_form(
     session_token: str,
-    data: SieveChatRequest,
+    data: ApplicationFormData,
     db: Annotated[Session, Depends(get_session)],
 ):
-    """Send a message to Sieve during application."""
+    """Submit application form data."""
     application = get_application_by_token(session_token, db)
 
     if application.status == ApplicationStatus.COMPLETED:
@@ -232,21 +258,14 @@ def chat_with_sieve(
             detail="Application already submitted",
         ) from None
 
-    (
-        sieve_response,
-        completeness,
-        fields_updated,
-        questions_answered,
-        suggest_submit,
-    ) = process_chat_message(db, application, data.message)
+    completeness, can_submit = process_form_submission(
+        db, application, data.model_dump()
+    )
 
-    return SieveChatResponse(
-        message=sieve_response,
+    return ApplicationFormResponse(
+        success=True,
         completeness_score=completeness,
-        fields_updated=fields_updated,
-        questions_answered=questions_answered,
-        can_submit=application.can_submit,
-        suggest_submit=suggest_submit,
+        can_submit=can_submit,
     )
 
 
@@ -325,16 +344,3 @@ def submit_application_endpoint(
     )
 
 
-@router.get("/conversation/{session_token}")
-def get_conversation_history(
-    session_token: str,
-    db: Annotated[Session, Depends(get_session)],
-):
-    """Get full conversation history for the application."""
-    application = get_application_by_token(session_token, db)
-
-    return {
-        "conversation": application.conversation_history or [],
-        "status": application.status,
-        "completeness_score": application.completeness_score,
-    }

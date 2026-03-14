@@ -1,14 +1,11 @@
 """
 Sieve application flow orchestration.
 
-Manages the conversational application experience, integrating
-resume parsing, profile completion, custom questions, and cross-job
-matching.
+Manages the form-based application experience, integrating
+resume parsing, profile completion, and cross-job matching.
 """
 
-import json
 import logging
-import os
 import secrets
 from datetime import datetime
 from typing import Any
@@ -17,6 +14,7 @@ from uuid import UUID
 from sqlalchemy import and_, select
 from sqlalchemy.orm import Session
 
+from app.models.candidate import Candidate
 from app.models.career_page import CareerPage
 from app.models.career_page_application import (
     ApplicationStatus,
@@ -25,27 +23,19 @@ from app.models.career_page_application import (
 from app.models.job import Job
 from app.models.job_custom_question import (
     CandidateQuestionResponse,
-    JobCustomQuestion,
 )
+from app.models.user import User
 from app.services.cross_job_matcher import (
     generate_cross_job_recommendations,
 )
 from app.services.profile_completeness import (
     calculate_completeness_score,
-    generate_completeness_prompt,
     get_job_specific_requirements,
     get_missing_fields,
     get_profile_data_from_parsed_resume,
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _get_anthropic_client():
-    """Get Anthropic client for LLM calls."""
-    import anthropic
-
-    return anthropic.Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"), max_retries=3)
 
 
 def start_application(
@@ -123,62 +113,14 @@ def generate_welcome_message(
     application: CareerPageApplication,
     sieve_config: dict[str, Any],
 ) -> str:
-    """Generate Sieve's welcome message for the application."""
+    """Generate a static welcome message for the application."""
     result = db.execute(select(Job).where(Job.id == application.job_id))
     job = result.scalar_one()
 
-    cp_result = db.execute(
-        select(CareerPage).where(CareerPage.id == application.career_page_id)
+    welcome = (
+        f"Welcome! Upload your resume to get started with your "
+        f"application for the {job.title} position."
     )
-    career_page = cp_result.scalar_one()
-
-    sieve_name = sieve_config.get("name", "Sieve")
-    tone = sieve_config.get("tone", "professional")
-    custom_welcome = sieve_config.get("welcome_message", "")
-
-    prompt = f"""Generate a brief, warm welcome message for a job applicant.
-
-Context:
-- Assistant name: {sieve_name}
-- Tone: {tone}
-- Job title: {job.title}
-- Company: {career_page.name}
-- Custom welcome (incorporate if provided): {custom_welcome}
-
-Requirements:
-- Keep it to 2-3 sentences
-- Be welcoming and professional
-- Mention you'll help them apply for the {job.title} role
-- Invite them to upload their resume or tell you about themselves
-- Don't ask multiple questions
-
-Output only the message, no quotes or formatting."""
-
-    try:
-        client = _get_anthropic_client()
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=200,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        welcome = response.content[0].text.strip()
-    except Exception as e:
-        logger.error("Error generating welcome: %s", e)
-        welcome = (
-            f"Hi! I'm {sieve_name}, and I'm here to help you "
-            f"apply for the {job.title} position. You can upload "
-            f"your resume or just tell me about your background "
-            f"to get started."
-        )
-
-    # Add to conversation history
-    application.conversation_history = [
-        {
-            "role": "assistant",
-            "content": welcome,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-    ]
 
     db.commit()
     return welcome
@@ -191,9 +133,9 @@ def process_resume_upload(
     resume_file_url: str,
 ) -> tuple[str, int, list[dict]]:
     """
-    Process uploaded resume and generate Sieve response.
+    Process uploaded resume.
 
-    Returns (sieve_response, completeness_score, missing_fields).
+    Returns (message, completeness_score, missing_fields).
     """
     profile_data = get_profile_data_from_parsed_resume(parsed_resume_data)
 
@@ -217,311 +159,211 @@ def process_resume_upload(
     application.status = ApplicationStatus.RESUME_UPLOADED
     application.last_activity_at = datetime.utcnow()
 
-    # Generate Sieve response
-    sieve_response = _generate_resume_response(
-        profile_data, completeness, missing, job.title
-    )
-
-    # Add to conversation
-    history = list(application.conversation_history or [])
-    history.append(
-        {
-            "role": "user",
-            "content": "[Uploaded resume]",
-            "timestamp": datetime.utcnow().isoformat(),
-            "type": "resume_upload",
-        }
-    )
-    history.append(
-        {
-            "role": "assistant",
-            "content": sieve_response,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-    )
-    application.conversation_history = history
-
     db.commit()
 
-    return sieve_response, completeness, missing
+    message = (
+        f"Resume parsed successfully! Please review and complete "
+        f"the form below to finish your application for {job.title}."
+    )
+    return message, completeness, missing
 
 
-def _generate_resume_response(
-    profile_data: dict,
-    completeness: int,
-    missing: list,
-    job_title: str,
-) -> str:
-    """Generate Sieve's response to resume upload."""
-    name = profile_data.get("full_name", "")
-    current_title = profile_data.get("current_title", "")
-    required_missing = [f for f in missing if f["importance"] == "required"]
+def check_existing_applicant(
+    db: Session,
+    email: str,
+    career_page: CareerPage,
+) -> tuple[bool, dict[str, Any] | None]:
+    """
+    Check if applicant already exists in the system.
 
-    prompt = f"""Generate a brief, encouraging response to a resume upload.
+    Returns (is_existing, candidate_data_dict or None).
+    """
+    # Check User -> Candidate
+    user_result = db.execute(select(User).where(User.email == email))
+    user = user_result.scalar_one_or_none()
 
-Context:
-- Candidate name: {name or "the candidate"}
-- Current/recent title: {current_title or "not specified"}
-- Profile completeness: {completeness}%
-- Job applying for: {job_title}
-- Required fields still needed: {[f["label"] for f in required_missing[:3]]}
-
-Requirements:
-- Acknowledge you received their resume
-- If name is available, use it once
-- Comment briefly on their background (1 sentence)
-- If completeness < 80%, naturally ask about ONE missing required field
-- Keep total response to 3-4 sentences
-- Be warm and encouraging
-
-Output only the message."""
-
-    try:
-        client = _get_anthropic_client()
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=250,
-            messages=[{"role": "user", "content": prompt}],
+    if user:
+        candidate_result = db.execute(
+            select(Candidate).where(Candidate.user_id == user.id)
         )
-        return response.content[0].text.strip()
-    except Exception as e:
-        logger.error("Error generating resume response: %s", e)
+        candidate = candidate_result.scalar_one_or_none()
 
-        if completeness >= 80:
-            return (
-                f"Thanks for sharing your resume! Your background "
-                f"looks great for the {job_title} role. Just a "
-                f"couple more quick questions and we'll have your "
-                f"application ready."
+        if candidate and (candidate.first_name and candidate.phone):
+            data: dict[str, Any] = {
+                "first_name": candidate.first_name or "",
+                "last_name": candidate.last_name or "",
+                "phone": candidate.phone or "",
+                "city": candidate.location_city or "",
+                "state": candidate.state or "",
+                "work_authorization": candidate.work_authorization or "",
+                "total_years_experience": candidate.years_experience,
+                "remote_preference": candidate.remote_preference or "",
+                "expected_salary": candidate.desired_salary_min,
+            }
+            return True, data
+
+    # Check RecruiterPipelineCandidate if recruiter career page
+    if career_page.tenant_type == "recruiter":
+        try:
+            from app.models.recruiter_pipeline_candidate import (
+                RecruiterPipelineCandidate,
             )
-        first_missing = (
-            required_missing[0]["label"] if required_missing else "work history"
-        )
-        return (
-            f"Thanks for sharing your resume! I can see you have "
-            f"relevant experience. To complete your application, "
-            f"could you tell me more about your "
-            f"{first_missing.lower()}?"
-        )
+
+            rpc_result = db.execute(
+                select(RecruiterPipelineCandidate).where(
+                    RecruiterPipelineCandidate.external_email == email
+                )
+            )
+            rpc = rpc_result.scalars().first()
+
+            if rpc and rpc.external_name:
+                name_parts = (rpc.external_name or "").split(" ", 1)
+                data = {
+                    "first_name": name_parts[0] if name_parts else "",
+                    "last_name": name_parts[1] if len(name_parts) > 1 else "",
+                    "phone": rpc.external_phone or "",
+                    "city": rpc.location or "",
+                }
+                return True, data
+        except Exception:
+            logger.debug("RecruiterPipelineCandidate lookup failed")
+
+    return False, None
 
 
-def process_chat_message(
+def extract_prefilled_form(parsed_data: dict[str, Any]) -> dict[str, Any]:
+    """Extract form-relevant fields from resume parsed data."""
+    profile = get_profile_data_from_parsed_resume(parsed_data)
+
+    form: dict[str, Any] = {}
+
+    # Name
+    full_name = profile.get("full_name", "")
+    if full_name:
+        parts = full_name.strip().split(" ", 1)
+        form["first_name"] = parts[0]
+        form["last_name"] = parts[1] if len(parts) > 1 else ""
+
+    # Phone
+    if profile.get("phone"):
+        form["phone"] = profile["phone"]
+
+    # Location - try to parse city/state from location string
+    location = profile.get("location", "")
+    if location:
+        form["city"] = location
+
+    # Experience
+    if profile.get("years_experience"):
+        form["total_years_experience"] = profile["years_experience"]
+
+    # Salary
+    if profile.get("desired_salary"):
+        form["expected_salary"] = profile["desired_salary"]
+
+    # Work authorization
+    if profile.get("work_authorization"):
+        form["work_authorization"] = profile["work_authorization"]
+
+    # Relocation
+    if profile.get("willing_to_relocate"):
+        val = str(profile["willing_to_relocate"]).lower()
+        if val in ("yes", "true", "1"):
+            form["relocation_willingness"] = "yes"
+        elif val in ("no", "false", "0"):
+            form["relocation_willingness"] = "no"
+
+    return form
+
+
+def process_form_submission(
     db: Session,
     application: CareerPageApplication,
-    user_message: str,
-) -> tuple[str, int, list[str], list[str], bool]:
+    form_data: dict[str, Any],
+) -> tuple[int, bool]:
     """
-    Process a chat message from the candidate.
+    Process form data submission.
 
-    Returns (sieve_response, completeness_score, fields_updated,
-    questions_answered, suggest_submit).
+    Merges form fields into resume_parsed_data and stores raw form
+    in question_responses["form_data"].
+
+    Returns (completeness_score, can_submit).
     """
-    profile_data = dict(application.resume_parsed_data or {})
-    missing_fields = list(application.missing_fields or [])
+    parsed = dict(application.resume_parsed_data or {})
 
-    custom_questions = _get_unanswered_questions(db, application)
+    # Merge form fields into parsed data
+    first = form_data.get("first_name", "")
+    last = form_data.get("last_name", "")
+    full_name = f"{first} {last}".strip()
+    if full_name:
+        parsed["name"] = full_name
+        parsed["full_name"] = full_name
 
-    context = generate_completeness_prompt(
-        missing_fields, custom_questions, profile_data
-    )
+    if form_data.get("phone"):
+        parsed["phone"] = form_data["phone"]
 
-    result = db.execute(select(Job).where(Job.id == application.job_id))
-    job = result.scalar_one()
+    # Build location string
+    loc_parts = []
+    if form_data.get("city"):
+        loc_parts.append(form_data["city"])
+    if form_data.get("state"):
+        loc_parts.append(form_data["state"])
+    if form_data.get("zip_code"):
+        loc_parts.append(form_data["zip_code"])
+    if loc_parts:
+        parsed["location"] = ", ".join(loc_parts)
 
-    recent_history = (
-        application.conversation_history[-6:]
-        if application.conversation_history
-        else []
-    )
+    if form_data.get("address"):
+        parsed["address"] = form_data["address"]
 
-    sieve_response, extracted_data = _generate_chat_response(
-        user_message,
-        recent_history,
-        context,
-        job.title,
-        missing_fields,
-        custom_questions,
-    )
+    if form_data.get("total_years_experience") is not None:
+        parsed["years_experience"] = form_data["total_years_experience"]
 
-    fields_updated: list[str] = []
-    questions_answered: list[str] = []
+    if form_data.get("expected_salary") is not None:
+        parsed["desired_salary"] = form_data["expected_salary"]
 
-    # Update profile fields
-    if extracted_data.get("profile_updates"):
-        for field, value in extracted_data["profile_updates"].items():
-            profile_data[field] = value
-            fields_updated.append(field)
+    if form_data.get("remote_preference"):
+        parsed["remote_preference"] = form_data["remote_preference"]
 
-            for mf in missing_fields:
-                if mf["field"] == field:
-                    mf["answered"] = True
+    if form_data.get("job_type_preference"):
+        parsed["job_type_preference"] = form_data["job_type_preference"]
 
-    # Update custom question responses
-    if extracted_data.get("question_responses"):
-        q_responses = dict(application.question_responses or {})
-        for q_id, response in extracted_data["question_responses"].items():
-            q_responses[q_id] = response
-            questions_answered.append(q_id)
-        application.question_responses = q_responses
+    if form_data.get("work_authorization"):
+        parsed["work_authorization"] = form_data["work_authorization"]
+
+    if form_data.get("relocation_willingness"):
+        parsed["willing_to_relocate"] = form_data["relocation_willingness"]
+
+    application.resume_parsed_data = parsed
+
+    # Store raw form in question_responses
+    q_responses = dict(application.question_responses or {})
+    q_responses["form_data"] = form_data
+    application.question_responses = q_responses
+
+    # Recalculate completeness
+    profile_data = get_profile_data_from_parsed_resume(parsed)
+    # Also inject direct fields that don't come from resume mapping
+    if parsed.get("years_experience"):
+        profile_data["years_experience"] = parsed["years_experience"]
+    if parsed.get("phone"):
+        profile_data["phone"] = parsed["phone"]
+    if parsed.get("location"):
+        profile_data["location"] = parsed["location"]
+    if parsed.get("full_name"):
+        profile_data["full_name"] = parsed["full_name"]
 
     new_completeness = calculate_completeness_score(profile_data)
+    missing = get_missing_fields(profile_data)
 
-    application.resume_parsed_data = profile_data
     application.completeness_score = new_completeness
-    application.missing_fields = missing_fields
+    application.missing_fields = missing
     application.status = ApplicationStatus.PROFILE_BUILDING
     application.last_activity_at = datetime.utcnow()
 
-    # Add to conversation history
-    history = list(application.conversation_history or [])
-    history.append(
-        {
-            "role": "user",
-            "content": user_message,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-    )
-    history.append(
-        {
-            "role": "assistant",
-            "content": sieve_response,
-            "timestamp": datetime.utcnow().isoformat(),
-        }
-    )
-    application.conversation_history = history
-
     db.commit()
 
-    can_submit = application.can_submit
-    suggest_submit = new_completeness >= 85 and can_submit
-
-    return (
-        sieve_response,
-        new_completeness,
-        fields_updated,
-        questions_answered,
-        suggest_submit,
-    )
-
-
-def _get_unanswered_questions(
-    db: Session,
-    application: CareerPageApplication,
-) -> list[dict]:
-    """Get custom questions not yet answered."""
-    result = db.execute(
-        select(JobCustomQuestion)
-        .where(
-            and_(
-                JobCustomQuestion.job_id == application.job_id,
-                JobCustomQuestion.active == True,  # noqa: E712
-            )
-        )
-        .order_by(JobCustomQuestion.order_index)
-    )
-    questions = list(result.scalars().all())
-
-    answered_ids = set((application.question_responses or {}).keys())
-
-    return [
-        {
-            "question_id": str(q.id),
-            "question_text": q.question_text,
-            "question_type": q.question_type,
-            "options": q.options,
-            "required": q.required,
-            "sieve_prompt_hint": q.sieve_prompt_hint,
-            "answered": str(q.id) in answered_ids,
-        }
-        for q in questions
-        if str(q.id) not in answered_ids
-    ]
-
-
-def _generate_chat_response(
-    user_message: str,
-    conversation_history: list,
-    context: str,
-    job_title: str,
-    missing_fields: list,
-    custom_questions: list,
-) -> tuple[str, dict]:
-    """Generate Sieve response and extract profile data."""
-    history_str = "\n".join(
-        [f"{msg['role'].title()}: {msg['content']}" for msg in conversation_history]
-    )
-
-    fields_to_extract = [f["field"] for f in missing_fields if not f.get("answered")]
-    questions_to_extract = [q["question_id"] for q in custom_questions]
-
-    prompt = f"""You are Sieve, a friendly AI assistant helping \
-someone apply for a {job_title} position.
-
-CONVERSATION SO FAR:
-{history_str}
-
-USER'S LATEST MESSAGE:
-{user_message}
-
-CONTEXT (what we still need):
-{context}
-
-INSTRUCTIONS:
-1. Extract any profile information the user provided
-2. Check if they answered any custom screening questions
-3. Generate a natural, brief response (2-3 sentences max)
-4. If profile is nearly complete, encourage them
-5. If missing critical info, ask ONE follow-up question
-6. Be warm, professional, and efficient
-
-OUTPUT FORMAT (JSON):
-{{
-    "response": "Your conversational response here",
-    "profile_updates": {{
-        "field_name": "extracted_value"
-    }},
-    "question_responses": {{
-        "question_id": {{"response": "extracted answer", \
-"confidence": 90}}
-    }}
-}}
-
-Fields to look for: {fields_to_extract}
-Question IDs to match: {questions_to_extract}
-
-Output ONLY the JSON, no other text."""
-
-    try:
-        client = _get_anthropic_client()
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=500,
-            messages=[{"role": "user", "content": prompt}],
-        )
-
-        response_text = response.content[0].text.strip()
-
-        # Clean up JSON if wrapped in markdown
-        if response_text.startswith("```"):
-            response_text = response_text.split("```")[1]
-            if response_text.startswith("json"):
-                response_text = response_text[4:]
-
-        data = json.loads(response_text)
-
-        return data.get("response", ""), {
-            "profile_updates": data.get("profile_updates", {}),
-            "question_responses": data.get("question_responses", {}),
-        }
-
-    except Exception as e:
-        logger.error("Error generating chat response: %s", e)
-        return (
-            "Thanks for sharing that! Let me note that down. "
-            "Is there anything else you'd like to add about "
-            "your background?",
-            {},
-        )
+    return new_completeness, application.can_submit
 
 
 def generate_cross_job_pitch(
@@ -582,47 +424,25 @@ def _generate_pitch_message(
     applied_job_title: str,
     recommendations: list[dict],
 ) -> str:
-    """Generate Sieve's cross-job pitch message."""
+    """Generate a cross-job pitch message."""
     if not recommendations:
         return ""
 
     top_rec = recommendations[0]
+    title = top_rec.get("title", "another open role")
+    score = top_rec["ips_score"]
 
-    prompt = f"""Generate a brief, excited message suggesting \
-another job to a candidate.
-
-Context:
-- They just applied for: {applied_job_title}
-- We're suggesting: {top_rec.get("title", "another role")}
-- Match score: {top_rec["ips_score"]}%
-- Why it's a fit: {top_rec.get("explanation", "")}
-- Additional recommendations: {len(recommendations) - 1}
-
-Requirements:
-- 2-3 sentences max
-- Sound genuinely excited about the match
-- Mention the specific role and score
-- If there are more recommendations, hint at them
-- Don't be pushy
-
-Output only the message."""
-
-    try:
-        client = _get_anthropic_client()
-        response = client.messages.create(
-            model="claude-3-haiku-20240307",
-            max_tokens=150,
-            messages=[{"role": "user", "content": prompt}],
+    msg = (
+        f"Based on your profile, you'd also be a great "
+        f"fit for our {title} role — {score}% match!"
+    )
+    if len(recommendations) > 1:
+        msg += (
+            f" Plus {len(recommendations) - 1} more "
+            f"role{'s' if len(recommendations) > 2 else ''} "
+            f"worth checking out."
         )
-        return response.content[0].text.strip()
-    except Exception as e:
-        logger.error("Error generating pitch: %s", e)
-        return (
-            f"Great news! Based on your profile, you'd be an "
-            f"excellent fit for our "
-            f"{top_rec.get('title', 'other open')} role too — "
-            f"I'm seeing a {top_rec['ips_score']}% match!"
-        )
+    return msg
 
 
 def submit_application(

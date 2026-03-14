@@ -56,28 +56,41 @@ class ResumeUploadResponse(BaseModel):
     completeness_score: int
     missing_fields: list[dict[str, Any]]
     sieve_response: str
+    existing_applicant: bool = False
+    prefilled_form: dict[str, Any] | None = None
 
 
 # ============================================================
-# Sieve Conversation
+# Application Form (replaces Sieve chat)
 # ============================================================
 
 
-class SieveChatRequest(BaseModel):
-    """Send message to Sieve during application."""
+class ApplicationFormData(BaseModel):
+    """Form data submitted during application."""
 
-    message: str = Field(..., min_length=1, max_length=5000)
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    address: str | None = Field(None, max_length=255)
+    city: str | None = Field(None, max_length=100)
+    state: str | None = Field(None, max_length=2)
+    zip_code: str | None = Field(None, max_length=20)
+    phone: str = Field(..., min_length=1, max_length=50)
+    total_years_experience: int = Field(..., ge=0, le=99)
+    expected_salary: int | None = Field(None, ge=0)
+    remote_preference: str | None = Field(None, pattern="^(remote|hybrid|onsite)$")
+    job_type_preference: str | None = Field(
+        None, pattern="^(permanent|contract|temporary)$"
+    )
+    work_authorization: str | None = Field(None, max_length=100)
+    relocation_willingness: str | None = Field(None, pattern="^(yes|no)$")
 
 
-class SieveChatResponse(BaseModel):
-    """Sieve's response during application."""
+class ApplicationFormResponse(BaseModel):
+    """Response after form submission."""
 
-    message: str
+    success: bool
     completeness_score: int
-    fields_updated: list[str] = []
-    questions_answered: list[str] = []
     can_submit: bool
-    suggest_submit: bool = False
 
 
 # ============================================================

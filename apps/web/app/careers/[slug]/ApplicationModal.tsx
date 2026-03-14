@@ -1,26 +1,52 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   X,
   Upload,
-  Send,
   CheckCircle2,
   Loader2,
-  FileText,
   Briefcase,
   MapPin,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react";
 
 const API = process.env.NEXT_PUBLIC_API_BASE_URL || "";
 
-type Step = "email" | "resume" | "chat" | "done";
+type Step = "email" | "resume" | "form" | "done";
 
-interface ChatMessage {
-  role: "assistant" | "user";
-  content: string;
+interface FormData {
+  first_name: string;
+  last_name: string;
+  address: string;
+  city: string;
+  state: string;
+  zip_code: string;
+  phone: string;
+  total_years_experience: string;
+  expected_salary: string;
+  remote_preference: string;
+  job_type_preference: string;
+  work_authorization: string;
+  relocation_willingness: string;
 }
+
+const EMPTY_FORM: FormData = {
+  first_name: "",
+  last_name: "",
+  address: "",
+  city: "",
+  state: "",
+  zip_code: "",
+  phone: "",
+  total_years_experience: "",
+  expected_salary: "",
+  remote_preference: "",
+  job_type_preference: "",
+  work_authorization: "",
+  relocation_willingness: "",
+};
 
 interface CrossJob {
   job_id: number;
@@ -83,14 +109,12 @@ export default function ApplicationModal({
   const [uploading, setUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Chat step
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState("");
-  const [sending, setSending] = useState(false);
+  // Form step
+  const [form, setForm] = useState<FormData>({ ...EMPTY_FORM });
+  const [existingApplicant, setExistingApplicant] = useState(false);
   const [completeness, setCompleteness] = useState(0);
   const [canSubmit, setCanSubmit] = useState(false);
-  const [suggestSubmit, setSuggestSubmit] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [formSubmitting, setFormSubmitting] = useState(false);
 
   // Cross-job
   const [crossJobs, setCrossJobs] = useState<CrossJob[]>([]);
@@ -105,11 +129,6 @@ export default function ApplicationModal({
 
   const primary = branding.colors.primary || "#2563eb";
   const headingFont = branding.fonts?.heading || "Inter, sans-serif";
-
-  // Scroll chat to bottom
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   // Close on Escape
   useEffect(() => {
@@ -133,6 +152,10 @@ export default function ApplicationModal({
         .catch(() => {});
     }
   }, [completeness, sessionToken, crossJobsFetched]);
+
+  function updateForm(field: keyof FormData, value: string) {
+    setForm(prev => ({ ...prev, [field]: value }));
+  }
 
   // -- Step handlers --
 
@@ -160,7 +183,6 @@ export default function ApplicationModal({
       const data = await res.json();
       setSessionToken(data.session_token);
       saveSession({ sessionToken: data.session_token, jobId, jobTitle, slug });
-      setMessages([{ role: "assistant", content: data.sieve_welcome }]);
       setStep("resume");
     } catch (e: any) {
       setError(e.message || "Something went wrong");
@@ -194,40 +216,78 @@ export default function ApplicationModal({
       }
       const data = await res.json();
       setCompleteness(data.completeness_score);
-      if (data.sieve_response) {
-        setMessages(prev => [...prev, { role: "assistant", content: data.sieve_response }]);
+
+      // Populate form from prefilled data
+      if (data.prefilled_form) {
+        setForm(prev => {
+          const next = { ...prev };
+          for (const [key, val] of Object.entries(data.prefilled_form)) {
+            if (key in next && val != null && val !== "") {
+              (next as any)[key] = String(val);
+            }
+          }
+          return next;
+        });
       }
-      setStep("chat");
+
+      setExistingApplicant(data.existing_applicant || false);
+      setStep("form");
     } catch (e: any) {
       setError(e.message || "Upload failed");
     }
     setUploading(false);
   }
 
-  async function handleSendChat() {
-    const msg = chatInput.trim();
-    if (!msg || sending) return;
+  async function handleFormSubmit() {
+    // Validate required fields
+    if (!form.first_name.trim() || !form.last_name.trim() || !form.phone.trim() || !form.total_years_experience) {
+      setError("Please fill in all required fields");
+      return;
+    }
 
-    setMessages(prev => [...prev, { role: "user", content: msg }]);
-    setChatInput("");
-    setSending(true);
-
+    setFormSubmitting(true);
+    setError("");
     try {
-      const res = await fetch(`${API}/api/public/apply/chat/${sessionToken}`, {
+      const payload: any = {
+        first_name: form.first_name.trim(),
+        last_name: form.last_name.trim(),
+        phone: form.phone.trim(),
+        total_years_experience: parseInt(form.total_years_experience, 10) || 0,
+      };
+      // Optional fields
+      if (form.address.trim()) payload.address = form.address.trim();
+      if (form.city.trim()) payload.city = form.city.trim();
+      if (form.state.trim()) payload.state = form.state.trim().toUpperCase();
+      if (form.zip_code.trim()) payload.zip_code = form.zip_code.trim();
+      if (form.expected_salary) payload.expected_salary = parseInt(form.expected_salary, 10);
+      if (form.remote_preference) payload.remote_preference = form.remote_preference;
+      if (form.job_type_preference) payload.job_type_preference = form.job_type_preference;
+      if (form.work_authorization.trim()) payload.work_authorization = form.work_authorization.trim();
+      if (form.relocation_willingness) payload.relocation_willingness = form.relocation_willingness;
+
+      const res = await fetch(`${API}/api/public/apply/form/${sessionToken}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: msg }),
+        body: JSON.stringify(payload),
       });
-      if (!res.ok) throw new Error("Failed to send message");
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || "Failed to submit form");
+      }
       const data = await res.json();
-      setMessages(prev => [...prev, { role: "assistant", content: data.message }]);
       setCompleteness(data.completeness_score);
       setCanSubmit(data.can_submit);
-      setSuggestSubmit(data.suggest_submit);
-    } catch {
-      setMessages(prev => [...prev, { role: "assistant", content: "Sorry, something went wrong. Please try again." }]);
+
+      // Auto-submit if ready
+      if (data.can_submit) {
+        await handleSubmit();
+      } else {
+        setError("Your profile needs more information to submit. Please ensure all required fields are filled.");
+      }
+    } catch (e: any) {
+      setError(e.message || "Form submission failed");
     }
-    setSending(false);
+    setFormSubmitting(false);
   }
 
   async function handleSubmit() {
@@ -263,6 +323,8 @@ export default function ApplicationModal({
     });
   }
 
+  const inputClasses = "w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:outline-none";
+
   // -- Render --
 
   return (
@@ -288,8 +350,8 @@ export default function ApplicationModal({
           </button>
         </div>
 
-        {/* Completeness bar (chat step) */}
-        {step === "chat" && (
+        {/* Completeness bar (form step) */}
+        {step === "form" && (
           <div className="px-5 py-2 border-b shrink-0">
             <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
               <span>Profile completeness</span>
@@ -310,7 +372,7 @@ export default function ApplicationModal({
           {step === "email" && (
             <div className="p-5 space-y-4">
               <p className="text-sm text-gray-600">
-                Enter your email and upload your resume to get started. Our AI assistant will guide you through the rest.
+                Enter your email and upload your resume to get started.
               </p>
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">Email <span className="text-red-500">*</span></label>
@@ -320,7 +382,7 @@ export default function ApplicationModal({
                   onChange={e => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   required
-                  className="w-full px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:outline-none"
+                  className={inputClasses}
                   style={{ ["--tw-ring-color" as any]: primary + "40", borderColor: email ? primary : undefined }}
                   onKeyDown={e => { if (e.key === "Enter" && email.trim()) handleStart(); }}
                 />
@@ -332,12 +394,9 @@ export default function ApplicationModal({
           {/* === RESUME STEP === */}
           {step === "resume" && (
             <div className="p-5 space-y-4">
-              {/* Show Sieve welcome */}
-              {messages.length > 0 && (
-                <div className="bg-gray-50 rounded-lg p-3 text-sm text-gray-700">
-                  {messages[messages.length - 1].content}
-                </div>
-              )}
+              <p className="text-sm text-gray-600">
+                Upload your resume and we'll pre-fill your application.
+              </p>
 
               {/* Drop zone */}
               <div
@@ -380,36 +439,115 @@ export default function ApplicationModal({
             </div>
           )}
 
-          {/* === CHAT STEP === */}
-          {step === "chat" && (
-            <div className="flex flex-col" style={{ minHeight: "300px" }}>
-              {/* Messages */}
-              <div className="flex-1 p-4 space-y-3 overflow-y-auto" style={{ maxHeight: "50vh" }}>
-                {messages.map((msg, i) => (
-                  <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
-                    <div
-                      className={`max-w-[85%] rounded-xl px-3.5 py-2.5 text-sm ${
-                        msg.role === "user" ? "text-white" : "bg-gray-100 text-gray-800"
-                      }`}
-                      style={msg.role === "user" ? { backgroundColor: primary } : {}}
-                    >
-                      {msg.content}
-                    </div>
+          {/* === FORM STEP === */}
+          {step === "form" && (
+            <div className="p-5 space-y-4">
+              {/* Returning applicant banner */}
+              {existingApplicant && (
+                <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-green-800">Welcome back!</p>
+                    <p className="text-xs text-green-700 mt-0.5">
+                      We have your info on file. Please review and update anything that's changed.
+                    </p>
                   </div>
-                ))}
-                {sending && (
-                  <div className="flex justify-start">
-                    <div className="bg-gray-100 rounded-xl px-3.5 py-2.5">
-                      <Loader2 className="w-4 h-4 animate-spin text-gray-400" />
-                    </div>
-                  </div>
-                )}
-                <div ref={chatEndRef} />
+                </div>
+              )}
+
+              {/* Name row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">First Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={form.first_name} onChange={e => updateForm("first_name", e.target.value)} className={inputClasses} placeholder="First name" />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
+                  <input type="text" value={form.last_name} onChange={e => updateForm("last_name", e.target.value)} className={inputClasses} placeholder="Last name" />
+                </div>
+              </div>
+
+              {/* Address */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Address</label>
+                <input type="text" value={form.address} onChange={e => updateForm("address", e.target.value)} className={inputClasses} placeholder="Street address" />
+              </div>
+
+              {/* City / State / Zip row */}
+              <div className="grid grid-cols-6 gap-3">
+                <div className="col-span-3">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">City</label>
+                  <input type="text" value={form.city} onChange={e => updateForm("city", e.target.value)} className={inputClasses} placeholder="City" />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">State</label>
+                  <input type="text" value={form.state} onChange={e => updateForm("state", e.target.value)} className={inputClasses} placeholder="TX" maxLength={2} />
+                </div>
+                <div className="col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Zip</label>
+                  <input type="text" value={form.zip_code} onChange={e => updateForm("zip_code", e.target.value)} className={inputClasses} placeholder="78701" />
+                </div>
+              </div>
+
+              {/* Phone */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Phone <span className="text-red-500">*</span></label>
+                <input type="tel" value={form.phone} onChange={e => updateForm("phone", e.target.value)} className={inputClasses} placeholder="(555) 123-4567" />
+              </div>
+
+              {/* Experience / Salary row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Total Years of Experience <span className="text-red-500">*</span></label>
+                  <input type="number" value={form.total_years_experience} onChange={e => updateForm("total_years_experience", e.target.value)} className={inputClasses} placeholder="5" min={0} max={99} />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Expected Salary</label>
+                  <input type="number" value={form.expected_salary} onChange={e => updateForm("expected_salary", e.target.value)} className={inputClasses} placeholder="75000" min={0} />
+                </div>
+              </div>
+
+              {/* Remote / Job Type row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Remote Preference</label>
+                  <select value={form.remote_preference} onChange={e => updateForm("remote_preference", e.target.value)} className={inputClasses}>
+                    <option value="">Select...</option>
+                    <option value="remote">Remote</option>
+                    <option value="hybrid">Hybrid</option>
+                    <option value="onsite">Onsite</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Job Type Preference</label>
+                  <select value={form.job_type_preference} onChange={e => updateForm("job_type_preference", e.target.value)} className={inputClasses}>
+                    <option value="">Select...</option>
+                    <option value="permanent">Permanent</option>
+                    <option value="contract">Contract</option>
+                    <option value="temporary">Temporary</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Work Authorization */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Work Authorization</label>
+                <input type="text" value={form.work_authorization} onChange={e => updateForm("work_authorization", e.target.value)} className={inputClasses} placeholder="US Citizen, H-1B, etc." />
+              </div>
+
+              {/* Relocation */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Willing to Relocate</label>
+                <select value={form.relocation_willingness} onChange={e => updateForm("relocation_willingness", e.target.value)} className={inputClasses}>
+                  <option value="">Select...</option>
+                  <option value="yes">Yes</option>
+                  <option value="no">No</option>
+                </select>
               </div>
 
               {/* Cross-job recommendations */}
               {crossJobs.length > 0 && (
-                <div className="mx-4 mb-3 border rounded-xl overflow-hidden">
+                <div className="border rounded-xl overflow-hidden">
                   <div className="bg-gray-50 px-3 py-2 border-b">
                     <p className="text-xs font-medium text-gray-600">
                       <Briefcase className="w-3 h-3 inline mr-1" />
@@ -451,28 +589,12 @@ export default function ApplicationModal({
                 </div>
               )}
 
-              {/* Chat input */}
-              <div className="p-3 border-t shrink-0">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={chatInput}
-                    onChange={e => setChatInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendChat(); } }}
-                    placeholder="Type your response..."
-                    disabled={sending}
-                    className="flex-1 px-3 py-2.5 border rounded-lg text-sm focus:ring-2 focus:outline-none disabled:opacity-50"
-                  />
-                  <button
-                    onClick={handleSendChat}
-                    disabled={!chatInput.trim() || sending}
-                    className="px-3 py-2.5 rounded-lg text-white transition-opacity disabled:opacity-40"
-                    style={{ backgroundColor: primary }}
-                  >
-                    <Send className="w-4 h-4" />
-                  </button>
+              {error && (
+                <div className="flex items-start gap-2 text-sm text-red-600">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
@@ -518,24 +640,16 @@ export default function ApplicationModal({
             </button>
           )}
 
-          {step === "chat" && canSubmit && (
+          {step === "form" && (
             <button
-              onClick={handleSubmit}
-              disabled={loading}
-              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-medium text-sm transition-all ${
-                suggestSubmit ? "animate-pulse" : ""
-              }`}
+              onClick={handleFormSubmit}
+              disabled={formSubmitting || loading}
+              className="flex-1 flex items-center justify-center gap-2 py-3 rounded-lg text-white font-medium text-sm transition-opacity disabled:opacity-60"
               style={{ backgroundColor: primary }}
             >
-              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+              {(formSubmitting || loading) ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
               Submit Application{selectedCrossJobs.size > 0 ? ` (+${selectedCrossJobs.size})` : ""}
             </button>
-          )}
-
-          {step === "chat" && !canSubmit && (
-            <p className="flex-1 text-center text-xs text-gray-400 py-2">
-              Keep chatting to complete your profile ({completeness}% complete)
-            </p>
           )}
 
           {step === "done" && (
@@ -546,10 +660,6 @@ export default function ApplicationModal({
             >
               Browse More Jobs
             </button>
-          )}
-
-          {error && step !== "email" && step !== "resume" && (
-            <p className="text-sm text-red-600 text-center w-full">{error}</p>
           )}
         </div>
       </div>
