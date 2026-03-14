@@ -686,21 +686,16 @@ def refresh_job_candidates_sync(
     session: Session = Depends(get_session),
     _admin: bool = Depends(_require_admin_token),
 ) -> dict:
-    """Run populate_recruiter_job_candidates synchronously (diagnostic)."""
+    """Enqueue populate_recruiter_job_candidates to the worker."""
     from app.services.job_pipeline import populate_recruiter_job_candidates
+    from app.services.queue import get_queue
 
     job = session.get(RecruiterJob, job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Job not found.")
 
-    populate_recruiter_job_candidates(job_id)
+    get_queue().enqueue(
+        populate_recruiter_job_candidates, job_id, job_timeout="30m",
+    )
 
-    from app.models.recruiter_job_candidate import RecruiterJobCandidate
-
-    count = session.execute(
-        select(func.count(RecruiterJobCandidate.id)).where(
-            RecruiterJobCandidate.recruiter_job_id == job_id
-        )
-    ).scalar() or 0
-
-    return {"job_id": job_id, "candidates_matched": count}
+    return {"job_id": job_id, "status": "enqueued"}
