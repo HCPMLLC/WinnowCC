@@ -103,7 +103,7 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
 
             ingest_query = _build_ingest_query_from_profile(profile_json)
             queue = get_queue("critical")
-            ingest_rq_job = queue.enqueue(ingest_jobs_job, ingest_query)
+            ingest_rq_job = queue.enqueue(ingest_jobs_job, ingest_query, job_timeout="30m")
             queue.enqueue(
                 match_jobs_job,
                 resume.user_id,

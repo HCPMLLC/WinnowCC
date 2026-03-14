@@ -86,7 +86,7 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
     cron_expr = get_scheduler_ingest_cron()
     recruiter_refresh_cron = get_scheduler_recruiter_refresh_cron()
     jobs_to_schedule = [
-        ("ingest", cron_expr, scheduled_ingest_jobs, "default"),
+        ("ingest", cron_expr, scheduled_ingest_jobs, "default", "30m"),
         ("expire_introductions", "0 3 * * *", scheduled_expire_introductions, "default"),
         ("outreach", "*/15 * * * *", scheduled_process_outreach, "default"),
         ("stale_check", "0 2 * * *", scheduled_check_stale_jobs, "default"),
@@ -113,13 +113,18 @@ def _register_cron_jobs(scheduler: Scheduler) -> None:
             )
 
     # Register all cron jobs
-    for job_type, cron_string, func, queue_name in jobs_to_schedule:
-        registered = scheduler.cron(
-            cron_string=cron_string,
-            func=func,
-            queue_name=queue_name,
-            meta={"scheduled_job_type": job_type},
-        )
+    for entry in jobs_to_schedule:
+        job_type, cron_string, func, queue_name = entry[:4]
+        timeout = entry[4] if len(entry) > 4 else None
+        kwargs = {
+            "cron_string": cron_string,
+            "func": func,
+            "queue_name": queue_name,
+            "meta": {"scheduled_job_type": job_type},
+        }
+        if timeout:
+            kwargs["timeout"] = timeout
+        registered = scheduler.cron(**kwargs)
         logger.info(f"Registered {job_type}: {registered.id} (cron: {cron_string})")
 
 

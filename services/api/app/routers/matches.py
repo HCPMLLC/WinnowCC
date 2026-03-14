@@ -255,7 +255,7 @@ def refresh_matches(
     ).scalar_one_or_none()
     ingest_query = _build_ingest_query(profile.profile_json, candidate)
     queue = get_queue("critical")
-    ingest_job = queue.enqueue(ingest_jobs_job, ingest_query)
+    ingest_job = queue.enqueue(ingest_jobs_job, ingest_query, job_timeout="30m")
     job = queue.enqueue(match_jobs_job, user.id, profile_version, depends_on=ingest_job)
     return MatchesRefreshResponse(status="queued", job_id=job.id)
 

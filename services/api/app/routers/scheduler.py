@@ -125,6 +125,7 @@ def trigger_ingestion(
     queue = get_queue()
     job = queue.enqueue(
         "app.services.scheduled_jobs.scheduled_ingest_jobs",
+        job_timeout="30m",
     )
     return SchedulerTriggerResponse(
         message="Job ingestion triggered",
@@ -142,6 +143,7 @@ def trigger_ingestion_token(
     queue = get_queue()
     job = queue.enqueue(
         "app.services.scheduled_jobs.scheduled_ingest_jobs",
+        job_timeout="30m",
     )
     return SchedulerTriggerResponse(
         message="Job ingestion triggered",
