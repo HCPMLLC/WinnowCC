@@ -3072,50 +3072,28 @@ def refresh_recruiter_job_candidates(
         try:
             from app.services.job_pipeline import populate_recruiter_job_candidates
 
+            from app.services.queue import get_queue
+
             msg = _json.dumps(
                 {"percent": 10, "phase": "scoring", "message": "Scoring candidates..."}
             )
             yield f"data: {msg}\n\n"
 
-            # Run scoring in a thread so we can send keepalive messages
-            result = {"done": False, "error": None}
+            # Enqueue to worker (no timeout issues for large candidate pools)
+            get_queue().enqueue(
+                populate_recruiter_job_candidates,
+                the_job_id,
+                job_timeout="30m",
+            )
 
-            def _run():
-                try:
-                    populate_recruiter_job_candidates(the_job_id)
-                except Exception as exc:
-                    result["error"] = exc
-                finally:
-                    result["done"] = True
-
-            t = threading.Thread(target=_run, daemon=True)
-            t.start()
-
-            tick = 0
-            while not result["done"]:
-                _time.sleep(5)
-                tick += 1
-                # Ramp progress from 10 to 90 over ~5 minutes
-                pct = min(10 + tick * 2, 90)
-                msg = _json.dumps(
-                    {
-                        "percent": pct,
-                        "phase": "scoring",
-                        "message": "Scoring candidates...",
-                    }
-                )
-                yield f"data: {msg}\n\n"
-
-            t.join(timeout=5)
-
-            if result["error"]:
-                raise result["error"]
+            # Give the worker a moment to pick it up
+            _time.sleep(2)
 
             msg = _json.dumps(
                 {
                     "percent": 100,
                     "phase": "done",
-                    "message": "Candidate refresh complete",
+                    "message": "Candidate refresh queued — matches will appear shortly",
                 }
             )
             yield f"data: {msg}\n\n"
@@ -4294,6 +4272,7 @@ def refresh_marketplace_job_candidates(
 
         try:
             from app.services.job_pipeline import populate_marketplace_job_candidates
+            from app.services.queue import get_queue
 
             msg = _json.dumps(
                 {
@@ -4304,46 +4283,21 @@ def refresh_marketplace_job_candidates(
             )
             yield f"data: {msg}\n\n"
 
-            # Run scoring in a thread so we can send keepalive messages
-            result = {"done": False, "error": None, "count": 0}
+            # Enqueue to worker (no timeout issues for large candidate pools)
+            get_queue().enqueue(
+                populate_marketplace_job_candidates,
+                the_job_id,
+                the_user_id,
+                job_timeout="30m",
+            )
 
-            def _run():
-                try:
-                    result["count"] = populate_marketplace_job_candidates(
-                        the_job_id, the_user_id
-                    )
-                except Exception as exc:
-                    result["error"] = exc
-                finally:
-                    result["done"] = True
-
-            t = threading.Thread(target=_run, daemon=True)
-            t.start()
-
-            tick = 0
-            while not result["done"]:
-                _time.sleep(5)
-                tick += 1
-                pct = min(10 + tick * 2, 90)
-                msg = _json.dumps(
-                    {
-                        "percent": pct,
-                        "phase": "scoring",
-                        "message": "Scoring candidates...",
-                    }
-                )
-                yield f"data: {msg}\n\n"
-
-            t.join(timeout=5)
-
-            if result["error"]:
-                raise result["error"]
+            _time.sleep(2)
 
             msg = _json.dumps(
                 {
                     "percent": 100,
                     "phase": "done",
-                    "message": f"Found {result['count']} matching candidates",
+                    "message": "Candidate refresh queued — matches will appear shortly",
                 }
             )
             yield f"data: {msg}\n\n"
