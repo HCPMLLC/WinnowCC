@@ -699,3 +699,21 @@ def refresh_job_candidates_sync(
     )
 
     return {"job_id": job_id, "status": "enqueued"}
+
+
+@router.get("/jobs/{job_id}/match-count")
+def get_job_match_count(
+    job_id: int,
+    session: Session = Depends(get_session),
+    _admin: bool = Depends(_require_admin_token),
+) -> dict:
+    """Return count of cached candidate matches for a recruiter job."""
+    from app.models.recruiter_job_candidate import RecruiterJobCandidate
+
+    count = session.execute(
+        select(func.count(RecruiterJobCandidate.id)).where(
+            RecruiterJobCandidate.recruiter_job_id == job_id
+        )
+    ).scalar() or 0
+
+    return {"job_id": job_id, "candidates_matched": count}
