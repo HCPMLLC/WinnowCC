@@ -625,7 +625,7 @@ def prioritize_reparse(
 def refresh_matches(
     recruiter_id: int,
     session: Session = Depends(get_session),
-    admin: User = Depends(require_admin_user),
+    _admin: bool = Depends(_require_admin_token),
 ) -> dict:
     """Enqueue candidate matching for all active jobs of this recruiter."""
     from app.services.job_pipeline import populate_recruiter_job_candidates
