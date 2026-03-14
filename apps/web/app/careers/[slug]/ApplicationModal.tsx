@@ -19,6 +19,7 @@ type Step = "email" | "resume" | "form" | "done";
 interface FormData {
   first_name: string;
   last_name: string;
+  current_title: string;
   address: string;
   city: string;
   state: string;
@@ -35,6 +36,7 @@ interface FormData {
 const EMPTY_FORM: FormData = {
   first_name: "",
   last_name: "",
+  current_title: "",
   address: "",
   city: "",
   state: "",
@@ -115,6 +117,7 @@ export default function ApplicationModal({
   const [completeness, setCompleteness] = useState(0);
   const [canSubmit, setCanSubmit] = useState(false);
   const [formSubmitting, setFormSubmitting] = useState(false);
+  const errorRef = useRef<HTMLDivElement>(null);
 
   // Cross-job
   const [crossJobs, setCrossJobs] = useState<CrossJob[]>([]);
@@ -129,6 +132,13 @@ export default function ApplicationModal({
 
   const primary = branding.colors.primary || "#2563eb";
   const headingFont = branding.fonts?.heading || "Inter, sans-serif";
+
+  // Scroll error into view
+  useEffect(() => {
+    if (error && errorRef.current) {
+      errorRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [error]);
 
   // Close on Escape
   useEffect(() => {
@@ -240,7 +250,7 @@ export default function ApplicationModal({
 
   async function handleFormSubmit() {
     // Validate required fields
-    if (!form.first_name.trim() || !form.last_name.trim() || !form.phone.trim() || !form.total_years_experience) {
+    if (!form.first_name.trim() || !form.last_name.trim() || !form.current_title.trim() || !form.phone.trim() || !form.total_years_experience) {
       setError("Please fill in all required fields");
       return;
     }
@@ -251,6 +261,7 @@ export default function ApplicationModal({
       const payload: any = {
         first_name: form.first_name.trim(),
         last_name: form.last_name.trim(),
+        current_title: form.current_title.trim(),
         phone: form.phone.trim(),
         total_years_experience: parseInt(form.total_years_experience, 10) || 0,
       };
@@ -442,6 +453,14 @@ export default function ApplicationModal({
           {/* === FORM STEP === */}
           {step === "form" && (
             <div className="p-5 space-y-4">
+              {/* Error at top of form */}
+              {error && (
+                <div ref={errorRef} className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error}</span>
+                </div>
+              )}
+
               {/* Returning applicant banner */}
               {existingApplicant && (
                 <div className="flex items-start gap-2 p-3 bg-green-50 border border-green-200 rounded-lg">
@@ -465,6 +484,12 @@ export default function ApplicationModal({
                   <label className="block text-xs font-medium text-gray-700 mb-1">Last Name <span className="text-red-500">*</span></label>
                   <input type="text" value={form.last_name} onChange={e => updateForm("last_name", e.target.value)} className={inputClasses} placeholder="Last name" />
                 </div>
+              </div>
+
+              {/* Current Job Title */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Current / Most Recent Job Title <span className="text-red-500">*</span></label>
+                <input type="text" value={form.current_title} onChange={e => updateForm("current_title", e.target.value)} className={inputClasses} placeholder="e.g. Software Engineer" />
               </div>
 
               {/* Address */}
@@ -589,12 +614,6 @@ export default function ApplicationModal({
                 </div>
               )}
 
-              {error && (
-                <div className="flex items-start gap-2 text-sm text-red-600">
-                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-                  <span>{error}</span>
-                </div>
-              )}
             </div>
           )}
 

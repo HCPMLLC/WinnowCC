@@ -765,6 +765,56 @@ def send_ingestion_failed_email(error: str, run_id: int | None = None) -> None:
     )
 
 
+def send_application_received_email(
+    to_email: str,
+    applicant_name: str,
+    applicant_email: str,
+    job_title: str,
+    career_page_name: str,
+) -> None:
+    """Notify career page owner that a new application was submitted."""
+    if not RESEND_API_KEY:
+        logger.error(
+            "RESEND_API_KEY not set; skipping application received email to %s",
+            to_email,
+        )
+        return
+
+    dashboard_url = f"{FRONTEND_URL}/recruiter/career-pages"
+    resend.api_key = RESEND_API_KEY
+    _send(
+        {
+            "from": RESEND_FROM,
+            "to": [to_email],
+            "subject": f"New application: {applicant_name} for {job_title}",
+            "text": (
+                f"A new application has been submitted on your "
+                f'"{career_page_name}" career page.\n\n'
+                f"Applicant: {applicant_name}\n"
+                f"Email: {applicant_email}\n"
+                f"Position: {job_title}\n\n"
+                f"View applications: {dashboard_url}\n\n"
+                "— Winnow"
+            ),
+            "html": (
+                f"<p>A new application has been submitted on your "
+                f"<strong>{career_page_name}</strong> career page.</p>"
+                "<table style='border-collapse:collapse;margin:12px 0'>"
+                f"<tr><td style='padding:4px 12px 4px 0;color:#6b7280'>Applicant</td>"
+                f"<td style='padding:4px 0'><strong>{applicant_name}</strong></td></tr>"
+                f"<tr><td style='padding:4px 12px 4px 0;color:#6b7280'>Email</td>"
+                f"<td style='padding:4px 0'>{applicant_email}</td></tr>"
+                f"<tr><td style='padding:4px 12px 4px 0;color:#6b7280'>Position</td>"
+                f"<td style='padding:4px 0'>{job_title}</td></tr>"
+                "</table>"
+                f'<p><a href="{dashboard_url}">View Applications</a></p>'
+                "<p>— Winnow</p>"
+            ),
+        },
+        "application_received",
+    )
+
+
 def send_submittal_package_email(
     to_email: str,
     to_name: str,

@@ -83,6 +83,7 @@ class ApplicationFormData(BaseModel):
     )
     work_authorization: str | None = Field(None, max_length=100)
     relocation_willingness: str | None = Field(None, pattern="^(yes|no)$")
+    current_title: str | None = Field(None, max_length=200)
 
 
 class ApplicationFormResponse(BaseModel):

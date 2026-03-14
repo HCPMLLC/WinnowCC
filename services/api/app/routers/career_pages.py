@@ -9,8 +9,13 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.session import get_session
+from app.models.career_page_application import CareerPageApplication
+from app.models.job import Job
 from app.models.user import User
 from app.schemas.career_page import (
+    ApplicationDetailResponse,
+    ApplicationListResponse,
+    ApplicationSummaryItem,
     CareerPageCreate,
     CareerPageListResponse,
     CareerPagePublishRequest,
@@ -203,3 +208,114 @@ def import_branding(
 
     kit = scrape_brand(website_url)
     return kit.model_dump()
+
+
+@router.get("/{page_id}/applications", response_model=ApplicationListResponse)
+def list_applications(
+    page_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_session)],
+    status_filter: str | None = None,
+):
+    """List applications for a career page."""
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
+    try:
+        get_career_page(db, page_id, tenant_id, tenant_type)
+    except CareerPageNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        ) from None
+
+    query = select(CareerPageApplication).where(
+        CareerPageApplication.career_page_id == page_id
+    )
+    if status_filter:
+        query = query.where(CareerPageApplication.status == status_filter)
+    query = query.order_by(CareerPageApplication.started_at.desc())
+
+    apps = db.execute(query).scalars().all()
+
+    # Batch-load job titles
+    job_ids = {a.job_id for a in apps}
+    jobs_map: dict[int, str] = {}
+    if job_ids:
+        jobs = db.execute(select(Job).where(Job.id.in_(job_ids))).scalars().all()
+        jobs_map = {j.id: j.title for j in jobs}
+
+    items = []
+    for a in apps:
+        parsed = a.resume_parsed_data or {}
+        name = parsed.get("full_name") or parsed.get("name")
+        items.append(
+            ApplicationSummaryItem(
+                id=a.id,
+                email=a.email,
+                applicant_name=name,
+                job_id=a.job_id,
+                job_title=jobs_map.get(a.job_id),
+                status=a.status,
+                completeness_score=a.completeness_score or 0,
+                ips_score=a.ips_score,
+                started_at=a.started_at,
+                completed_at=a.completed_at,
+            )
+        )
+
+    return ApplicationListResponse(applications=items, total=len(items))
+
+
+@router.get(
+    "/{page_id}/applications/{app_id}",
+    response_model=ApplicationDetailResponse,
+)
+def get_application_detail(
+    page_id: UUID,
+    app_id: UUID,
+    user: Annotated[User, Depends(get_current_user)],
+    db: Annotated[Session, Depends(get_session)],
+):
+    """Get full details for a single application."""
+    tenant_id, tenant_type, _ = _get_tenant_info(user, db)
+    try:
+        get_career_page(db, page_id, tenant_id, tenant_type)
+    except CareerPageNotFound:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Not found"
+        ) from None
+
+    app = db.execute(
+        select(CareerPageApplication).where(
+            CareerPageApplication.id == app_id,
+            CareerPageApplication.career_page_id == page_id,
+        )
+    ).scalar_one_or_none()
+
+    if not app:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Application not found"
+        )
+
+    # Job title
+    job = db.execute(select(Job).where(Job.id == app.job_id)).scalar_one_or_none()
+    parsed = app.resume_parsed_data or {}
+    name = parsed.get("full_name") or parsed.get("name")
+
+    return ApplicationDetailResponse(
+        id=app.id,
+        email=app.email,
+        applicant_name=name,
+        job_id=app.job_id,
+        job_title=job.title if job else None,
+        status=app.status,
+        completeness_score=app.completeness_score or 0,
+        ips_score=app.ips_score,
+        ips_breakdown=app.ips_breakdown,
+        resume_file_url=app.resume_file_url,
+        resume_parsed_data=app.resume_parsed_data,
+        question_responses=app.question_responses,
+        source_url=app.source_url,
+        utm_params=app.utm_params,
+        cross_job_recommendations=app.cross_job_recommendations,
+        started_at=app.started_at,
+        completed_at=app.completed_at,
+    )

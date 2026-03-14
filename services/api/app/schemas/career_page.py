@@ -194,3 +194,52 @@ class PublicJobListResponse(BaseModel):
     page: int
     page_size: int
     filters: dict[str, list[str]]
+
+
+# ============================================================
+# Application viewing schemas (for recruiters/employers)
+# ============================================================
+
+
+class ApplicationSummaryItem(BaseModel):
+    id: UUID
+    email: str | None
+    applicant_name: str | None
+    job_id: int
+    job_title: str | None = None
+    status: str
+    completeness_score: int
+    ips_score: int | None = None
+    started_at: datetime | None
+    completed_at: datetime | None
+
+    class Config:
+        from_attributes = True
+
+
+class ApplicationListResponse(BaseModel):
+    applications: list[ApplicationSummaryItem]
+    total: int
+
+
+class ApplicationDetailResponse(BaseModel):
+    id: UUID
+    email: str | None
+    applicant_name: str | None
+    job_id: int
+    job_title: str | None = None
+    status: str
+    completeness_score: int
+    ips_score: int | None = None
+    ips_breakdown: dict[str, Any] | None = None
+    resume_file_url: str | None = None
+    resume_parsed_data: dict[str, Any] | None = None
+    question_responses: dict[str, Any] | None = None
+    source_url: str | None = None
+    utm_params: dict[str, str] | None = None
+    cross_job_recommendations: list[dict[str, Any]] | None = None
+    started_at: datetime | None
+    completed_at: datetime | None
+
+    class Config:
+        from_attributes = True

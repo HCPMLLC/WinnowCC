@@ -122,4 +122,8 @@ class CareerPageApplication(Base):
     @property
     def can_submit(self) -> bool:
         """Check if application has minimum required data."""
-        return self.email is not None and self.completeness_score >= 70
+        if self.email is None:
+            return False
+        if self.resume_file_url:
+            return self.completeness_score >= 55
+        return self.completeness_score >= 70

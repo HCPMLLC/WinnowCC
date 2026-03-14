@@ -139,6 +139,10 @@ def process_resume_upload(
     """
     profile_data = get_profile_data_from_parsed_resume(parsed_resume_data)
 
+    # Inject application email so completeness counts it
+    if application.email and not profile_data.get("email"):
+        profile_data["email"] = application.email
+
     completeness = calculate_completeness_score(profile_data)
     missing = get_missing_fields(profile_data)
 
@@ -273,6 +277,12 @@ def extract_prefilled_form(parsed_data: dict[str, Any]) -> dict[str, Any]:
         elif val in ("no", "false", "0"):
             form["relocation_willingness"] = "no"
 
+    # Current title
+    if profile.get("current_title"):
+        form["current_title"] = profile["current_title"]
+    elif parsed_data.get("current_title"):
+        form["current_title"] = parsed_data["current_title"]
+
     return form
 
 
@@ -334,6 +344,9 @@ def process_form_submission(
     if form_data.get("relocation_willingness"):
         parsed["willing_to_relocate"] = form_data["relocation_willingness"]
 
+    if form_data.get("current_title"):
+        parsed["current_title"] = form_data["current_title"]
+
     application.resume_parsed_data = parsed
 
     # Store raw form in question_responses
@@ -352,6 +365,12 @@ def process_form_submission(
         profile_data["location"] = parsed["location"]
     if parsed.get("full_name"):
         profile_data["full_name"] = parsed["full_name"]
+    if parsed.get("current_title"):
+        profile_data["current_title"] = parsed["current_title"]
+
+    # Inject application email so completeness counts it
+    if application.email and not profile_data.get("email"):
+        profile_data["email"] = application.email
 
     new_completeness = calculate_completeness_score(profile_data)
     missing = get_missing_fields(profile_data)
@@ -484,6 +503,16 @@ def submit_application(
 
     db.commit()
 
+    # Best-effort email notification to the career page owner
+    try:
+        _notify_owner(db, career_page, application)
+    except Exception:
+        logger.warning(
+            "Failed to send application notification for %s",
+            application.id,
+            exc_info=True,
+        )
+
     return {
         "application_id": str(application.id),
         "additional_applications": additional,
@@ -515,3 +544,67 @@ def _save_question_responses(
         db.add(response)
 
     db.commit()
+
+
+def _notify_owner(
+    db: Session,
+    career_page: CareerPage,
+    application: CareerPageApplication,
+) -> None:
+    """Send email notification to the career page owner about a new application."""
+    from app.services.email import send_application_received_email
+
+    # Resolve owner email
+    owner_email: str | None = None
+    career_page_name = career_page.name or "Career Page"
+
+    if career_page.tenant_type == "recruiter":
+        from app.models.recruiter import RecruiterProfile
+
+        rp = db.execute(
+            select(RecruiterProfile).where(
+                RecruiterProfile.id == career_page.tenant_id
+            )
+        ).scalar_one_or_none()
+        if rp:
+            user = db.execute(
+                select(User).where(User.id == rp.user_id)
+            ).scalar_one_or_none()
+            if user:
+                owner_email = user.email
+    elif career_page.tenant_type == "employer":
+        from app.models.employer import EmployerProfile
+
+        ep = db.execute(
+            select(EmployerProfile).where(
+                EmployerProfile.id == career_page.tenant_id
+            )
+        ).scalar_one_or_none()
+        if ep:
+            user = db.execute(
+                select(User).where(User.id == ep.user_id)
+            ).scalar_one_or_none()
+            if user:
+                owner_email = user.email
+
+    if not owner_email:
+        logger.warning("No owner email found for career page %s", career_page.id)
+        return
+
+    # Resolve job title
+    job = db.execute(
+        select(Job).where(Job.id == application.job_id)
+    ).scalar_one_or_none()
+    job_title = job.title if job else "Unknown Position"
+
+    # Build applicant name from parsed data
+    parsed = application.resume_parsed_data or {}
+    applicant_name = parsed.get("full_name") or parsed.get("name") or "Unknown"
+
+    send_application_received_email(
+        to_email=owner_email,
+        applicant_name=applicant_name,
+        applicant_email=application.email or "",
+        job_title=job_title,
+        career_page_name=career_page_name,
+    )
