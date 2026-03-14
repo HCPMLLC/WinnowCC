@@ -8,6 +8,7 @@ import re
 from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.models.job import Job
@@ -260,10 +261,16 @@ def ingest_jobs(session: Session, query: dict, *, run_id: int | None = None) -> 
                 hiring_manager_email=posting.hiring_manager_email,
                 hiring_manager_phone=posting.hiring_manager_phone,
             )
-            session.add(job)
-            new_jobs.append(job)
-            source_new += 1
-            new_count += 1
+            try:
+                session.begin_nested()  # savepoint
+                session.add(job)
+                session.flush()
+                new_jobs.append(job)
+                source_new += 1
+                new_count += 1
+            except IntegrityError:
+                session.rollback()  # rolls back to savepoint only
+                source_dup += 1
         logger.info(
             "Source %s: %d new, %d stale, %d duplicate, %d non-US skipped",
             source.name,

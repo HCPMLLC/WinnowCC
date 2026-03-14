@@ -102,11 +102,20 @@ def scheduled_ingest_jobs() -> dict:
 
         if run:
             try:
-                session.rollback()
-                run.status = "failed"
-                run.finished_at = datetime.now(UTC)
-                run.error_message = str(e)[:1000]
-                session.commit()
+                # Use a fresh session — the original may be corrupted
+                # after IntegrityError or other DB-level failures.
+                err_session = get_session_factory()()
+                err_session.execute(
+                    update(JobRun)
+                    .where(JobRun.id == run.id)
+                    .values(
+                        status="failed",
+                        finished_at=datetime.now(UTC),
+                        error_message=str(e)[:1000],
+                    )
+                )
+                err_session.commit()
+                err_session.close()
             except Exception as commit_err:
                 logger.exception(
                     f"Failed to update run {run.id} status to failed: {commit_err}"
