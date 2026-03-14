@@ -180,7 +180,7 @@ def upload_resume(
         import tempfile
         from pathlib import Path
 
-        from app.services.llm_parser import parse_resume_with_llm
+        from app.services.llm_parser import _call_llm
         from app.services.text_extraction import extract_text
 
         suffix = ext  # e.g. ".pdf", ".docx"
@@ -196,7 +196,7 @@ def upload_resume(
         finally:
             tmp_path.unlink(missing_ok=True)
 
-        parsed_data = parse_resume_with_llm(text)
+        parsed_data = _call_llm(text)
     except Exception as e:
         logger.error("Resume parsing error: %s", e)
         raise HTTPException(status_code=400, detail="Could not parse resume") from None
