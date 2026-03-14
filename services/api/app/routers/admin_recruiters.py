@@ -653,33 +653,6 @@ def refresh_matches(
     return {"queued": len(active_jobs)}
 
 
-@router.post("/jobs/{job_id}/score-candidate/{candidate_profile_id}")
-def score_single_candidate(
-    job_id: int,
-    candidate_profile_id: int,
-    session: Session = Depends(get_session),
-    _admin: bool = Depends(_require_admin_token),
-) -> dict:
-    """Score a single candidate against a recruiter job (diagnostic)."""
-    from app.models.candidate_profile import CandidateProfile
-    from app.services.matching import _score_posted_job
-
-    job = session.get(RecruiterJob, job_id)
-    if job is None:
-        raise HTTPException(status_code=404, detail="Job not found.")
-    cp = session.get(CandidateProfile, candidate_profile_id)
-    if cp is None:
-        raise HTTPException(status_code=404, detail="Candidate not found.")
-
-    result = _score_posted_job(job, cp.profile_json or {})
-    return {
-        "candidate_profile_id": candidate_profile_id,
-        "recruiter_job_id": job_id,
-        "match_score": result.match_score,
-        "reasons": result.reasons,
-    }
-
-
 @router.post("/jobs/{job_id}/refresh-sync")
 def refresh_job_candidates_sync(
     job_id: int,
@@ -699,43 +672,3 @@ def refresh_job_candidates_sync(
     )
 
     return {"job_id": job_id, "status": "enqueued"}
-
-
-@router.get("/jobs/{job_id}/match-count")
-def get_job_match_count(
-    job_id: int,
-    session: Session = Depends(get_session),
-    _admin: bool = Depends(_require_admin_token),
-) -> dict:
-    """Return count of cached candidate matches for a recruiter job."""
-    from app.models.recruiter_job_candidate import RecruiterJobCandidate
-
-    count = session.execute(
-        select(func.count(RecruiterJobCandidate.id)).where(
-            RecruiterJobCandidate.recruiter_job_id == job_id
-        )
-    ).scalar() or 0
-
-    # Check if specific candidate is in results
-    from app.models.recruiter_job_candidate import (
-        RecruiterJobCandidate as RJC2,
-    )
-
-    all_matches = session.execute(
-        select(RJC2.candidate_profile_id, RJC2.match_score)
-        .where(RJC2.recruiter_job_id == job_id)
-        .order_by(RJC2.match_score.desc())
-    ).all()
-    top5 = [
-        {"id": r[0], "score": r[1]} for r in all_matches[:5]
-    ]
-    bottom5 = [
-        {"id": r[0], "score": r[1]} for r in all_matches[-5:]
-    ]
-
-    return {
-        "job_id": job_id,
-        "candidates_matched": count,
-        "top5": top5,
-        "bottom5": bottom5,
-    }
