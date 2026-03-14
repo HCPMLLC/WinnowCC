@@ -3057,6 +3057,8 @@ def refresh_recruiter_job_candidates(
 
     def _generate():
         import json as _json
+        import threading
+        import time as _time
 
         msg = _json.dumps(
             {
@@ -3075,7 +3077,39 @@ def refresh_recruiter_job_candidates(
             )
             yield f"data: {msg}\n\n"
 
-            populate_recruiter_job_candidates(the_job_id)
+            # Run scoring in a thread so we can send keepalive messages
+            result = {"done": False, "error": None}
+
+            def _run():
+                try:
+                    populate_recruiter_job_candidates(the_job_id)
+                except Exception as exc:
+                    result["error"] = exc
+                finally:
+                    result["done"] = True
+
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+
+            tick = 0
+            while not result["done"]:
+                _time.sleep(5)
+                tick += 1
+                # Ramp progress from 10 to 90 over ~5 minutes
+                pct = min(10 + tick * 2, 90)
+                msg = _json.dumps(
+                    {
+                        "percent": pct,
+                        "phase": "scoring",
+                        "message": "Scoring candidates...",
+                    }
+                )
+                yield f"data: {msg}\n\n"
+
+            t.join(timeout=5)
+
+            if result["error"]:
+                raise result["error"]
 
             msg = _json.dumps(
                 {
@@ -4246,6 +4280,8 @@ def refresh_marketplace_job_candidates(
 
     def _generate():
         import json as _json
+        import threading
+        import time as _time
 
         msg = _json.dumps(
             {
@@ -4268,13 +4304,46 @@ def refresh_marketplace_job_candidates(
             )
             yield f"data: {msg}\n\n"
 
-            count = populate_marketplace_job_candidates(the_job_id, the_user_id)
+            # Run scoring in a thread so we can send keepalive messages
+            result = {"done": False, "error": None, "count": 0}
+
+            def _run():
+                try:
+                    result["count"] = populate_marketplace_job_candidates(
+                        the_job_id, the_user_id
+                    )
+                except Exception as exc:
+                    result["error"] = exc
+                finally:
+                    result["done"] = True
+
+            t = threading.Thread(target=_run, daemon=True)
+            t.start()
+
+            tick = 0
+            while not result["done"]:
+                _time.sleep(5)
+                tick += 1
+                pct = min(10 + tick * 2, 90)
+                msg = _json.dumps(
+                    {
+                        "percent": pct,
+                        "phase": "scoring",
+                        "message": "Scoring candidates...",
+                    }
+                )
+                yield f"data: {msg}\n\n"
+
+            t.join(timeout=5)
+
+            if result["error"]:
+                raise result["error"]
 
             msg = _json.dumps(
                 {
                     "percent": 100,
                     "phase": "done",
-                    "message": f"Found {count} matching candidates",
+                    "message": f"Found {result['count']} matching candidates",
                 }
             )
             yield f"data: {msg}\n\n"
