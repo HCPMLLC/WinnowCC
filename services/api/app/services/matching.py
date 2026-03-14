@@ -155,7 +155,8 @@ def compute_matches(
 
         # Blend in semantic similarity when embeddings are available
         job_embedding = _get_embedding_list(job.embedding)
-        semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
+        raw_sim = compute_cosine_similarity(profile_embedding, job_embedding)
+        semantic_sim = float(raw_sim) if raw_sim is not None else None
         blended = compute_blended_match_score(result.match_score, semantic_sim)
 
         result = MatchResult(
