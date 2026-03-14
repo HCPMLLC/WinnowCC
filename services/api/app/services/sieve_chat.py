@@ -2147,6 +2147,8 @@ directly.
    - Active recruiter jobs are synced to the main candidate match feed \
 and appear to Pro candidates with a "Recruiter" badge. This means your \
 job orders automatically reach qualified, pre-scored candidates.
+   - Match scores update automatically when you upload new candidates \
+or import resumes — no need to manually refresh every job.
    - Job detail pages show full description, requirements, salary, status.
 
 3. CLIENTS (/recruiter/clients)
@@ -2312,6 +2314,8 @@ Solo users should upgrade to access sequences.
 14. BULK CANDIDATE UPLOAD (/recruiter/candidates)
     Upload multiple resumes at once to build your candidate database.
     Limits: Trial/Solo (3 files), Team (5 files), Agency (10 files).
+    After upload completes, marketplace and job match scores refresh \
+automatically — no manual action needed.
 
 15. ACTIVITY LOGGING (/recruiter/pipeline)
     Log calls, emails, and meetings on any pipeline candidate. Track all \
@@ -2454,6 +2458,32 @@ Namecheap, Route 53, etc.)
     7. Your career page is now live at your custom domain
     DNS propagation can take a few minutes to 48 hours. If verification \
 fails, double-check the CNAME record and try again.
+
+24. JOB MARKETPLACE (/recruiter/marketplace) ★ KEY FEATURE
+    Browse thousands of job postings aggregated from public job boards \
+(Remotive, TheMuse, Adzuna, etc.) and find candidates in your database \
+who match each listing.
+    - Each marketplace job shows a candidate match count — the number of \
+your candidates who score above the match threshold.
+    - Click into any job to see ranked candidates with match scores and \
+matched skills.
+    - "Refresh Candidates" re-computes matches for a specific job on demand.
+
+    AUTOMATIC MATCHING — HOW IT WORKS:
+    Marketplace match counts stay current automatically. You do NOT need \
+to manually refresh every job. Winnow auto-triggers matching in three \
+situations:
+    1. **New jobs ingested**: When Winnow's daily job ingestion pulls in \
+new postings, candidate matches are computed automatically for all \
+active recruiters. New jobs appear in the marketplace pre-scored.
+    2. **Candidate upload/import**: When you upload resumes (single or \
+ZIP batch), Winnow automatically re-matches your existing marketplace \
+jobs so the new candidate appears in results immediately.
+    3. **LinkedIn sourcing**: When you source a candidate via the Chrome \
+extension, marketplace matches refresh automatically for your cached jobs.
+    This means your marketplace always reflects your latest candidate pool \
+without extra work. "Refresh Candidates" is still available for on-demand \
+re-scoring if you want the latest results for a specific job immediately.
 
 ═══ CURRENT PLAN: {tier.upper()} ({limits["price"]}) ═══
 

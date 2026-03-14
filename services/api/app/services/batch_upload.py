@@ -682,6 +682,23 @@ def process_batch_resume_file(
             bf.processed_at = datetime.now(UTC)
             session.commit()
 
+            # Auto-refresh marketplace matches for this recruiter's cached jobs
+            try:
+                from app.services.job_pipeline import (
+                    refresh_marketplace_matches_for_recruiter,
+                )
+
+                get_queue("bulk").safe_enqueue(
+                    refresh_marketplace_matches_for_recruiter,
+                    profile.user_id,
+                )
+            except Exception:
+                logger.debug(
+                    "Failed to enqueue marketplace refresh for recruiter %d",
+                    recruiter_profile_id,
+                    exc_info=True,
+                )
+
         finally:
             # Clean up temp file (only if it was a GCS download)
             from app.services.storage import is_gcs_path

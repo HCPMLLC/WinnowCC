@@ -380,6 +380,75 @@ def populate_marketplace_job_candidates(job_id: int, recruiter_user_id: int) -> 
         session.close()
 
 
+def refresh_marketplace_matches_for_recruiter(recruiter_user_id: int) -> dict:
+    """Re-run marketplace matching for this recruiter's cached jobs.
+
+    Called after a recruiter uploads/creates a new candidate so their existing
+    marketplace match caches reflect the new candidate.  Only re-matches jobs
+    that already have cached rows (keeps scope small).
+    """
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
+    from app.services.queue import get_queue
+
+    session = get_session_factory()()
+    try:
+        rp = session.execute(
+            select(RecruiterProfile).where(
+                RecruiterProfile.user_id == recruiter_user_id
+            )
+        ).scalar_one_or_none()
+        if not rp:
+            return {"status": "skipped", "reason": "no recruiter profile"}
+
+        # Find distinct job IDs this recruiter already has cached matches for
+        cached_job_ids = (
+            session.execute(
+                select(RecruiterMarketplaceMatch.job_id)
+                .where(RecruiterMarketplaceMatch.recruiter_profile_id == rp.id)
+                .distinct()
+            )
+            .scalars()
+            .all()
+        )
+
+        if not cached_job_ids:
+            return {"status": "completed", "enqueued": 0, "reason": "no cached jobs"}
+
+        q = get_queue("bulk")
+        enqueued = 0
+        for job_id in cached_job_ids:
+            result = q.safe_enqueue(
+                populate_marketplace_job_candidates,
+                job_id,
+                recruiter_user_id,
+            )
+            if result is not None:
+                enqueued += 1
+
+        logger.info(
+            "refresh_marketplace_matches_for_recruiter: user %s — "
+            "%d jobs enqueued out of %d cached",
+            recruiter_user_id,
+            enqueued,
+            len(cached_job_ids),
+        )
+        return {
+            "status": "completed",
+            "enqueued": enqueued,
+            "total_cached_jobs": len(cached_job_ids),
+        }
+    except Exception:
+        session.rollback()
+        logger.exception(
+            "refresh_marketplace_matches_for_recruiter: failed for user %s",
+            recruiter_user_id,
+        )
+        return {"status": "failed", "error": "see logs"}
+    finally:
+        session.close()
+
+
 def backfill_recruiter_job_fields(job_id: int) -> bool:
     """Re-parse a recruiter job's stored text to extract missing required fields.
 

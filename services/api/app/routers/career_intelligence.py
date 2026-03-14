@@ -389,6 +389,25 @@ def _wire_to_recruiter_pipeline(
     return pc.id
 
 
+def _enqueue_marketplace_refresh(user: User) -> None:
+    """Re-populate marketplace match caches for this recruiter's cached jobs."""
+    try:
+        from app.services.job_pipeline import (
+            refresh_marketplace_matches_for_recruiter,
+        )
+
+        get_queue("bulk").safe_enqueue(
+            refresh_marketplace_matches_for_recruiter,
+            user.id,
+        )
+    except Exception:
+        logger.debug(
+            "Failed to enqueue marketplace refresh for user %s",
+            user.id,
+            exc_info=True,
+        )
+
+
 def _enqueue_recruiter_job_refresh(user: User, db: Session) -> None:
     """Re-populate recruiter job candidates for all active jobs of this recruiter."""
     from app.models.recruiter import RecruiterProfile
@@ -504,6 +523,7 @@ def _source_from_linkedin_impl(
 
         get_queue().enqueue(match_jobs_job, existing.user_id, existing.version)
         _enqueue_recruiter_job_refresh(user, db)
+        _enqueue_marketplace_refresh(user)
 
         result = {
             "candidate_profile_id": existing.id,
@@ -549,6 +569,7 @@ def _source_from_linkedin_impl(
 
     get_queue().enqueue(match_jobs_job, target_user.id, 1)
     _enqueue_recruiter_job_refresh(user, db)
+    _enqueue_marketplace_refresh(user)
 
     result = {
         "candidate_profile_id": new_profile.id,

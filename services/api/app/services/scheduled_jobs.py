@@ -16,6 +16,91 @@ from app.services.scheduler_config import (
 
 logger = logging.getLogger(__name__)
 
+# Cap on marketplace match jobs enqueued per ingestion run
+_MAX_MARKETPLACE_FANOUT = 500
+
+
+def _enqueue_marketplace_matching_for_new_jobs(session) -> int:
+    """Enqueue marketplace matching for recently ingested jobs.
+
+    Queries for jobs created in the last 4 hours (covers the ingestion window)
+    that don't yet have any marketplace match cache rows, then enqueues
+    matching for each job × each active recruiter on the bulk queue.
+
+    Returns the number of jobs enqueued.
+    """
+    from sqlalchemy import select
+
+    from app.models.job import Job
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
+    from app.services.job_pipeline import populate_marketplace_job_candidates
+    from app.services.queue import get_queue
+
+    cutoff = datetime.now(UTC) - timedelta(hours=4)
+
+    # Find recently ingested board jobs that have no marketplace matches yet
+    matched_job_ids = select(RecruiterMarketplaceMatch.job_id).distinct()
+    new_jobs = (
+        session.execute(
+            select(Job.id).where(
+                Job.ingested_at >= cutoff,
+                Job.is_active.is_not(False),
+                Job.source.not_in(["employer", "recruiter"]),
+                Job.id.not_in(matched_job_ids),
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not new_jobs:
+        logger.info("_enqueue_marketplace_matching: no new unmatched jobs found")
+        return 0
+
+    # Get all recruiter user IDs with active subscriptions
+    recruiter_user_ids = (
+        session.execute(
+            select(RecruiterProfile.user_id).where(
+                RecruiterProfile.subscription_status.in_(
+                    ("active", "trialing", "past_due")
+                )
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    if not recruiter_user_ids:
+        logger.info("_enqueue_marketplace_matching: no active recruiters")
+        return 0
+
+    q = get_queue("bulk")
+    enqueued = 0
+    for job_id in new_jobs:
+        if enqueued >= _MAX_MARKETPLACE_FANOUT:
+            break
+        for recruiter_uid in recruiter_user_ids:
+            if enqueued >= _MAX_MARKETPLACE_FANOUT:
+                break
+            result = q.safe_enqueue(
+                populate_marketplace_job_candidates,
+                job_id,
+                recruiter_uid,
+            )
+            if result is not None:
+                enqueued += 1
+
+    logger.info(
+        "_enqueue_marketplace_matching: %d jobs enqueued "
+        "(%d new jobs × %d recruiters, capped at %d)",
+        enqueued,
+        len(new_jobs),
+        len(recruiter_user_ids),
+        _MAX_MARKETPLACE_FANOUT,
+    )
+    return enqueued
+
 
 def _cleanup_stale_runs(session) -> int:
     """Mark runs stuck in 'running' for over 2 hours as failed."""
@@ -89,6 +174,16 @@ def scheduled_ingest_jobs() -> dict:
         logger.info(
             f"Scheduled job ingestion completed (run_id={run.id}, jobs={jobs_count})"
         )
+
+        # Auto-trigger marketplace matching for newly ingested jobs
+        if jobs_count > 0:
+            try:
+                _enqueue_marketplace_matching_for_new_jobs(session)
+            except Exception:
+                logger.warning(
+                    "Post-ingestion marketplace matching failed (non-fatal)",
+                    exc_info=True,
+                )
 
         return {
             "run_id": run.id,
