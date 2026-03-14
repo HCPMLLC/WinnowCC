@@ -23,6 +23,8 @@ from app.services.career_intelligence import (
     predict_time_to_fill,
     salary_intelligence,
 )
+from app.services.job_pipeline import match_jobs_job
+from app.services.queue import get_queue
 from app.services.recruiter_service import _log_activity, add_to_pipeline
 
 logger = logging.getLogger(__name__)
@@ -476,6 +478,8 @@ def _source_from_linkedin_impl(
         _log_linkedin_source_activity(db, user, payload, existing.id)
         pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, existing.id)
 
+        get_queue().enqueue(match_jobs_job, existing.user_id, existing.version)
+
         result = {
             "candidate_profile_id": existing.id,
             "status": "updated",
@@ -517,6 +521,8 @@ def _source_from_linkedin_impl(
 
     _log_linkedin_source_activity(db, user, payload, new_profile.id)
     pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, new_profile.id)
+
+    get_queue().enqueue(match_jobs_job, target_user.id, 1)
 
     result = {
         "candidate_profile_id": new_profile.id,
