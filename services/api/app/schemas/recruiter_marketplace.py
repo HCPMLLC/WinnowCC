@@ -21,6 +21,7 @@ class MarketplaceJobItem(BaseModel):
     source: str | None = None
     posted_at: datetime | None = None
     description_text: str | None = None
+    cached_candidates_count: int = 0
 
 
 class MarketplaceJobListResponse(BaseModel):

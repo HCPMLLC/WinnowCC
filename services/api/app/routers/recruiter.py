@@ -4008,11 +4008,12 @@ def list_marketplace_jobs(
     salary_min: int | None = Query(None, ge=0),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    user: User = Depends(require_recruiter),
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ):
     """Browse ingested jobs from the marketplace."""
     from app.models.job import Job
+    from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
     from app.schemas.recruiter_marketplace import (
         MarketplaceJobItem,
         MarketplaceJobListResponse,
@@ -4046,6 +4047,23 @@ def list_marketplace_jobs(
     stmt = stmt.offset(offset).limit(page_size)
     jobs = session.execute(stmt).scalars().all()
 
+    # Batch-fetch cached match counts for this recruiter
+    job_ids = [j.id for j in jobs]
+    match_counts: dict[int, int] = {}
+    if job_ids:
+        rows = session.execute(
+            select(
+                RecruiterMarketplaceMatch.job_id,
+                func.count(RecruiterMarketplaceMatch.id),
+            )
+            .where(
+                RecruiterMarketplaceMatch.recruiter_profile_id == profile.id,
+                RecruiterMarketplaceMatch.job_id.in_(job_ids),
+            )
+            .group_by(RecruiterMarketplaceMatch.job_id)
+        ).all()
+        match_counts = {row[0]: row[1] for row in rows}
+
     items = [
         MarketplaceJobItem(
             id=j.id,
@@ -4059,6 +4077,7 @@ def list_marketplace_jobs(
             source=j.source,
             posted_at=j.posted_at,
             description_text=(j.description_text or "")[:300],
+            cached_candidates_count=match_counts.get(j.id, 0),
         )
         for j in jobs
     ]

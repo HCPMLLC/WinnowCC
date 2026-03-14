@@ -19,6 +19,7 @@ interface MarketplaceJob {
   source: string | null;
   posted_at: string | null;
   description_text: string | null;
+  cached_candidates_count: number;
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -186,6 +187,11 @@ export default function MarketplacePage() {
                   )}
                 </div>
                 <div className="flex flex-col items-end gap-1 text-right shrink-0">
+                  {job.cached_candidates_count > 0 && (
+                    <span className="inline-flex items-center rounded-full bg-indigo-100 px-2 py-0.5 text-xs font-medium text-indigo-700">
+                      {job.cached_candidates_count} match{job.cached_candidates_count !== 1 ? "es" : ""}
+                    </span>
+                  )}
                   {job.source && (
                     <span
                       className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${SOURCE_COLORS[job.source] || "bg-slate-100 text-slate-600"}`}
