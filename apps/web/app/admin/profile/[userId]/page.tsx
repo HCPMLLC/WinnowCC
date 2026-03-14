@@ -496,7 +496,22 @@ export default function AdminProfileEditorPage() {
           setUserEmail(detail.user.email);
 
           if (detail.candidate_profile) {
-            setProfile(detail.candidate_profile.profile_json);
+            const pj = detail.candidate_profile.profile_json;
+            setProfile({
+              ...pj,
+              basics: pj.basics ?? {},
+              experience: pj.experience ?? [],
+              education: pj.education ?? [],
+              skills: pj.skills ?? [],
+              preferences: {
+                target_titles: pj.preferences?.target_titles ?? [],
+                locations: pj.preferences?.locations ?? [],
+                remote_ok: pj.preferences?.remote_ok ?? null,
+                job_type: pj.preferences?.job_type ?? null,
+                salary_min: pj.preferences?.salary_min ?? null,
+                salary_max: pj.preferences?.salary_max ?? null,
+              },
+            });
             setVersion(detail.candidate_profile.version);
           } else {
             // Non-candidate: set a minimal profile so the page renders
@@ -524,9 +539,24 @@ export default function AdminProfileEditorPage() {
         } else {
           // Legacy response format: {version, profile_json}
           const legacy = payload as ProfileResponse;
-          setProfile(legacy.profile_json);
+          const lpj = legacy.profile_json;
+          setProfile({
+            ...lpj,
+            basics: lpj.basics ?? {},
+            experience: lpj.experience ?? [],
+            education: lpj.education ?? [],
+            skills: lpj.skills ?? [],
+            preferences: {
+              target_titles: lpj.preferences?.target_titles ?? [],
+              locations: lpj.preferences?.locations ?? [],
+              remote_ok: lpj.preferences?.remote_ok ?? null,
+              job_type: lpj.preferences?.job_type ?? null,
+              salary_min: lpj.preferences?.salary_min ?? null,
+              salary_max: lpj.preferences?.salary_max ?? null,
+            },
+          });
           setVersion(legacy.version);
-          setUserEmail(legacy.profile_json.basics?.email || null);
+          setUserEmail(lpj.basics?.email || null);
         }
       } catch (caught) {
         const message =
