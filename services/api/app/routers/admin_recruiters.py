@@ -639,7 +639,7 @@ def refresh_matches(
         session.execute(
             select(RecruiterJob.id).where(
                 RecruiterJob.recruiter_profile_id == recruiter_id,
-                RecruiterJob.status == "active",
+                RecruiterJob.status.in_(("active", "draft")),
             )
         )
         .scalars()
