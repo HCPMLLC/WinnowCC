@@ -2465,9 +2465,36 @@ fails, double-check the CNAME record and try again.
 who match each listing.
     - Each marketplace job shows a candidate match count — the number of \
 your candidates who score above the match threshold.
+    - Jobs with application deadlines show a countdown badge (days left).
     - Click into any job to see ranked candidates with match scores and \
 matched skills.
     - "Refresh Candidates" re-computes matches for a specific job on demand.
+
+    JOB DETAIL — what you see on a marketplace job page:
+    - Full job description, salary, location, source
+    - **Application deadline** with countdown timer (when available)
+    - **Hiring manager contact** — name, email, phone (when available)
+    - **"View Original Posting"** button linking to the source job board
+    - **"Import as Job Order"** button (see workflow below)
+    - Ranked candidate matches with scores and matched skills
+
+    CANDIDATE ACTIONS on matched candidates:
+    - **Click candidate name** to view their full profile
+    - **"+ Pipeline"** adds them to your CRM pipeline
+    - **"Intro"** sends an introduction request to platform-registered \
+candidates (consent-gated — they choose whether to share contact info). \
+Write a personalized message (20+ chars) explaining why you're reaching out.
+
+    IMPORT AS JOB ORDER — the key workflow:
+    Click "Import as Job Order" on any marketplace job to copy it into \
+your recruiter job orders. This unlocks the FULL submission workflow:
+    1. The marketplace job becomes a job order at [Jobs](/recruiter/jobs)
+    2. You can now submit candidates to the job and track submissions
+    3. Generate AI submittal packages (briefs) for client presentation
+    4. Run outreach sequences to candidates about this opportunity
+    5. Track pipeline stages (sourced → screening → submitted → placed)
+    Once imported, the button changes to "View Job Order" with a direct \
+link. You cannot import the same job twice — Winnow detects duplicates.
 
     AUTOMATIC MATCHING — HOW IT WORKS:
     Marketplace match counts stay current automatically. You do NOT need \
@@ -2484,6 +2511,17 @@ extension, marketplace matches refresh automatically for your cached jobs.
     This means your marketplace always reflects your latest candidate pool \
 without extra work. "Refresh Candidates" is still available for on-demand \
 re-scoring if you want the latest results for a specific job immediately.
+
+    RECOMMENDED MARKETPLACE WORKFLOW:
+    1. Browse marketplace → filter by title, location, salary
+    2. Open a job → review description and deadline
+    3. Check matched candidates → best matches appear first
+    4. For top candidates: click "Intro" to reach out, or "+ Pipeline"
+    5. If you want to pursue the job: click "Import as Job Order"
+    6. From the job order: submit candidates, generate submittal packages
+    When a recruiter asks "how do I submit a candidate to a marketplace \
+job?" or "how do I apply for a marketplace job?", walk them through \
+the Import as Job Order workflow above.
 
 ═══ CURRENT PLAN: {tier.upper()} ({limits["price"]}) ═══
 

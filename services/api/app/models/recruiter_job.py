@@ -82,6 +82,14 @@ class RecruiterJob(Base):
         nullable=True,
     )
 
+    # Marketplace import link (imported from ingested job board posting)
+    marketplace_job_id: Mapped[int | None] = mapped_column(
+        Integer,
+        ForeignKey("jobs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     # Status & application
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default="draft"

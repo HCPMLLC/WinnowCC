@@ -4077,6 +4077,7 @@ def list_marketplace_jobs(
             source=j.source,
             posted_at=j.posted_at,
             description_text=(j.description_text or "")[:300],
+            application_deadline=j.application_deadline,
             cached_candidates_count=match_counts.get(j.id, 0),
         )
         for j in jobs
@@ -4126,6 +4127,16 @@ def get_marketplace_job(
 
         cache_fresh = (datetime.now(UTC) - latest_computed) < timedelta(hours=24)
 
+    # Check if this recruiter already imported this job as a job order
+    from app.models.recruiter_job import RecruiterJob
+
+    imported_job_id = session.execute(
+        select(RecruiterJob.id).where(
+            RecruiterJob.recruiter_profile_id == profile.id,
+            RecruiterJob.marketplace_job_id == job_id,
+        )
+    ).scalar()
+
     return MarketplaceJobDetail(
         id=job.id,
         title=job.title,
@@ -4139,8 +4150,13 @@ def get_marketplace_job(
         url=job.url,
         description_text=job.description_text,
         posted_at=job.posted_at,
+        application_deadline=job.application_deadline,
+        hiring_manager_name=job.hiring_manager_name,
+        hiring_manager_email=job.hiring_manager_email,
+        hiring_manager_phone=job.hiring_manager_phone,
         cached_candidates_count=cached_count,
         cache_fresh=cache_fresh,
+        imported_as_job_id=imported_job_id,
     )
 
 
@@ -4338,3 +4354,125 @@ def refresh_marketplace_job_candidates(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+@router.post("/marketplace/jobs/{job_id}/import", status_code=201)
+def import_marketplace_job(
+    job_id: int,
+    profile: RecruiterProfile = Depends(get_recruiter_profile),
+    session: Session = Depends(get_session),
+):
+    """Import a marketplace job as a recruiter job order.
+
+    Copies the ingested job's fields into a new RecruiterJob, enabling
+    the full submission, pipeline, and submittal-package workflow.
+    Returns 409 if this recruiter already imported this job.
+    """
+    from app.models.job import Job
+    from app.models.recruiter_job import RecruiterJob
+
+    job = session.get(Job, job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found.")
+
+    # Check if already imported by this recruiter
+    existing = session.execute(
+        select(RecruiterJob.id).where(
+            RecruiterJob.recruiter_profile_id == profile.id,
+            RecruiterJob.marketplace_job_id == job_id,
+        )
+    ).scalar()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "message": "Already imported as a job order.",
+                "recruiter_job_id": existing,
+            },
+        )
+
+    # Enforce tier job limit
+    from app.services.billing import (
+        get_recruiter_limit,
+        get_recruiter_tier,
+    )
+
+    tier = get_recruiter_tier(profile)
+    job_limit = get_recruiter_limit(tier, "active_job_orders")
+    if isinstance(job_limit, int) and job_limit < 999:
+        active_count = (
+            session.execute(
+                select(func.count(RecruiterJob.id)).where(
+                    RecruiterJob.recruiter_profile_id == profile.id,
+                    RecruiterJob.status == "active",
+                )
+            ).scalar()
+            or 0
+        )
+        if active_count >= job_limit:
+            raise HTTPException(
+                status_code=429,
+                detail=(
+                    f"Active job limit reached ({job_limit} on "
+                    f"{tier} plan). Close or pause existing jobs, "
+                    "or upgrade your plan."
+                ),
+            )
+
+    # Build primary_contact JSON from hiring manager fields
+    primary_contact = None
+    if job.hiring_manager_name or job.hiring_manager_email:
+        primary_contact = {
+            "name": job.hiring_manager_name,
+            "email": job.hiring_manager_email,
+            "phone": job.hiring_manager_phone,
+        }
+
+    rj = RecruiterJob(
+        recruiter_profile_id=profile.id,
+        title=job.title,
+        description=job.description_text or "",
+        location=job.location,
+        remote_policy="remote" if job.remote_flag else None,
+        salary_min=job.salary_min,
+        salary_max=job.salary_max,
+        salary_currency=job.currency or "USD",
+        client_company_name=job.company,
+        closes_at=job.application_deadline,
+        application_url=job.url,
+        primary_contact=primary_contact,
+        marketplace_job_id=job.id,
+        status="active",
+    )
+    session.add(rj)
+    session.flush()
+
+    # Generate embedding for matching
+    try:
+        from app.services.embedding import generate_embedding
+
+        text = (
+            f"Job Title: {rj.title}\n"
+            f"Company: {rj.client_company_name or ''}\n"
+            f"Description: {(rj.description or '')[:2000]}\n"
+            f"Location: {rj.location or ''}"
+        )
+        rj.embedding = generate_embedding(text)
+    except Exception:
+        logger.debug(
+            "import_marketplace_job: embedding failed for %s",
+            rj.id,
+        )
+
+    session.commit()
+
+    logger.info(
+        "import_marketplace_job: job %s imported as recruiter job %s",
+        job_id,
+        rj.id,
+    )
+
+    return {
+        "recruiter_job_id": rj.id,
+        "title": rj.title,
+    }

@@ -19,7 +19,17 @@ interface MarketplaceJob {
   source: string | null;
   posted_at: string | null;
   description_text: string | null;
+  application_deadline: string | null;
   cached_candidates_count: number;
+}
+
+function deadlineBadge(deadline: string): { text: string; cls: string } | null {
+  const diffMs = new Date(deadline).getTime() - Date.now();
+  const days = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  if (days < 0) return { text: "Expired", cls: "bg-red-100 text-red-700" };
+  if (days <= 2) return { text: `${days}d left`, cls: "bg-red-100 text-red-700" };
+  if (days <= 7) return { text: `${days}d left`, cls: "bg-amber-100 text-amber-700" };
+  return { text: `${days}d left`, cls: "bg-slate-100 text-slate-600" };
 }
 
 const SOURCE_COLORS: Record<string, string> = {
@@ -209,6 +219,14 @@ export default function MarketplacePage() {
                       {new Date(job.posted_at).toLocaleDateString()}
                     </span>
                   )}
+                  {job.application_deadline && (() => {
+                    const badge = deadlineBadge(job.application_deadline!);
+                    return badge ? (
+                      <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+                        {badge.text}
+                      </span>
+                    ) : null;
+                  })()}
                 </div>
               </div>
             </Link>

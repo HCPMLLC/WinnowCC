@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 from app.schemas.recruiter_job import RecruiterJobCandidateResult
 
@@ -21,6 +21,7 @@ class MarketplaceJobItem(BaseModel):
     source: str | None = None
     posted_at: datetime | None = None
     description_text: str | None = None
+    application_deadline: datetime | None = None
     cached_candidates_count: int = 0
 
 
@@ -48,8 +49,13 @@ class MarketplaceJobDetail(BaseModel):
     url: str | None = None
     description_text: str | None = None
     posted_at: datetime | None = None
+    application_deadline: datetime | None = None
+    hiring_manager_name: str | None = None
+    hiring_manager_email: str | None = None
+    hiring_manager_phone: str | None = None
     cached_candidates_count: int = 0
     cache_fresh: bool = False
+    imported_as_job_id: int | None = None
 
 
 class MarketplaceJobCandidatesResponse(BaseModel):
