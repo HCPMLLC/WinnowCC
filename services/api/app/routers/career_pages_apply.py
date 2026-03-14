@@ -175,11 +175,27 @@ def upload_resume(
     # Read file content
     content = file.file.read()
 
-    # Parse resume using existing pipeline
+    # Extract text from the uploaded file using the shared extraction pipeline
     try:
-        from app.services.llm_parser import parse_resume_with_llm
+        import tempfile
+        from pathlib import Path
 
-        text = content.decode("utf-8", errors="replace")
+        from app.services.llm_parser import parse_resume_with_llm
+        from app.services.text_extraction import extract_text
+
+        suffix = ext  # e.g. ".pdf", ".docx"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(content)
+            tmp_path = Path(tmp.name)
+
+        try:
+            if suffix == ".txt":
+                text = content.decode("utf-8", errors="replace")
+            else:
+                text = extract_text(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
         parsed_data = parse_resume_with_llm(text)
     except Exception as e:
         logger.error("Resume parsing error: %s", e)
