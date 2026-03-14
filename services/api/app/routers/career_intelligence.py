@@ -23,7 +23,10 @@ from app.services.career_intelligence import (
     predict_time_to_fill,
     salary_intelligence,
 )
-from app.services.job_pipeline import match_jobs_job
+from app.services.job_pipeline import (
+    match_jobs_job,
+    populate_recruiter_job_candidates,
+)
 from app.services.queue import get_queue
 from app.services.recruiter_service import _log_activity, add_to_pipeline
 
@@ -386,6 +389,27 @@ def _wire_to_recruiter_pipeline(
     return pc.id
 
 
+def _enqueue_recruiter_job_refresh(user: User, db: Session) -> None:
+    """Re-populate recruiter job candidates for all active jobs of this recruiter."""
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_job import RecruiterJob
+
+    rp = db.execute(
+        select(RecruiterProfile).where(RecruiterProfile.user_id == user.id)
+    ).scalar_one_or_none()
+    if not rp:
+        return
+    active_jobs = db.execute(
+        select(RecruiterJob.id).where(
+            RecruiterJob.recruiter_profile_id == rp.id,
+            RecruiterJob.status.in_(("active", "draft")),
+        )
+    ).scalars().all()
+    q = get_queue()
+    for job_id in active_jobs:
+        q.enqueue(populate_recruiter_job_candidates, job_id)
+
+
 def _source_from_linkedin_impl(
     payload: LinkedInProfilePayload,
     user: User,
@@ -479,6 +503,7 @@ def _source_from_linkedin_impl(
         pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, existing.id)
 
         get_queue().enqueue(match_jobs_job, existing.user_id, existing.version)
+        _enqueue_recruiter_job_refresh(user, db)
 
         result = {
             "candidate_profile_id": existing.id,
@@ -523,6 +548,7 @@ def _source_from_linkedin_impl(
     pipeline_id = _wire_to_recruiter_pipeline(db, user, payload, new_profile.id)
 
     get_queue().enqueue(match_jobs_job, target_user.id, 1)
+    _enqueue_recruiter_job_refresh(user, db)
 
     result = {
         "candidate_profile_id": new_profile.id,
