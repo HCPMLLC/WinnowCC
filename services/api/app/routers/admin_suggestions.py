@@ -54,7 +54,7 @@ def _to_response(s) -> SuggestionResponse:
     )
 
 
-@router.get("/", response_model=SuggestionListResponse)
+@router.get("", response_model=SuggestionListResponse)
 def list_all_suggestions(
     status: str | None = None,
     priority: str | None = None,
@@ -72,7 +72,7 @@ def list_all_suggestions(
     )
 
 
-@router.post("/", response_model=SuggestionResponse)
+@router.post("", response_model=SuggestionResponse)
 def create_new_suggestion(
     payload: SuggestionCreateRequest,
     session: Session = Depends(get_session),
