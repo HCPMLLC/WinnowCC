@@ -191,7 +191,14 @@ export default function SubmittalModal({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Build failed" }));
-        setError(data.detail || "Failed to start package build.");
+        const detail = data.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (Array.isArray(detail)) {
+          setError(detail.map((e: { msg?: string }) => e.msg || "Validation error").join("; "));
+        } else {
+          setError("Failed to start package build.");
+        }
         return;
       }
 
@@ -216,7 +223,14 @@ export default function SubmittalModal({
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({ detail: "Send failed" }));
-        setError(data.detail || "Failed to send package.");
+        const detail = data.detail;
+        if (typeof detail === "string") {
+          setError(detail);
+        } else if (Array.isArray(detail)) {
+          setError(detail.map((e: { msg?: string }) => e.msg || "Validation error").join("; "));
+        } else {
+          setError("Failed to send package.");
+        }
         return;
       }
 
