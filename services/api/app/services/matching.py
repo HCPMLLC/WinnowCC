@@ -855,33 +855,89 @@ def generate_ips_coaching(
 # ---------------------------------------------------------------------------
 
 
-def _latest_platform_profiles(session: Session) -> list:
-    """Return latest-version CandidateProfiles for opted-in platform users."""
-    latest_sub = (
-        select(
-            CandidateProfile.user_id,
-            func.max(CandidateProfile.version).label("mv"),
-        )
-        .where(CandidateProfile.user_id.is_not(None))
-        .group_by(CandidateProfile.user_id)
-    ).subquery()
 
-    return (
-        session.execute(
-            select(CandidateProfile)
-            .join(
-                latest_sub,
-                (CandidateProfile.user_id == latest_sub.c.user_id)
-                & (CandidateProfile.version == latest_sub.c.mv),
-            )
-            .where(
-                CandidateProfile.open_to_opportunities == True,  # noqa: E712
-                CandidateProfile.profile_visibility.in_(["public", "anonymous"]),
-            )
-        )
-        .scalars()
-        .all()
+def _collect_pool_ids(
+    session: Session, recruiter_user_id: int,
+) -> set[int]:
+    """Return deduplicated candidate_profile IDs from pools B and C."""
+    from app.models.recruiter import RecruiterProfile
+    from app.models.recruiter_pipeline_candidate import (
+        RecruiterPipelineCandidate,
     )
+
+    ids: set[int] = set()
+
+    # Pool B: recruiter-sourced candidates (ID-only query)
+    for row in session.execute(
+        select(CandidateProfile.id).where(
+            cast(
+                CandidateProfile.profile_json["sourced_by_user_id"],
+                String,
+            )
+            == str(recruiter_user_id),
+        )
+    ):
+        ids.add(row[0])
+
+    # Pool C: pipeline candidates
+    rp = session.execute(
+        select(RecruiterProfile).where(
+            RecruiterProfile.user_id == recruiter_user_id
+        )
+    ).scalar_one_or_none()
+    if rp:
+        for row in session.execute(
+            select(
+                RecruiterPipelineCandidate.candidate_profile_id,
+            ).where(
+                RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
+                RecruiterPipelineCandidate.candidate_profile_id.is_not(
+                    None
+                ),
+            )
+        ):
+            ids.add(row[0])
+
+    return ids
+
+
+def _score_profiles_streaming(
+    session: Session,
+    query,
+    job,
+    job_embedding: list | None,
+    seen_ids: set[int],
+    scored: list[dict],
+    batch_size: int = 200,
+) -> None:
+    """Score profiles from *query* in batches to limit memory."""
+    result = session.execute(
+        query.execution_options(yield_per=batch_size)
+    )
+    for partition in result.partitions():
+        for (cp,) in partition:
+            if cp.id in seen_ids:
+                continue
+            seen_ids.add(cp.id)
+            pj = cp.profile_json or {}
+            mr = _score_posted_job(job, pj)
+            if mr.match_score > 0:
+                pe = _get_embedding_list(cp.embedding)
+                sim = compute_cosine_similarity(pe, job_embedding)
+                blended = compute_blended_match_score(
+                    mr.match_score, sim
+                )
+                scored.append(
+                    {
+                        "id": cp.id,
+                        "match_score": blended,
+                        "matched_skills": mr.reasons.get(
+                            "matched_skills", []
+                        ),
+                    }
+                )
+        # Let the session release objects from this batch
+        session.expire_all()
 
 
 def find_top_candidates_for_recruiter_job(
@@ -898,84 +954,56 @@ def find_top_candidates_for_recruiter_job(
          (profile_json.sourced_by_user_id == recruiter_user_id).
       C) Pipeline candidates — candidates already in this recruiter's
          pipeline who have a candidate_profile_id.
+
+    Profiles are scored in streaming batches to limit memory usage.
     """
-    from app.models.recruiter import RecruiterProfile
-    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
+    job_embedding = _get_embedding_list(
+        getattr(recruiter_job, "embedding", None)
+    )
+    scored: list[dict] = []
+    seen_ids: set[int] = set()
 
-    # Pool A: platform candidates
-    platform_profiles = _latest_platform_profiles(session)
+    # Collect Pool B + C IDs (lightweight, no profile_json loaded)
+    bc_ids = _collect_pool_ids(session, recruiter_user_id)
 
-    # Pool B: recruiter-sourced candidates (includes placeholder-user
-    # profiles created by the LinkedIn extension)
-    sourced_profiles = (
-        session.execute(
-            select(CandidateProfile).where(
-                cast(
-                    CandidateProfile.profile_json["sourced_by_user_id"],
-                    String,
-                )
-                == str(recruiter_user_id),
-            )
+    # Pool A: platform candidates (streamed)
+    latest_sub = (
+        select(
+            CandidateProfile.user_id,
+            func.max(CandidateProfile.version).label("mv"),
         )
-        .scalars()
-        .all()
+        .where(CandidateProfile.user_id.is_not(None))
+        .group_by(CandidateProfile.user_id)
+    ).subquery()
+
+    pool_a_query = (
+        select(CandidateProfile)
+        .join(
+            latest_sub,
+            (CandidateProfile.user_id == latest_sub.c.user_id)
+            & (CandidateProfile.version == latest_sub.c.mv),
+        )
+        .where(
+            CandidateProfile.open_to_opportunities == True,  # noqa: E712
+            CandidateProfile.profile_visibility.in_(
+                ["public", "anonymous"]
+            ),
+        )
+    )
+    _score_profiles_streaming(
+        session, pool_a_query, recruiter_job,
+        job_embedding, seen_ids, scored,
     )
 
-    # Pool C: pipeline candidates for this recruiter (may overlap with A/B)
-    rp = session.execute(
-        select(RecruiterProfile).where(RecruiterProfile.user_id == recruiter_user_id)
-    ).scalar_one_or_none()
-    pipeline_profiles: list = []
-    if rp:
-        pipeline_cp_ids = (
-            session.execute(
-                select(RecruiterPipelineCandidate.candidate_profile_id).where(
-                    RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
-                    RecruiterPipelineCandidate.candidate_profile_id.is_not(None),
-                )
-            )
-            .scalars()
-            .all()
+    # Pool B + C: sourced & pipeline candidates (streamed)
+    if bc_ids:
+        bc_query = select(CandidateProfile).where(
+            CandidateProfile.id.in_(bc_ids)
         )
-        if pipeline_cp_ids:
-            pipeline_profiles = (
-                session.execute(
-                    select(CandidateProfile).where(
-                        CandidateProfile.id.in_(pipeline_cp_ids)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-    # Deduplicate by profile id (pipeline candidates may already be in A or B)
-    seen_ids: set[int] = set()
-    all_profiles: list = []
-    for cp in platform_profiles + sourced_profiles + pipeline_profiles:
-        if cp.id not in seen_ids:
-            seen_ids.add(cp.id)
-            all_profiles.append(cp)
-
-    # Get job embedding for semantic blending (same approach as candidate
-    # matching in compute_matches).
-    job_embedding = _get_embedding_list(getattr(recruiter_job, "embedding", None))
-
-    scored: list[dict] = []
-    for cp in all_profiles:
-        pj = cp.profile_json or {}
-        result = _score_posted_job(recruiter_job, pj)
-        if result.match_score > 0:
-            # Blend deterministic score with semantic similarity
-            profile_embedding = _get_embedding_list(cp.embedding)
-            semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
-            blended = compute_blended_match_score(result.match_score, semantic_sim)
-            scored.append(
-                {
-                    "id": cp.id,
-                    "match_score": blended,
-                    "matched_skills": result.reasons.get("matched_skills", []),
-                }
-            )
+        _score_profiles_streaming(
+            session, bc_query, recruiter_job,
+            job_embedding, seen_ids, scored,
+        )
 
     scored.sort(key=lambda x: x["match_score"], reverse=True)
     return scored[:limit]
@@ -1060,66 +1088,12 @@ def find_top_candidates_for_marketplace_job(
 
     Uses ``_score_job`` directly (native Job support) instead of the
     proxy used by ``_score_posted_job``.
+
+    Profiles are scored in streaming batches to limit memory usage.
     """
-    from app.models.recruiter import RecruiterProfile
-    from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
-
-    # Pool A: platform candidates
-    platform_profiles = _latest_platform_profiles(session)
-
-    # Pool B: recruiter-sourced candidates (includes placeholder-user
-    # profiles created by the LinkedIn extension)
-    sourced_profiles = (
-        session.execute(
-            select(CandidateProfile).where(
-                cast(
-                    CandidateProfile.profile_json["sourced_by_user_id"],
-                    String,
-                )
-                == str(recruiter_user_id),
-            )
-        )
-        .scalars()
-        .all()
+    job_embedding = _get_embedding_list(
+        getattr(job, "embedding", None)
     )
-
-    # Pool C: pipeline candidates for this recruiter (may overlap with A/B)
-    rp = session.execute(
-        select(RecruiterProfile).where(RecruiterProfile.user_id == recruiter_user_id)
-    ).scalar_one_or_none()
-    pipeline_profiles: list = []
-    if rp:
-        pipeline_cp_ids = (
-            session.execute(
-                select(RecruiterPipelineCandidate.candidate_profile_id).where(
-                    RecruiterPipelineCandidate.recruiter_profile_id == rp.id,
-                    RecruiterPipelineCandidate.candidate_profile_id.is_not(None),
-                )
-            )
-            .scalars()
-            .all()
-        )
-        if pipeline_cp_ids:
-            pipeline_profiles = (
-                session.execute(
-                    select(CandidateProfile).where(
-                        CandidateProfile.id.in_(pipeline_cp_ids)
-                    )
-                )
-                .scalars()
-                .all()
-            )
-
-    # Deduplicate by profile id
-    seen_ids: set[int] = set()
-    all_profiles: list = []
-    for cp in platform_profiles + sourced_profiles + pipeline_profiles:
-        if cp.id not in seen_ids:
-            seen_ids.add(cp.id)
-            all_profiles.append(cp)
-
-    # Get job embedding for semantic blending
-    job_embedding = _get_embedding_list(getattr(job, "embedding", None))
 
     # Load parsed job skills if available
     parsed_detail = session.execute(
@@ -1130,38 +1104,90 @@ def find_top_candidates_for_marketplace_job(
     )
 
     scored: list[dict] = []
-    for cp in all_profiles:
-        pj = cp.profile_json or {}
-        # Enrich sourced candidates so they score fairly
-        enriched = _enrich_sourced_profile(pj)
+    seen_ids: set[int] = set()
 
-        # Build a lightweight Candidate proxy for years scoring
-        candidate_proxy = None
-        yrs = enriched.get("years_experience")
-        if yrs is None:
-            experience = enriched.get("experience", [])
-            if experience:
-                yrs = len(experience) * 2
-        if yrs is not None:
+    def _score_marketplace_batch(query):
+        result = session.execute(
+            query.execution_options(yield_per=200)
+        )
+        for partition in result.partitions():
+            for (cp,) in partition:
+                if cp.id in seen_ids:
+                    continue
+                seen_ids.add(cp.id)
+                pj = cp.profile_json or {}
+                enriched = _enrich_sourced_profile(pj)
 
-            class _CandProxy:
-                years_experience = None
+                candidate_proxy = None
+                yrs = enriched.get("years_experience")
+                if yrs is None:
+                    experience = enriched.get("experience", [])
+                    if experience:
+                        yrs = len(experience) * 2
+                if yrs is not None:
 
-            candidate_proxy = _CandProxy()
-            candidate_proxy.years_experience = yrs
+                    class _CandProxy:
+                        years_experience = None
 
-        result = _score_job(job, enriched, candidate_proxy, parsed_job_skills)
-        if result.match_score > 0:
-            profile_embedding = _get_embedding_list(cp.embedding)
-            semantic_sim = compute_cosine_similarity(profile_embedding, job_embedding)
-            blended = compute_blended_match_score(result.match_score, semantic_sim)
-            scored.append(
-                {
-                    "id": cp.id,
-                    "match_score": blended,
-                    "matched_skills": result.reasons.get("matched_skills", []),
-                }
-            )
+                    candidate_proxy = _CandProxy()
+                    candidate_proxy.years_experience = yrs
+
+                mr = _score_job(
+                    job, enriched, candidate_proxy,
+                    parsed_job_skills,
+                )
+                if mr.match_score > 0:
+                    pe = _get_embedding_list(cp.embedding)
+                    sim = compute_cosine_similarity(
+                        pe, job_embedding
+                    )
+                    blended = compute_blended_match_score(
+                        mr.match_score, sim
+                    )
+                    scored.append(
+                        {
+                            "id": cp.id,
+                            "match_score": blended,
+                            "matched_skills": mr.reasons.get(
+                                "matched_skills", []
+                            ),
+                        }
+                    )
+            session.expire_all()
+
+    # Pool A: platform candidates (streamed)
+    latest_sub = (
+        select(
+            CandidateProfile.user_id,
+            func.max(CandidateProfile.version).label("mv"),
+        )
+        .where(CandidateProfile.user_id.is_not(None))
+        .group_by(CandidateProfile.user_id)
+    ).subquery()
+
+    pool_a_query = (
+        select(CandidateProfile)
+        .join(
+            latest_sub,
+            (CandidateProfile.user_id == latest_sub.c.user_id)
+            & (CandidateProfile.version == latest_sub.c.mv),
+        )
+        .where(
+            CandidateProfile.open_to_opportunities == True,  # noqa: E712
+            CandidateProfile.profile_visibility.in_(
+                ["public", "anonymous"]
+            ),
+        )
+    )
+    _score_marketplace_batch(pool_a_query)
+
+    # Pool B + C: sourced & pipeline candidates (streamed)
+    bc_ids = _collect_pool_ids(session, recruiter_user_id)
+    if bc_ids:
+        bc_query = select(CandidateProfile).where(
+            CandidateProfile.id.in_(bc_ids)
+        )
+        _score_marketplace_batch(bc_query)
 
     scored.sort(key=lambda x: x["match_score"], reverse=True)
     return scored[:limit]
@@ -1175,31 +1201,63 @@ def find_top_candidates_for_employer_job(
     """Find top candidates for an employer job (platform candidates only).
 
     Returns dicts compatible with ``TopCandidateResult`` schema.
+    Profiles are scored in streaming batches to limit memory usage.
     """
-    platform_profiles = _latest_platform_profiles(session)
+    latest_sub = (
+        select(
+            CandidateProfile.user_id,
+            func.max(CandidateProfile.version).label("mv"),
+        )
+        .where(CandidateProfile.user_id.is_not(None))
+        .group_by(CandidateProfile.user_id)
+    ).subquery()
+
+    query = (
+        select(CandidateProfile)
+        .join(
+            latest_sub,
+            (CandidateProfile.user_id == latest_sub.c.user_id)
+            & (CandidateProfile.version == latest_sub.c.mv),
+        )
+        .where(
+            CandidateProfile.open_to_opportunities == True,  # noqa: E712
+            CandidateProfile.profile_visibility.in_(
+                ["public", "anonymous"]
+            ),
+        )
+    )
 
     scored: list[dict] = []
-    for cp in platform_profiles:
-        pj = cp.profile_json or {}
-        result = _score_posted_job(employer_job, pj)
-        if result.match_score > 0:
-            skills = [
-                s if isinstance(s, str) else s.get("name", "")
-                for s in pj.get("skills", [])
-            ]
-            scored.append(
-                {
-                    "id": cp.id,
-                    "name": pj.get("name", "Unknown"),
-                    "headline": pj.get("headline"),
-                    "location": pj.get("location"),
-                    "years_experience": pj.get("years_experience"),
-                    "top_skills": skills[:5],
-                    "matched_skills": result.reasons.get("matched_skills", []),
-                    "match_score": result.match_score,
-                    "profile_visibility": cp.profile_visibility or "private",
-                }
-            )
+    result = session.execute(
+        query.execution_options(yield_per=200)
+    )
+    for partition in result.partitions():
+        for (cp,) in partition:
+            pj = cp.profile_json or {}
+            mr = _score_posted_job(employer_job, pj)
+            if mr.match_score > 0:
+                skills = [
+                    s if isinstance(s, str) else s.get("name", "")
+                    for s in pj.get("skills", [])
+                ]
+                scored.append(
+                    {
+                        "id": cp.id,
+                        "name": pj.get("name", "Unknown"),
+                        "headline": pj.get("headline"),
+                        "location": pj.get("location"),
+                        "years_experience": pj.get("years_experience"),
+                        "top_skills": skills[:5],
+                        "matched_skills": mr.reasons.get(
+                            "matched_skills", []
+                        ),
+                        "match_score": mr.match_score,
+                        "profile_visibility": (
+                            cp.profile_visibility or "private"
+                        ),
+                    }
+                )
+        session.expire_all()
 
     scored.sort(key=lambda x: x["match_score"], reverse=True)
     return scored[:limit]
