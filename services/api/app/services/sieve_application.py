@@ -569,11 +569,12 @@ def _notify_owner(
     career_page: CareerPage,
     application: CareerPageApplication,
 ) -> None:
-    """Send email notification to the career page owner about a new application."""
+    """Notify the career page owner about a new application (in-app + email)."""
     from app.services.email import send_application_received_email
 
-    # Resolve owner email
+    # Resolve owner email and user_id
     owner_email: str | None = None
+    owner_user_id: int | None = None
     career_page_name = career_page.name or "Career Page"
 
     if career_page.tenant_type == "recruiter":
@@ -590,6 +591,7 @@ def _notify_owner(
             ).scalar_one_or_none()
             if user:
                 owner_email = user.email
+                owner_user_id = user.id
     elif career_page.tenant_type == "employer":
         from app.models.employer import EmployerProfile
 
@@ -604,6 +606,7 @@ def _notify_owner(
             ).scalar_one_or_none()
             if user:
                 owner_email = user.email
+                owner_user_id = user.id
 
     if not owner_email:
         logger.warning("No owner email found for career page %s", career_page.id)
@@ -618,6 +621,20 @@ def _notify_owner(
     # Build applicant name from parsed data
     parsed = application.resume_parsed_data or {}
     applicant_name = parsed.get("full_name") or parsed.get("name") or "Unknown"
+
+    # Create in-app notification for recruiter owners
+    if career_page.tenant_type == "recruiter" and owner_user_id:
+        from app.models.recruiter_notification import RecruiterNotification
+
+        notification = RecruiterNotification(
+            recipient_user_id=owner_user_id,
+            notification_type="new_application",
+            message=(
+                f"New application from {applicant_name} for {job_title}"
+            ),
+        )
+        db.add(notification)
+        db.commit()
 
     send_application_received_email(
         to_email=owner_email,

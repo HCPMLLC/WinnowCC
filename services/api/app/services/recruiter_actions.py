@@ -217,12 +217,60 @@ def generate_recruiter_actions(
     """Generate a prioritized action queue for a recruiter."""
     actions: list[dict] = []
 
+    actions.extend(_check_new_applications(recruiter_profile_id, session))
     actions.extend(_check_stale_pipeline(recruiter_profile_id, session))
     actions.extend(_check_draft_jobs(recruiter_profile_id, session))
     actions.extend(_check_idle_clients(recruiter_profile_id, session))
 
     actions.sort(key=lambda a: a["priority"])
     return actions
+
+
+def _check_new_applications(
+    recruiter_profile_id: int, session: Session
+) -> list[dict]:
+    """Find career page applications completed in the last 7 days."""
+    from app.models.career_page import CareerPage
+    from app.models.career_page_application import CareerPageApplication
+
+    cutoff = datetime.now(UTC) - timedelta(days=7)
+
+    try:
+        count = (
+            session.execute(
+                select(func.count())
+                .select_from(CareerPageApplication)
+                .join(
+                    CareerPage,
+                    CareerPageApplication.career_page_id == CareerPage.id,
+                )
+                .where(
+                    CareerPage.tenant_type == "recruiter",
+                    CareerPage.tenant_id == recruiter_profile_id,
+                    CareerPageApplication.status == "completed",
+                    CareerPageApplication.completed_at >= cutoff,
+                )
+            ).scalar()
+            or 0
+        )
+    except Exception:
+        count = 0
+
+    if count > 0:
+        return [
+            {
+                "priority": 1,
+                "type": "new_applications",
+                "title": f"{count} new career page application(s)",
+                "description": (
+                    f"{count} candidate(s) applied through your career page "
+                    "in the last 7 days. Review and add them to your pipeline."
+                ),
+                "action_url": "/recruiter/career-pages",
+                "due_by": datetime.now(UTC).isoformat(),
+            }
+        ]
+    return []
 
 
 def _check_stale_pipeline(recruiter_profile_id: int, session: Session) -> list[dict]:

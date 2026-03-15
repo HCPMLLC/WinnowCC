@@ -2312,6 +2312,7 @@ Solo users should upgrade to access sequences.
 
 12. ACTION QUEUE (/recruiter/dashboard)
     Your daily prioritized to-do list, generated automatically:
+    - New career page applications to review
     - Follow-up reminders for pipeline candidates
     - Placement deadlines approaching
     - Stale candidates needing attention
@@ -2381,13 +2382,18 @@ and when.
 If a recruiter asks about duplicate checks or first-right-of-refusal, \
 explain this feature.
 
-21. TEAM NOTIFICATIONS & @MENTIONS (/recruiter/notifications)
-    Team collaboration features for Team and Agency plans:
-    - Add notes on pipeline candidates with @mentions to tag teammates.
-    - Mentioned team members receive notifications in their inbox.
-    - Notification inbox shows unread mentions and team activity.
-    When a recruiter asks about collaborating with teammates or \
-getting notified about candidate updates, explain @mentions.
+21. NOTIFICATIONS (/recruiter/notifications)
+    Your notification inbox includes:
+    - **Application alerts**: When a candidate applies through your career \
+page, you receive an in-app notification, an email, and an action queue \
+item — so you never miss a new applicant.
+    - **@Mentions** (Team and Agency plans): Add notes on pipeline \
+candidates with @mentions to tag teammates. Mentioned team members \
+receive notifications in their inbox.
+    - Notification inbox shows unread application alerts, mentions, and \
+team activity.
+    When a recruiter asks about getting notified about new applications \
+or collaborating with teammates, explain these notification channels.
 
 22. CAREER PAGES (/recruiter/career-pages) ★ KEY FEATURE
     Branded job portals that showcase your open positions with an AI-powered \
@@ -2416,6 +2422,9 @@ your profile, you'd also be a great fit for [Job B] and [Job C]"
     6. Candidate can apply to multiple jobs in one session
     7. On submission, an IPS (Interview Probability Score) is calculated \
 and the application is created in the recruiter's pipeline
+    8. You receive three notifications: an in-app alert in your \
+[Notifications](/recruiter/notifications) inbox, an email, and a \
+new item in your [Action Queue](/recruiter/dashboard)
     This replaces traditional "fill out a form" applications with a \
 conversational AI experience that improves completion rates.
 
