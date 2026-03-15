@@ -213,12 +213,104 @@ def get_job_specific_requirements(
 def get_profile_data_from_parsed_resume(
     parsed_data: dict[str, Any],
 ) -> dict[str, Any]:
-    """Extract structured profile data from parsed resume."""
+    """Extract structured profile data from parsed resume.
+
+    Handles two formats:
+    - Flat keys: name, email, phone, experience, skills (legacy / form-merged)
+    - PROMPT9 raw output: contact_information, work_experience, skills.technical_skills
+    """
     profile: dict[str, Any] = {}
 
+    # Detect PROMPT9 format by presence of contact_information key
+    is_prompt9 = "contact_information" in parsed_data
+
+    if is_prompt9:
+        _extract_prompt9(parsed_data, profile)
+    else:
+        _extract_flat(parsed_data, profile)
+
+    return profile
+
+
+def _extract_prompt9(parsed_data: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Extract profile fields from raw PROMPT9 LLM output."""
+    contact = parsed_data.get("contact_information") or {}
+
+    if contact.get("full_name"):
+        profile["full_name"] = contact["full_name"]
+    if contact.get("email"):
+        profile["email"] = contact["email"]
+    if contact.get("phone"):
+        profile["phone"] = contact["phone"]
+
+    # Location from contact_information.location (dict with city/state_province)
+    loc = contact.get("location") or {}
+    if isinstance(loc, dict):
+        parts = [loc.get("city", ""), loc.get("state_province", "")]
+        loc_str = ", ".join(p for p in parts if p)
+        if loc_str:
+            profile["location"] = loc_str
+    elif isinstance(loc, str) and loc.strip():
+        profile["location"] = loc.strip()
+
+    if parsed_data.get("professional_summary"):
+        profile["summary"] = parsed_data["professional_summary"]
+
+    # Years of experience
+    yoe = parsed_data.get("years_of_experience")
+    if yoe is not None:
+        try:
+            profile["years_experience"] = int(float(yoe))
+        except (ValueError, TypeError):
+            pass
+
+    # Work experience → work_history
+    work_exp = parsed_data.get("work_experience") or []
+    if isinstance(work_exp, list) and len(work_exp) > 0:
+        profile["work_history"] = work_exp
+        # Current title from most recent job
+        most_recent = work_exp[0]
+        if isinstance(most_recent, dict) and most_recent.get("job_title"):
+            profile["current_title"] = most_recent["job_title"]
+        # Estimate years if not explicitly provided
+        if "years_experience" not in profile:
+            profile["years_experience"] = _estimate_years_experience(work_exp)
+
+    # Education
+    education = parsed_data.get("education") or []
+    if isinstance(education, list) and len(education) > 0:
+        profile["education"] = education
+
+    # Skills — PROMPT9 nests under skills.technical_skills, skills.methodologies, etc.
+    skills_block = parsed_data.get("skills") or {}
+    if isinstance(skills_block, dict):
+        skill_names: list[str] = []
+        for key in ("technical_skills", "methodologies", "soft_skills",
+                     "tools", "frameworks", "languages"):
+            for item in skills_block.get(key) or []:
+                if isinstance(item, dict):
+                    name = item.get("name", "")
+                    if name:
+                        skill_names.append(name)
+                elif isinstance(item, str) and item.strip():
+                    skill_names.append(item.strip())
+        # Also check certifications under skills
+        certs = skills_block.get("certifications") or []
+        if isinstance(certs, list) and len(certs) > 0:
+            profile["certifications"] = certs
+        if skill_names:
+            profile["skills"] = skill_names
+    elif isinstance(skills_block, list) and len(skills_block) > 0:
+        # Fallback: skills is a flat list
+        profile["skills"] = skills_block
+
+
+def _extract_flat(parsed_data: dict[str, Any], profile: dict[str, Any]) -> None:
+    """Extract profile fields from flat-key format (legacy / form-merged)."""
     # Direct mappings
     direct_fields = [
         ("name", "full_name"),
+        ("full_name", "full_name"),
         ("email", "email"),
         ("phone", "phone"),
         ("location", "location"),
@@ -226,7 +318,7 @@ def get_profile_data_from_parsed_resume(
     ]
 
     for source, target in direct_fields:
-        if source in parsed_data:
+        if source in parsed_data and parsed_data[source]:
             profile[target] = parsed_data[source]
 
     # Skills
@@ -237,21 +329,19 @@ def get_profile_data_from_parsed_resume(
         elif isinstance(skills, str):
             profile["skills"] = [s.strip() for s in skills.split(",")]
 
-    # Work history
-    if "experience" in parsed_data:
-        profile["work_history"] = parsed_data["experience"]
+    # Work history (check both "experience" and "work_experience" keys)
+    experience = parsed_data.get("experience") or parsed_data.get("work_experience")
+    if experience:
+        profile["work_history"] = experience
 
-        if (
-            isinstance(parsed_data["experience"], list)
-            and len(parsed_data["experience"]) > 0
-        ):
-            profile["years_experience"] = _estimate_years_experience(
-                parsed_data["experience"]
-            )
+        if isinstance(experience, list) and len(experience) > 0:
+            profile["years_experience"] = _estimate_years_experience(experience)
 
-            most_recent = parsed_data["experience"][0]
+            most_recent = experience[0]
             if isinstance(most_recent, dict):
-                profile["current_title"] = most_recent.get("title", "")
+                title = most_recent.get("title") or most_recent.get("job_title", "")
+                if title:
+                    profile["current_title"] = title
 
     # Education
     if "education" in parsed_data:
@@ -260,8 +350,6 @@ def get_profile_data_from_parsed_resume(
     # Certifications
     if "certifications" in parsed_data:
         profile["certifications"] = parsed_data["certifications"]
-
-    return profile
 
 
 def _estimate_years_experience(work_history: list) -> int:
