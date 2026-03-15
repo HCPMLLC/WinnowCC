@@ -241,8 +241,9 @@ def update_preference_weights_job(
     from app.db.session import get_session_factory
     from app.services.billing import check_feature_access, get_plan_tier
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         # Load candidate and check tier
         candidate = session.execute(
             select(Candidate).where(Candidate.user_id == user_id)
@@ -305,7 +306,8 @@ def update_preference_weights_job(
             prefs.negative_events,
         )
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "Failed to update preference weights for user %d, match %d",
             user_id,
@@ -313,7 +315,8 @@ def update_preference_weights_job(
         )
         raise
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def rebuild_preferences_from_history(session: Session, user_id: int) -> None:

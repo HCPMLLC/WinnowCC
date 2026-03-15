@@ -21,42 +21,50 @@ logger = logging.getLogger(__name__)
 
 
 def ingest_jobs_job(query: dict) -> int:
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         return ingest_jobs(session, query)
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("ingest_jobs_job: failed for query %s", query)
         return 0
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def match_jobs_job(user_id: int, profile_version: int) -> int:
     if user_id is None:
         logger.warning("match_jobs_job: skipping — user_id is None")
         return 0
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         matches = compute_matches(session, user_id, profile_version)
         return len(matches)
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "match_jobs_job: failed for user=%s version=%s", user_id, profile_version
         )
         return 0
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def tailor_job(user_id: int, job_id: int, profile_version: int) -> int:
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         tailored = create_tailored_docs(session, user_id, job_id, profile_version)
         return tailored.id
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "tailor_job: failed for user=%s job=%s version=%s",
             user_id,
@@ -65,13 +73,15 @@ def tailor_job(user_id: int, job_id: int, profile_version: int) -> int:
         )
         return 0
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def embed_job(job_id: int) -> bool:
     """Generate and store embedding for a single job."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.execute(select(Job).where(Job.id == job_id)).scalar_one_or_none()
         if job is None:
             logger.warning("embed_job: job %s not found", job_id)
@@ -82,17 +92,20 @@ def embed_job(job_id: int) -> bool:
         logger.info("embed_job: embedded job %s", job_id)
         return True
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("embed_job: failed for job %s", job_id)
         return False
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def embed_profile(user_id: int, profile_version: int) -> bool:
     """Generate and store embedding for a candidate profile."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         profile = session.execute(
             select(CandidateProfile).where(
                 CandidateProfile.user_id == user_id,
@@ -116,19 +129,22 @@ def embed_profile(user_id: int, profile_version: int) -> bool:
         )
         return True
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "embed_profile: failed for user=%s version=%s", user_id, profile_version
         )
         return False
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def embed_all_jobs() -> int:
     """Batch backfill embeddings for all jobs where embedding IS NULL."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         jobs = (
             session.execute(select(Job).where(Job.embedding.is_(None))).scalars().all()
         )
@@ -147,11 +163,13 @@ def embed_all_jobs() -> int:
         logger.info("embed_all_jobs: finished, embedded %s jobs total", count)
         return count
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("embed_all_jobs: batch failed")
         return 0
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def refresh_candidates_for_profile(user_id: int) -> None:
@@ -174,8 +192,9 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
     from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
     from app.services.matching import find_top_candidates_for_recruiter_job
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.get(RecruiterJob, job_id)
         if not job:
             logger.warning(
@@ -284,10 +303,12 @@ def populate_recruiter_job_candidates(job_id: int) -> None:
             pipeline_added,
         )
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("populate_recruiter_job_candidates: failed for job %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def populate_marketplace_job_candidates(job_id: int, recruiter_user_id: int) -> int:
@@ -301,8 +322,9 @@ def populate_marketplace_job_candidates(job_id: int, recruiter_user_id: int) -> 
     from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
     from app.services.matching import find_top_candidates_for_marketplace_job
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.get(Job, job_id)
         if not job:
             logger.warning(
@@ -371,13 +393,15 @@ def populate_marketplace_job_candidates(job_id: int, recruiter_user_id: int) -> 
         )
         return inserted
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "populate_marketplace_job_candidates: failed for job %s", job_id
         )
         return 0
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def refresh_marketplace_matches_for_recruiter(recruiter_user_id: int) -> dict:
@@ -391,8 +415,9 @@ def refresh_marketplace_matches_for_recruiter(recruiter_user_id: int) -> dict:
     from app.models.recruiter_marketplace_match import RecruiterMarketplaceMatch
     from app.services.queue import get_queue
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         rp = session.execute(
             select(RecruiterProfile).where(
                 RecruiterProfile.user_id == recruiter_user_id
@@ -439,14 +464,16 @@ def refresh_marketplace_matches_for_recruiter(recruiter_user_id: int) -> dict:
             "total_cached_jobs": len(cached_job_ids),
         }
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "refresh_marketplace_matches_for_recruiter: failed for user %s",
             recruiter_user_id,
         )
         return {"status": "failed", "error": "see logs"}
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def backfill_recruiter_job_fields(job_id: int) -> bool:
@@ -466,8 +493,9 @@ def backfill_recruiter_job_fields(job_id: int) -> bool:
 
     from app.models.recruiter_job import RecruiterJob
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.get(RecruiterJob, job_id)
         if not job:
             logger.warning("backfill_recruiter_job_fields: job %s not found", job_id)
@@ -555,13 +583,15 @@ def backfill_recruiter_job_fields(job_id: int) -> bool:
 
         return updated
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception(
             "backfill_recruiter_job_fields: failed for job %s", job_id
         )
         return False
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def sync_employer_job_to_jobs(job_id: int) -> None:
@@ -574,8 +604,9 @@ def sync_employer_job_to_jobs(job_id: int) -> None:
 
     from app.models.employer import EmployerJob, EmployerProfile
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         ej = session.get(EmployerJob, job_id)
         if not ej:
             logger.warning(
@@ -625,16 +656,19 @@ def sync_employer_job_to_jobs(job_id: int) -> None:
         session.commit()
         logger.info("sync_employer_job_to_jobs: synced employer job %s", job_id)
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("sync_employer_job_to_jobs: failed for %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def deactivate_employer_job_proxy(job_id: int) -> None:
     """Mark the proxy Job row as inactive when an employer job is closed/archived."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         proxy = session.execute(
             select(Job).where(Job.employer_job_id == job_id)
         ).scalar_one_or_none()
@@ -646,10 +680,12 @@ def deactivate_employer_job_proxy(job_id: int) -> None:
                 job_id,
             )
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("deactivate_employer_job_proxy: failed for %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def populate_job_candidates(job_id: int) -> None:
@@ -660,8 +696,9 @@ def populate_job_candidates(job_id: int) -> None:
     from app.models.employer_job_candidate import EmployerJobCandidate
     from app.services.matching import find_top_candidates_for_employer_job
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.get(EmployerJob, job_id)
         if not job:
             logger.warning("populate_job_candidates: EmployerJob %s not found", job_id)
@@ -725,10 +762,12 @@ def populate_job_candidates(job_id: int) -> None:
             inserted,
         )
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("populate_job_candidates: failed for employer job %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def sync_recruiter_job_to_jobs(job_id: int) -> None:
@@ -742,8 +781,9 @@ def sync_recruiter_job_to_jobs(job_id: int) -> None:
     from app.models.recruiter import RecruiterProfile
     from app.models.recruiter_job import RecruiterJob
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         rj = session.get(RecruiterJob, job_id)
         if not rj:
             logger.warning(
@@ -797,16 +837,19 @@ def sync_recruiter_job_to_jobs(job_id: int) -> None:
         session.commit()
         logger.info("sync_recruiter_job_to_jobs: synced recruiter job %s", job_id)
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("sync_recruiter_job_to_jobs: failed for %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def deactivate_recruiter_job_proxy(job_id: int) -> None:
     """Mark the proxy Job row as inactive when a recruiter job is closed."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         proxy = session.execute(
             select(Job).where(Job.recruiter_job_id == job_id)
         ).scalar_one_or_none()
@@ -819,10 +862,12 @@ def deactivate_recruiter_job_proxy(job_id: int) -> None:
                 job_id,
             )
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("deactivate_recruiter_job_proxy: failed for %s", job_id)
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def parse_board_job_skills(job_id: int) -> bool:
@@ -836,8 +881,9 @@ def parse_board_job_skills(job_id: int) -> bool:
 
     import anthropic
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         job = session.execute(select(Job).where(Job.id == job_id)).scalar_one_or_none()
         if job is None:
             logger.warning("parse_board_job_skills: job %s not found", job_id)
@@ -914,11 +960,13 @@ def parse_board_job_skills(job_id: int) -> bool:
             )
         return True
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("parse_board_job_skills: failed for job %s", job_id)
         return False
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def backfill_board_job_parsing() -> dict:
@@ -929,8 +977,9 @@ def backfill_board_job_parsing() -> dict:
     from app.services.job_parser import JobParserService
     from app.services.queue import get_queue
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         # Find board jobs without parsed details
         parsed_job_ids = select(JobParsedDetail.job_id)
         jobs = session.execute(
@@ -990,8 +1039,10 @@ def backfill_board_job_parsing() -> dict:
             "queued_for_llm": low_skill_count,
         }
     except Exception:
-        session.rollback()
+        if session:
+            session.rollback()
         logger.exception("backfill_board_job_parsing: failed")
         return {"error": "backfill failed"}
     finally:
-        session.close()
+        if session:
+            session.close()

@@ -91,8 +91,9 @@ Rules:
 
 def generate_interview_prep_job(interview_prep_id: int) -> None:
     """RQ worker job: generate interview prep content for a given InterviewPrep row."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         prep = session.get(InterviewPrep, interview_prep_id)
         if prep is None:
             logger.error("InterviewPrep %d not found", interview_prep_id)
@@ -175,13 +176,15 @@ def generate_interview_prep_job(interview_prep_id: int) -> None:
         logger.exception(
             "Interview prep generation failed for id=%d", interview_prep_id
         )
-        try:
-            prep = session.get(InterviewPrep, interview_prep_id)
-            if prep:
-                prep.status = "failed"
-                prep.error_message = "Internal error during generation"
-                session.commit()
-        except Exception:
-            session.rollback()
+        if session:
+            try:
+                prep = session.get(InterviewPrep, interview_prep_id)
+                if prep:
+                    prep.status = "failed"
+                    prep.error_message = "Internal error during generation"
+                    session.commit()
+            except Exception:
+                session.rollback()
     finally:
-        session.close()
+        if session:
+            session.close()

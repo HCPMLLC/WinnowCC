@@ -287,6 +287,7 @@ type ErrorGroup = {
   explanation: string;
   remedy: string;
   jobs: FailedJob[];
+  funcBreakdown: { name: string; count: number }[];
 };
 
 function groupFailedJobs(jobs: FailedJob[]): ErrorGroup[] {
@@ -302,8 +303,20 @@ function groupFailedJobs(jobs: FailedJob[]): ErrorGroup[] {
         explanation: diagnosis.explanation,
         remedy: diagnosis.remedy,
         jobs: [job],
+        funcBreakdown: [],
       });
     }
+  }
+  // Build func_name breakdown per group
+  for (const group of groups.values()) {
+    const counts = new Map<string, number>();
+    for (const j of group.jobs) {
+      const fn = j.func_name ?? "unknown";
+      counts.set(fn, (counts.get(fn) ?? 0) + 1);
+    }
+    group.funcBreakdown = Array.from(counts.entries())
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
   }
   // Sort by count descending
   return Array.from(groups.values()).sort(
@@ -314,9 +327,11 @@ function groupFailedJobs(jobs: FailedJob[]): ErrorGroup[] {
 function FailedJobsSection({
   queue,
   onRetry,
+  onFlushFailed,
 }: {
   queue: QueueDetail;
   onRetry: () => void;
+  onFlushFailed: () => void;
 }) {
   const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
   const groups = groupFailedJobs(queue.failed_jobs);
@@ -336,12 +351,20 @@ function FailedJobsSection({
             </p>
           )}
         </div>
-        <button
-          onClick={onRetry}
-          className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
-        >
-          Retry All
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={onFlushFailed}
+            className="rounded-lg bg-slate-600 px-4 py-2 text-xs font-semibold text-white hover:bg-slate-700"
+          >
+            Flush Failed
+          </button>
+          <button
+            onClick={onRetry}
+            className="rounded-lg bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700"
+          >
+            Retry All
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-col gap-3">
@@ -373,6 +396,21 @@ function FailedJobsSection({
                   <p className="mt-1 text-xs text-slate-500">
                     {group.remedy}
                   </p>
+                  {group.funcBreakdown.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap gap-1.5">
+                      {group.funcBreakdown.map((fb) => (
+                        <span
+                          key={fb.name}
+                          className="inline-flex items-center gap-1 rounded bg-slate-100 px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                        >
+                          {fb.name}
+                          <span className="font-bold text-red-600">
+                            x{fb.count}
+                          </span>
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <span className="ml-2 text-xs text-slate-400">
                   {isExpanded ? "Hide" : "Show"} jobs
@@ -455,6 +493,28 @@ export default function QueueMonitorPage() {
       void load();
     } catch (e) {
       setActionMsg(e instanceof Error ? e.message : "Retry failed");
+    }
+  };
+
+  const handleFlushFailed = async (queueName: string) => {
+    if (
+      !confirm(
+        `Remove all failed jobs from "${queueName}" queue? This permanently deletes them.`,
+      )
+    )
+      return;
+    setActionMsg(null);
+    try {
+      const res = await fetch(
+        `${API}/api/admin/support/actions/flush-failed/${queueName}`,
+        { method: "POST", credentials: "include" },
+      );
+      if (!res.ok) throw new Error("Flush failed jobs failed");
+      const result = await res.json();
+      setActionMsg(result.message);
+      void load();
+    } catch (e) {
+      setActionMsg(e instanceof Error ? e.message : "Flush failed");
     }
   };
 
@@ -563,6 +623,7 @@ export default function QueueMonitorPage() {
         <FailedJobsSection
           queue={selectedQueueData}
           onRetry={() => handleRetry(selectedQueueData.name)}
+          onFlushFailed={() => handleFlushFailed(selectedQueueData.name)}
         />
       )}
     </div>

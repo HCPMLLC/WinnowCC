@@ -201,8 +201,9 @@ def _build_brief_page(
 
 def build_employer_submittal_package_task(package_id: int) -> dict:
     """RQ worker task: build an employer submittal package PDF."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         pkg = session.get(EmployerSubmittalPackage, package_id)
         if not pkg:
             return {"error": "Package not found"}
@@ -400,18 +401,20 @@ def build_employer_submittal_package_task(package_id: int) -> dict:
         logger.exception(
             "Failed to build employer submittal package %s", package_id
         )
-        try:
-            session.rollback()
-            pkg = session.get(EmployerSubmittalPackage, package_id)
-            if pkg:
-                pkg.status = "failed"
-                pkg.error_message = str(e)[:1000]
-                session.commit()
-        except Exception:
-            logger.exception("Failed to update package status")
+        if session:
+            try:
+                session.rollback()
+                pkg = session.get(EmployerSubmittalPackage, package_id)
+                if pkg:
+                    pkg.status = "failed"
+                    pkg.error_message = str(e)[:1000]
+                    session.commit()
+            except Exception:
+                logger.exception("Failed to update package status")
         return {"error": str(e)}
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 # ---------------------------------------------------------------------------

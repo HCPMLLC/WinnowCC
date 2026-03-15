@@ -613,7 +613,7 @@ def queue_monitor(
         failed_count = qdata.get("failed", 0)
         failed_jobs = []
         if failed_count > 0:
-            raw_failed = get_failed_jobs(qname, 50)
+            raw_failed = get_failed_jobs(qname, 200)
             for fj in raw_failed:
                 failed_jobs.append(
                     {
@@ -939,6 +939,37 @@ def retry_queue(
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@router.post("/actions/flush-failed/{queue_name}", response_model=ActionResponse)
+def flush_failed_jobs(
+    queue_name: str,
+    admin: User = Depends(require_admin_user),  # noqa: ARG001, B008
+):
+    """Remove all failed jobs from a queue's failed registry."""
+    from rq import Queue
+    from rq.job import Job
+
+    from app.services.worker_health import get_redis_connection
+
+    try:
+        conn = get_redis_connection()
+        q = Queue(queue_name, connection=conn)
+        failed_registry = q.failed_job_registry
+        job_ids = failed_registry.get_job_ids()
+        removed = 0
+        for job_id in job_ids:
+            try:
+                failed_registry.remove(job_id, delete_job=True)
+                removed += 1
+            except Exception:
+                pass
+        return {
+            "success": True,
+            "message": f"Flushed {removed}/{len(job_ids)} failed jobs from {queue_name}",
+        }
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 @router.post("/actions/reparse/{user_id}", response_model=ActionResponse)
 def reparse_resume(
     user_id: int,
@@ -958,13 +989,17 @@ def reparse_resume(
         raise HTTPException(status_code=404, detail="No resume found for user")
 
     try:
-        from rq import Queue
+        from app.models.job_run import JobRun
+        from app.services.queue import get_queue
+        from app.services.resume_parse_job import parse_resume_job
 
-        from app.services.worker_health import get_redis_connection
+        job_run = JobRun(job_type="parse", status="queued")
+        db.add(job_run)
+        db.commit()
+        db.refresh(job_run)
 
-        conn = get_redis_connection()
-        q = Queue("parse", connection=conn)
-        q.enqueue("app.worker.parse_resume", doc.id, user_id)
+        q = get_queue()
+        q.enqueue(parse_resume_job, doc.id, job_run.id)
         return {"success": True, "message": f"Re-parse enqueued for user {user_id}"}
     except Exception as exc:
         raise HTTPException(

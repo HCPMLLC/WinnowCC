@@ -171,8 +171,9 @@ def generate_enhancement_suggestions(user_id: int, version: int) -> None:
     Writes results into ``profile_json.enhancement_suggestions`` on the
     specified profile version row.
     """
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         # Mark generating
         _set_enhancement_status(session, user_id, version, {
             "status": "generating",
@@ -264,14 +265,16 @@ def generate_enhancement_suggestions(user_id: int, version: int) -> None:
 
     except Exception:
         logger.exception("Enhancement: error for user=%s v=%s", user_id, version)
-        try:
-            _set_enhancement_status(session, user_id, version, {
-                "status": "failed",
-                "suggestions": [],
-                "overall_assessment": None,
-                "generated_at": datetime.now(UTC).isoformat(),
-            })
-        except Exception:
-            session.rollback()
+        if session:
+            try:
+                _set_enhancement_status(session, user_id, version, {
+                    "status": "failed",
+                    "suggestions": [],
+                    "overall_assessment": None,
+                    "generated_at": datetime.now(UTC).isoformat(),
+                })
+            except Exception:
+                session.rollback()
     finally:
-        session.close()
+        if session:
+            session.close()

@@ -90,8 +90,9 @@ Rules:
 
 def generate_rejection_feedback_job(feedback_id: int) -> None:
     """RQ worker job: generate rejection feedback analysis."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         feedback = session.get(RejectionFeedback, feedback_id)
         if feedback is None:
             logger.error("RejectionFeedback %d not found", feedback_id)
@@ -189,16 +190,18 @@ def generate_rejection_feedback_job(feedback_id: int) -> None:
         logger.exception(
             "Rejection feedback generation failed for id=%d", feedback_id
         )
-        try:
-            feedback = session.get(RejectionFeedback, feedback_id)
-            if feedback:
-                feedback.status = "failed"
-                feedback.error_message = "Internal error during generation"
-                session.commit()
-        except Exception:
-            session.rollback()
+        if session:
+            try:
+                feedback = session.get(RejectionFeedback, feedback_id)
+                if feedback:
+                    feedback.status = "failed"
+                    feedback.error_message = "Internal error during generation"
+                    session.commit()
+            except Exception:
+                session.rollback()
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def filter_for_free_tier(analysis: dict) -> dict:

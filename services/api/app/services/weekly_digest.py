@@ -269,8 +269,9 @@ def send_weekly_digests() -> dict:
     """
     from app.db.session import get_session_factory
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         # Calculate week boundaries (Monday–Sunday of the past week)
         today = date.today()
         # week_end = last Sunday (or today if Sunday)
@@ -353,7 +354,9 @@ def send_weekly_digests() -> dict:
 
     except Exception as e:
         logger.exception("Weekly digest batch failed: %s", e)
-        session.rollback()
+        if session:
+            session.rollback()
         return {"sent": 0, "skipped": 0, "errors": 1, "error": str(e)}
     finally:
-        session.close()
+        if session:
+            session.close()

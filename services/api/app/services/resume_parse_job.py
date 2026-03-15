@@ -22,8 +22,9 @@ logger = logging.getLogger(__name__)
 
 
 def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         _set_job_status(session, job_run_id, "running")
         resume = session.get(ResumeDocument, resume_document_id)
         if resume is None or resume.deleted_at is not None:
@@ -130,10 +131,12 @@ def parse_resume_job(resume_document_id: int, job_run_id: int) -> None:
 
         _set_job_status(session, job_run_id, "succeeded")
     except Exception as exc:
-        session.rollback()
-        _set_job_status(session, job_run_id, "failed", _safe_error_message(exc))
+        if session:
+            session.rollback()
+            _set_job_status(session, job_run_id, "failed", _safe_error_message(exc))
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def _build_ingest_query_from_profile(profile_json: dict) -> dict:

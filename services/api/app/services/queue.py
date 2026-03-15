@@ -26,6 +26,16 @@ _RETRY_POLICIES: dict[str, tuple[int, list[int]]] = {
     "low": (2, [60, 300]),
 }
 
+# Per-queue default job timeouts (seconds).  RQ's built-in default is only
+# 180 s which is too short for matching/embedding jobs that iterate over the
+# full candidate table.
+_DEFAULT_TIMEOUTS: dict[str, int] = {
+    "critical": 1800,   # 30 min (ingestion)
+    "default": 600,     # 10 min
+    "bulk": 600,        # 10 min (matching fan-out)
+    "low": 900,         # 15 min (backfills, enhancements)
+}
+
 # Auto-purge failed jobs after 2 days
 _FAILURE_TTL = 172800
 
@@ -82,6 +92,8 @@ class RetryQueue(Queue):
             kwargs["retry"] = Retry(max=max_retries, interval=intervals)
         if "failure_ttl" not in kwargs:
             kwargs["failure_ttl"] = _FAILURE_TTL
+        if "job_timeout" not in kwargs:
+            kwargs["job_timeout"] = _DEFAULT_TIMEOUTS.get(self.name, 600)
         result = super().enqueue(*args, **kwargs)
         # Wake the worker in a background thread (non-blocking)
         threading.Thread(target=_wake_worker, daemon=True).start()

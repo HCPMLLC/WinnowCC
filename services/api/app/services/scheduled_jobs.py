@@ -134,10 +134,11 @@ def scheduled_ingest_jobs() -> dict:
     Returns:
         dict with run_id, status, jobs_ingested, and error (if any)
     """
-    session = get_session_factory()()
+    session = None
     run = None
 
     try:
+        session = get_session_factory()()
         # Clean up any stuck runs before starting
         _cleanup_stale_runs(session)
 
@@ -662,8 +663,9 @@ def scheduled_refresh_recruiter_candidates() -> dict:
     from app.services.job_pipeline import populate_recruiter_job_candidates
     from app.services.queue import get_queue
 
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         active_jobs = (
             session.execute(
                 select(RecruiterJob).where(RecruiterJob.status == "active")
@@ -700,10 +702,12 @@ def scheduled_refresh_recruiter_candidates() -> dict:
         }
     except Exception as e:
         logger.exception("scheduled_refresh_recruiter_candidates failed: %s", e)
-        session.rollback()
+        if session:
+            session.rollback()
         return {"status": "failed", "error": str(e)}
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def scheduled_sync_distribution_metrics() -> dict:

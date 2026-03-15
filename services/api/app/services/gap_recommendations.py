@@ -92,8 +92,9 @@ they have related experience)
 
 def generate_gap_recommendations_job(gap_rec_id: int) -> None:
     """RQ worker job: generate gap closure recommendations for a GapRecommendation row."""
-    session = get_session_factory()()
+    session = None
     try:
+        session = get_session_factory()()
         gap_rec = session.get(GapRecommendation, gap_rec_id)
         if gap_rec is None:
             logger.error("GapRecommendation %d not found", gap_rec_id)
@@ -184,16 +185,18 @@ def generate_gap_recommendations_job(gap_rec_id: int) -> None:
         logger.exception(
             "Gap recommendations generation failed for id=%d", gap_rec_id
         )
-        try:
-            gap_rec = session.get(GapRecommendation, gap_rec_id)
-            if gap_rec:
-                gap_rec.status = "failed"
-                gap_rec.error_message = "Internal error during generation"
-                session.commit()
-        except Exception:
-            session.rollback()
+        if session:
+            try:
+                gap_rec = session.get(GapRecommendation, gap_rec_id)
+                if gap_rec:
+                    gap_rec.status = "failed"
+                    gap_rec.error_message = "Internal error during generation"
+                    session.commit()
+            except Exception:
+                session.rollback()
     finally:
-        session.close()
+        if session:
+            session.close()
 
 
 def filter_for_free_tier(recommendations: dict) -> dict:
