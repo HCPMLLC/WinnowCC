@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 import sqlalchemy as sa
 from sqlalchemy import asc, desc, func, or_, select
@@ -790,6 +790,32 @@ def remove_team_member(
 
 
 def get_dashboard_stats(session: Session, profile: RecruiterProfile) -> dict:
+    # Auto-expire active jobs whose deadline has passed (mirrors list endpoint)
+    from sqlalchemy import update
+
+    from app.models.job import Job as JobModel
+
+    now = datetime.now(UTC)
+    stale = session.execute(
+        select(RecruiterJob.id).where(
+            RecruiterJob.recruiter_profile_id == profile.id,
+            RecruiterJob.status == "active",
+            RecruiterJob.closes_at < now,
+        )
+    ).scalars().all()
+    if stale:
+        session.execute(
+            update(RecruiterJob)
+            .where(RecruiterJob.id.in_(stale))
+            .values(status="expired")
+        )
+        session.execute(
+            update(JobModel)
+            .where(JobModel.recruiter_job_id.in_(stale))
+            .values(is_active=False)
+        )
+        session.flush()
+
     total_active_jobs = (
         session.execute(
             select(func.count(RecruiterJob.id)).where(
