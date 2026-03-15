@@ -293,7 +293,7 @@ export default function ApplicationModal({
       if (data.can_submit) {
         await handleSubmit();
       } else {
-        setError("Your profile needs more information to submit. Please ensure all required fields are filled.");
+        setError("Your profile completeness is " + data.completeness_score + "% — a minimum of 55% is required. Try uploading a more detailed resume with skills, work history, and education.");
       }
     } catch (e: any) {
       setError(e.message || "Form submission failed");

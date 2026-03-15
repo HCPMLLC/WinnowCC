@@ -357,7 +357,7 @@ def process_form_submission(
     # Recalculate completeness
     profile_data = get_profile_data_from_parsed_resume(parsed)
     # Also inject direct fields that don't come from resume mapping
-    if parsed.get("years_experience"):
+    if parsed.get("years_experience") is not None:
         profile_data["years_experience"] = parsed["years_experience"]
     if parsed.get("phone"):
         profile_data["phone"] = parsed["phone"]
@@ -367,6 +367,12 @@ def process_form_submission(
         profile_data["full_name"] = parsed["full_name"]
     if parsed.get("current_title"):
         profile_data["current_title"] = parsed["current_title"]
+    if parsed.get("work_authorization"):
+        profile_data["work_authorization"] = parsed["work_authorization"]
+    if parsed.get("desired_salary") is not None:
+        profile_data["desired_salary"] = parsed["desired_salary"]
+    if parsed.get("willing_to_relocate"):
+        profile_data["willing_to_relocate"] = parsed["willing_to_relocate"]
 
     # Inject application email so completeness counts it
     if application.email and not profile_data.get("email"):
