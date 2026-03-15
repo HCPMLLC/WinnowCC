@@ -109,7 +109,9 @@ export default function ApplicationModal({
   // Resume step
   const [dragOver, setDragOver] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Form step
   const [form, setForm] = useState<FormData>({ ...EMPTY_FORM });
@@ -212,7 +214,19 @@ export default function ApplicationModal({
     }
 
     setUploading(true);
+    setUploadProgress(0);
     setError("");
+
+    // Animate progress: fast to ~40%, slow to ~85%, then hold
+    progressRef.current = setInterval(() => {
+      setUploadProgress(prev => {
+        if (prev < 40) return prev + 3;
+        if (prev < 70) return prev + 1.5;
+        if (prev < 85) return prev + 0.5;
+        return prev;
+      });
+    }, 200);
+
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -225,6 +239,11 @@ export default function ApplicationModal({
         throw new Error(err.detail || "Failed to upload resume");
       }
       const data = await res.json();
+
+      // Jump to 100%
+      if (progressRef.current) clearInterval(progressRef.current);
+      setUploadProgress(100);
+
       setCompleteness(data.completeness_score);
 
       // Populate form from prefilled data
@@ -241,10 +260,13 @@ export default function ApplicationModal({
       }
 
       setExistingApplicant(data.existing_applicant || false);
+      // Brief pause at 100% before advancing
+      await new Promise(r => setTimeout(r, 300));
       setStep("form");
     } catch (e: any) {
       setError(e.message || "Upload failed");
     }
+    if (progressRef.current) clearInterval(progressRef.current);
     setUploading(false);
   }
 
@@ -432,14 +454,23 @@ export default function ApplicationModal({
                   }}
                 />
                 {uploading ? (
-                  <Loader2 className="w-8 h-8 animate-spin mx-auto mb-2" style={{ color: primary }} />
+                  <div className="space-y-3">
+                    <p className="text-2xl font-bold" style={{ color: primary }}>{Math.round(uploadProgress)}%</p>
+                    <div className="w-48 mx-auto h-2 bg-gray-100 rounded-full overflow-hidden">
+                      <div
+                        className="h-full rounded-full transition-all duration-200"
+                        style={{ width: `${uploadProgress}%`, backgroundColor: primary }}
+                      />
+                    </div>
+                    <p className="text-sm font-medium text-gray-700">Parsing your resume...</p>
+                  </div>
                 ) : (
-                  <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                  <>
+                    <Upload className="w-8 h-8 text-gray-300 mx-auto mb-2" />
+                    <p className="text-sm font-medium text-gray-700">Drop your resume here or click to browse</p>
+                    <p className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, or TXT (max 10MB)</p>
+                  </>
                 )}
-                <p className="text-sm font-medium text-gray-700">
-                  {uploading ? "Parsing your resume..." : "Drop your resume here or click to browse"}
-                </p>
-                <p className="text-xs text-gray-400 mt-1">PDF, DOC, DOCX, or TXT (max 10MB)</p>
               </div>
 
               {error && <p className="text-sm text-red-600">{error}</p>}
