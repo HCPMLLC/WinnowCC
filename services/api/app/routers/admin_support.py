@@ -946,7 +946,6 @@ def flush_failed_jobs(
 ):
     """Remove all failed jobs from a queue's failed registry."""
     from rq import Queue
-    from rq.job import Job
 
     from app.services.worker_health import get_redis_connection
 
@@ -958,7 +957,9 @@ def flush_failed_jobs(
         removed = 0
         for job_id in job_ids:
             try:
-                failed_registry.remove(job_id, delete_job=True)
+                failed_registry.remove(job_id)
+                # Also delete the job hash from Redis directly
+                conn.delete(f"rq:job:{job_id}")
                 removed += 1
             except Exception:
                 pass
