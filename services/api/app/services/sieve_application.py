@@ -494,8 +494,7 @@ def submit_application(
     Marks application as completed and optionally records
     additional job interest.
     """
-    if not application.can_submit:
-        raise ValueError("Application not ready for submission")
+    # Completeness gate removed — email + resume is sufficient
 
     # Mark as completed
     application.status = ApplicationStatus.COMPLETED

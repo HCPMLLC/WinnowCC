@@ -322,12 +322,6 @@ def submit_application_endpoint(
             detail="Application already submitted",
         ) from None
 
-    if not application.can_submit:
-        raise HTTPException(
-            status_code=400,
-            detail=("Application not ready. Please complete required fields."),
-        ) from None
-
     try:
         result = submit_application(db, application, data.apply_to_additional)
     except Exception as e:
