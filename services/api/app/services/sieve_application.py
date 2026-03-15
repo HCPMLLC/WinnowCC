@@ -622,8 +622,8 @@ def _notify_owner(
     parsed = application.resume_parsed_data or {}
     applicant_name = parsed.get("full_name") or parsed.get("name") or "Unknown"
 
-    # Create in-app notification for recruiter owners
-    if career_page.tenant_type == "recruiter" and owner_user_id:
+    # Create in-app notification for career page owner
+    if owner_user_id:
         from app.models.recruiter_notification import RecruiterNotification
 
         notification = RecruiterNotification(
@@ -642,4 +642,5 @@ def _notify_owner(
         applicant_email=application.email or "",
         job_title=job_title,
         career_page_name=career_page_name,
+        career_page_id=career_page.id,
     )

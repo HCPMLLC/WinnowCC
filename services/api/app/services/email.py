@@ -771,6 +771,7 @@ def send_application_received_email(
     applicant_email: str,
     job_title: str,
     career_page_name: str,
+    career_page_id: int | None = None,
 ) -> None:
     """Notify career page owner that a new application was submitted."""
     if not RESEND_API_KEY:
@@ -780,7 +781,10 @@ def send_application_received_email(
         )
         return
 
-    dashboard_url = f"{FRONTEND_URL}/recruiter/career-pages"
+    if career_page_id:
+        dashboard_url = f"{FRONTEND_URL}/recruiter/career-pages/{career_page_id}/applications"
+    else:
+        dashboard_url = f"{FRONTEND_URL}/recruiter/career-pages"
     resend.api_key = RESEND_API_KEY
     _send(
         {
