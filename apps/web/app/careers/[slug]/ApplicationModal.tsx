@@ -289,12 +289,8 @@ export default function ApplicationModal({
       setCompleteness(data.completeness_score);
       setCanSubmit(data.can_submit);
 
-      // Auto-submit if ready
-      if (data.can_submit) {
-        await handleSubmit();
-      } else {
-        setError("Your profile completeness is " + data.completeness_score + "% — a minimum of 55% is required. Try uploading a more detailed resume with skills, work history, and education.");
-      }
+      // Always submit after form data is saved
+      await handleSubmit();
     } catch (e: any) {
       setError(e.message || "Form submission failed");
     }

@@ -124,6 +124,4 @@ class CareerPageApplication(Base):
         """Check if application has minimum required data."""
         if self.email is None:
             return False
-        if self.resume_file_url:
-            return self.completeness_score >= 55
-        return self.completeness_score >= 70
+        return True
