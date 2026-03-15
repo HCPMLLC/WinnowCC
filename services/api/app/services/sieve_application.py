@@ -139,8 +139,9 @@ def process_resume_upload(
     """
     profile_data = get_profile_data_from_parsed_resume(parsed_resume_data)
 
-    # Inject application email so completeness counts it
-    if application.email and not profile_data.get("email"):
+    # Always inject application email (overrides whitespace-only values
+    # the resume parser may have returned)
+    if application.email:
         profile_data["email"] = application.email
 
     completeness = calculate_completeness_score(profile_data)
@@ -257,12 +258,12 @@ def extract_prefilled_form(parsed_data: dict[str, Any]) -> dict[str, Any]:
     if location:
         form["city"] = location
 
-    # Experience
-    if profile.get("years_experience"):
+    # Experience (use is not None so 0 years still pre-fills)
+    if profile.get("years_experience") is not None:
         form["total_years_experience"] = profile["years_experience"]
 
     # Salary
-    if profile.get("desired_salary"):
+    if profile.get("desired_salary") is not None:
         form["expected_salary"] = profile["desired_salary"]
 
     # Work authorization
@@ -354,19 +355,24 @@ def process_form_submission(
     q_responses["form_data"] = form_data
     application.question_responses = q_responses
 
-    # Recalculate completeness
+    # Build profile_data directly instead of relying on
+    # get_profile_data_from_parsed_resume which can set fields to empty
+    # values (e.g. skills: [], experience: []) that block scoring.
+    # Start from resume mapping, then override with form-sourced fields.
     profile_data = get_profile_data_from_parsed_resume(parsed)
-    # Also inject direct fields that don't come from resume mapping
-    if parsed.get("years_experience") is not None:
-        profile_data["years_experience"] = parsed["years_experience"]
+
+    # Form-sourced fields always override resume-extracted values.
+    # Use explicit None checks so that 0 and "" are handled correctly.
+    if parsed.get("full_name"):
+        profile_data["full_name"] = parsed["full_name"]
     if parsed.get("phone"):
         profile_data["phone"] = parsed["phone"]
     if parsed.get("location"):
         profile_data["location"] = parsed["location"]
-    if parsed.get("full_name"):
-        profile_data["full_name"] = parsed["full_name"]
     if parsed.get("current_title"):
         profile_data["current_title"] = parsed["current_title"]
+    if parsed.get("years_experience") is not None:
+        profile_data["years_experience"] = parsed["years_experience"]
     if parsed.get("work_authorization"):
         profile_data["work_authorization"] = parsed["work_authorization"]
     if parsed.get("desired_salary") is not None:
@@ -374,9 +380,16 @@ def process_form_submission(
     if parsed.get("willing_to_relocate"):
         profile_data["willing_to_relocate"] = parsed["willing_to_relocate"]
 
-    # Inject application email so completeness counts it
-    if application.email and not profile_data.get("email"):
+    # Always inject application email (override even whitespace-only
+    # values the resume parser may have returned)
+    if application.email:
         profile_data["email"] = application.email
+
+    # If a resume was uploaded, the resume itself IS evidence of work
+    # history — don't penalize candidates whose resume parser didn't
+    # extract a structured experience list.
+    if application.resume_file_url and not profile_data.get("work_history"):
+        profile_data["work_history"] = ["resume_uploaded"]
 
     new_completeness = calculate_completeness_score(profile_data)
     missing = get_missing_fields(profile_data)
