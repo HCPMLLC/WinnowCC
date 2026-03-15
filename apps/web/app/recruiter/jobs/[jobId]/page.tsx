@@ -121,6 +121,10 @@ export default function RecruiterJobDetailPage() {
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [candidates, setCandidates] = useState<CandidateMatch[]>([]);
   const [totalCached, setTotalCached] = useState(0);
+  const [candSearch, setCandSearch] = useState("");
+  const [candMinScore, setCandMinScore] = useState("");
+  const [candOffset, setCandOffset] = useState(0);
+  const CAND_LIMIT = 50;
   const [loading, setLoading] = useState(true);
   const [autoPopulate, setAutoPopulate] = useState<boolean | null>(null);
   const [addedToPipeline, setAddedToPipeline] = useState<Set<number>>(new Set());
@@ -204,6 +208,33 @@ export default function RecruiterJobDetailPage() {
     });
   }
 
+  const fetchCandidates = useCallback(
+    async (opts?: { search?: string; minScore?: string; offset?: number }) => {
+      const s = opts?.search ?? candSearch;
+      const ms = opts?.minScore ?? candMinScore;
+      const o = opts?.offset ?? candOffset;
+      const params = new URLSearchParams();
+      params.set("limit", String(CAND_LIMIT));
+      if (o > 0) params.set("offset", String(o));
+      if (s.trim()) params.set("search", s.trim());
+      if (ms && Number(ms) > 0) params.set("min_score", ms);
+      const res = await fetch(
+        `${API_BASE}/api/recruiter/jobs/${jobId}/candidates?${params}`,
+        { credentials: "include" },
+      );
+      if (res.ok) {
+        const data: CandidatesResponse = await res.json();
+        setCandidates(data.candidates);
+        setTotalCached(data.total_cached);
+        const pipelined = new Set(
+          data.candidates.filter((c) => c.in_pipeline).map((c) => c.id),
+        );
+        setAddedToPipeline(pipelined);
+      }
+    },
+    [jobId, candSearch, candMinScore, candOffset],
+  );
+
   useEffect(() => {
     if (!jobId) return;
 
@@ -211,7 +242,7 @@ export default function RecruiterJobDetailPage() {
       fetch(`${API_BASE}/api/recruiter/jobs/${jobId}`, {
         credentials: "include",
       }).then((r) => (r.ok ? r.json() : null)),
-      fetch(`${API_BASE}/api/recruiter/jobs/${jobId}/candidates?limit=50`, {
+      fetch(`${API_BASE}/api/recruiter/jobs/${jobId}/candidates?limit=${CAND_LIMIT}`, {
         credentials: "include",
       }).then((r) => (r.ok ? r.json() : null)),
       fetch(`${API_BASE}/api/recruiter/clients`, {
@@ -236,7 +267,7 @@ export default function RecruiterJobDetailPage() {
           setCandidates(candData.candidates);
           setTotalCached(candData.total_cached);
           // Initialize pipeline state from server
-          const pipelined = new Set(
+          const pipelined = new Set<number>(
             (candData.candidates || [])
               .filter((c: CandidateMatch) => c.in_pipeline)
               .map((c: CandidateMatch) => c.id)
@@ -294,20 +325,8 @@ export default function RecruiterJobDetailPage() {
       }
 
       // Reload candidates after refresh completes
-      const candRes = await fetch(
-        `${API_BASE}/api/recruiter/jobs/${jobId}/candidates?limit=50`,
-        { credentials: "include" },
-      );
-      if (candRes.ok) {
-        const data: CandidatesResponse = await candRes.json();
-        setCandidates(data.candidates);
-        setTotalCached(data.total_cached);
-        // Update addedToPipeline from server state
-        const pipelined = new Set(
-          data.candidates.filter((c) => c.in_pipeline).map((c) => c.id)
-        );
-        setAddedToPipeline(pipelined);
-      }
+      setCandOffset(0);
+      await fetchCandidates({ offset: 0 });
     } catch (err) {
       console.error("Refresh failed:", err);
       setRefreshMessage("Refresh failed");
@@ -1573,6 +1592,66 @@ export default function RecruiterJobDetailPage() {
           </div>
         </div>
 
+        {/* Search / Score filter */}
+        <div className="mb-4 flex flex-wrap items-end gap-3">
+          <div className="flex-1 min-w-[200px]">
+            <label className="mb-1 block text-xs font-medium text-slate-500">Search by name</label>
+            <input
+              type="text"
+              placeholder="e.g. Carrie Rollings"
+              value={candSearch}
+              onChange={(e) => setCandSearch(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setCandOffset(0);
+                  fetchCandidates({ search: candSearch, offset: 0 });
+                }
+              }}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            />
+          </div>
+          <div className="w-32">
+            <label className="mb-1 block text-xs font-medium text-slate-500">Min score %</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              placeholder="0"
+              value={candMinScore}
+              onChange={(e) => setCandMinScore(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  setCandOffset(0);
+                  fetchCandidates({ minScore: candMinScore, offset: 0 });
+                }
+              }}
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
+            />
+          </div>
+          <button
+            onClick={() => {
+              setCandOffset(0);
+              fetchCandidates({ offset: 0 });
+            }}
+            className="rounded-md bg-slate-700 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800"
+          >
+            Search
+          </button>
+          {(candSearch || candMinScore) && (
+            <button
+              onClick={() => {
+                setCandSearch("");
+                setCandMinScore("");
+                setCandOffset(0);
+                fetchCandidates({ search: "", minScore: "", offset: 0 });
+              }}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-600 hover:bg-slate-50"
+            >
+              Clear
+            </button>
+          )}
+        </div>
+
         {candidates.length === 0 ? (
           <div className="rounded-lg border border-dashed border-slate-300 bg-slate-50 p-8 text-center">
             <p className="text-sm text-slate-600">
@@ -1586,6 +1665,36 @@ export default function RecruiterJobDetailPage() {
           {pipelineError && (
             <div className="mb-3 rounded-md bg-red-50 p-3 text-sm text-red-700">{pipelineError}</div>
           )}
+          {/* Pagination info */}
+          <div className="mb-3 flex items-center justify-between text-sm text-slate-500">
+            <span>
+              Showing {candOffset + 1}–{Math.min(candOffset + candidates.length, totalCached)} of {totalCached}
+            </span>
+            <div className="flex gap-2">
+              <button
+                disabled={candOffset === 0}
+                onClick={() => {
+                  const newOff = Math.max(0, candOffset - CAND_LIMIT);
+                  setCandOffset(newOff);
+                  fetchCandidates({ offset: newOff });
+                }}
+                className="rounded border border-slate-300 px-3 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-50"
+              >
+                Previous
+              </button>
+              <button
+                disabled={candOffset + CAND_LIMIT >= totalCached}
+                onClick={() => {
+                  const newOff = candOffset + CAND_LIMIT;
+                  setCandOffset(newOff);
+                  fetchCandidates({ offset: newOff });
+                }}
+                className="rounded border border-slate-300 px-3 py-1 text-xs font-medium disabled:opacity-40 hover:bg-slate-50"
+              >
+                Next
+              </button>
+            </div>
+          </div>
           <div className="space-y-3">
             {candidates.map((c) => (
               <div

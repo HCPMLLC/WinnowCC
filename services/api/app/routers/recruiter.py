@@ -2962,6 +2962,10 @@ def delete_recruiter_job(
 def get_recruiter_job_candidates(
     job_id: int,
     limit: int = Query(20, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    search: str | None = Query(None),
+    min_score: float | None = Query(None, ge=0, le=100),
+    max_score: float | None = Query(None, ge=0, le=100),
     profile: RecruiterProfile = Depends(get_recruiter_profile),
     session: Session = Depends(get_session),
 ) -> RecruiterJobCandidatesResponse:
@@ -2977,25 +2981,70 @@ def get_recruiter_job_candidates(
             status_code=status.HTTP_404_NOT_FOUND, detail="Job not found."
         )
 
-    cached = (
-        session.execute(
+    # Base query with optional score filters
+    base_filter = [RecruiterJobCandidate.recruiter_job_id == job.id]
+    if min_score is not None:
+        base_filter.append(RecruiterJobCandidate.match_score >= min_score)
+    if max_score is not None:
+        base_filter.append(RecruiterJobCandidate.match_score <= max_score)
+
+    # If searching by name, we need to join candidate_profiles and
+    # filter on the JSONB profile_json field.
+    if search:
+        pattern = f"%{search}%"
+        stmt = (
             select(RecruiterJobCandidate)
-            .where(RecruiterJobCandidate.recruiter_job_id == job.id)
+            .join(
+                CandidateProfile,
+                CandidateProfile.id == RecruiterJobCandidate.candidate_profile_id,
+            )
+            .where(
+                *base_filter,
+                or_(
+                    CandidateProfile.profile_json["basics"]["name"]
+                    .astext.ilike(pattern),
+                    CandidateProfile.profile_json["basics"]["first_name"]
+                    .astext.ilike(pattern),
+                    CandidateProfile.profile_json["basics"]["last_name"]
+                    .astext.ilike(pattern),
+                ),
+            )
             .order_by(RecruiterJobCandidate.match_score.desc())
+            .offset(offset)
             .limit(limit)
         )
-        .scalars()
-        .all()
-    )
-
-    total_cached = (
-        session.execute(
-            select(func.count(RecruiterJobCandidate.id)).where(
-                RecruiterJobCandidate.recruiter_job_id == job.id
+        count_stmt = (
+            select(func.count(RecruiterJobCandidate.id))
+            .join(
+                CandidateProfile,
+                CandidateProfile.id == RecruiterJobCandidate.candidate_profile_id,
             )
-        ).scalar()
-        or 0
-    )
+            .where(
+                *base_filter,
+                or_(
+                    CandidateProfile.profile_json["basics"]["name"]
+                    .astext.ilike(pattern),
+                    CandidateProfile.profile_json["basics"]["first_name"]
+                    .astext.ilike(pattern),
+                    CandidateProfile.profile_json["basics"]["last_name"]
+                    .astext.ilike(pattern),
+                ),
+            )
+        )
+    else:
+        stmt = (
+            select(RecruiterJobCandidate)
+            .where(*base_filter)
+            .order_by(RecruiterJobCandidate.match_score.desc())
+            .offset(offset)
+            .limit(limit)
+        )
+        count_stmt = select(func.count(RecruiterJobCandidate.id)).where(
+            *base_filter
+        )
+
+    cached = session.execute(stmt).scalars().all()
+    total_cached = session.execute(count_stmt).scalar() or 0
 
     # Look up which candidates are already in pipeline (single query)
     from app.models.recruiter_pipeline_candidate import RecruiterPipelineCandidate
