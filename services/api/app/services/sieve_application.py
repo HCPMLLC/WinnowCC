@@ -525,6 +525,8 @@ def submit_application(
     try:
         _notify_owner(db, career_page, application)
     except Exception:
+        # Rollback so the session is usable for the response builder
+        db.rollback()
         logger.warning(
             "Failed to send application notification for %s",
             application.id,

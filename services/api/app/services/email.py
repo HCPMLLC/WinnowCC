@@ -771,7 +771,7 @@ def send_application_received_email(
     applicant_email: str,
     job_title: str,
     career_page_name: str,
-    career_page_id: int | None = None,
+    career_page_id: object = None,
 ) -> None:
     """Notify career page owner that a new application was submitted."""
     if not RESEND_API_KEY:
